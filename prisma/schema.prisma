@@ -12,3 +12,42 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Role {
+  id Int @id @default(autoincrement())
+  name String @unique
+  users User[]
+  @@map("roles")
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  email String @unique
+  passwordHash String @map("password_hash")
+  firstName String @map("first_name")
+  lastName String @map("last_name")
+  roleId Int @map("role_id")
+  resetToken String? @map("reset_token")
+  resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role Role @relation(fields: [roleId], references: [id])
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  tokenHash String @unique @map("token_hash")
+  previousTokenHash String? @map("previous_token_hash")
+  deviceName String? @map("device_name")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
