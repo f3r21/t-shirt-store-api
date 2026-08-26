@@ -1,11 +1,13 @@
 import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
+  IsEmail,
   IsInt,
   IsString,
   IsUrl,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -24,11 +26,40 @@ class EnvironmentVariables {
   @Max(65535)
   PORT = 3000;
 
+  @IsInt()
+  @Min(1)
+  THROTTLE_TTL = 60;
+
   @IsString()
-  DATABASE_URL: string;
+  DATABASE_URL!: string;
 
   @IsUrl({ protocols: ['redis'], require_tld: false })
-  REDIS_URL: string;
+  REDIS_URL!: string;
+
+  @IsString()
+  @MinLength(32)
+  JWT_SECRET!: string;
+
+  @IsString()
+  JWT_ACCESS_TTL = '15m';
+
+  @IsString()
+  JWT_REFRESH_TTL = '7d';
+
+  @IsInt()
+  @Min(1)
+  THROTTLE_LIMIT = 5;
+
+  @IsString()
+  SMTP_HOST = 'localhost';
+
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  SMTP_PORT = 1025;
+
+  @IsEmail()
+  MAIL_FROM!: string;
 }
 
 export function validateEnv(config: Record<string, unknown>) {
