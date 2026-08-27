@@ -1,6 +1,7 @@
 import { ProblemType } from './problem-type';
 import { Prisma } from '../../generated/prisma/client';
 import { HttpException } from '@nestjs/common';
+import { ProblemException } from './problem.exception';
 
 export interface ProblemBody {
   type?: ProblemType;
@@ -15,6 +16,20 @@ export function toProblem(
   err: unknown,
   instance: string,
 ): { status: number; body: ProblemBody } {
+  if (err instanceof ProblemException) {
+    const status = err.getStatus();
+    const body: ProblemBody = {
+      type: err.type,
+      title: err.message,
+      status,
+      instance,
+    };
+    if (err.errors !== undefined) {
+      body.errors = err.errors;
+    }
+    return { status, body };
+  }
+
   if (err instanceof HttpException) {
     const status = err.getStatus();
     return {
