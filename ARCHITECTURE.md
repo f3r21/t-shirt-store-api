@@ -1,0 +1,115 @@
+# Architecture
+
+One page on how this service is put together, why the queue is a queue, how it would
+deploy, and what I would watch. The implementation decisions sit in `DECISIONS.md`; this is
+the shape above them.
+
+## The production shape
+
+```
+                    ┌──────────────┐
+   browser  ────────▶   CDN / TLS   │
+                    └──────┬───────┘
+                           │ HTTPS
+                    ┌──────▼───────────────────────┐
+                    │  API container (NestJS)      │
+                    │  stateless, N replicas       │
+                    │  helmet, CORS, rate limit    │
+                    │  AccessTokenGuard, RolesGuard│
+                    └──┬────────┬─────────┬────────┘
+                       │        │         │
+        ┌──────────────▼──┐  ┌──▼──────┐  ▼ enqueue
+        │ PostgreSQL      │  │  S3     │ ┌──────────────┐
+        │ managed, 1 primary │ images │ │ Redis        │
+        │ + read replica  │  └─────────┘ │ BullMQ queue │
+        └─────────────────┘              └──────┬───────┘
+                       ▲                        │
+                       │                 ┌──────▼─────────┐
+        Stripe ────────┘  webhook        │ worker container│
+        (signed, retried 3 days)         │ same image      │
+                                         │ sends mail      │
+                                         └──────┬──────────┘
+                                                ▼
+                                          email provider
+```
+
+The API is stateless, so it scales horizontally. Everything that must survive a restart is
+in Postgres, S3 or Redis. The worker runs the **same image** with a different entrypoint, so
+there is one build, one dependency tree and one set of migrations.
+
+## Why a queue, and not just doing the work in the request
+
+The stock notification is the only feature that fans out. When a variant's stock reaches
+three, every user who liked that product and has not bought it gets an email. That is one
+database write followed by an unbounded number of network calls to a mail provider.
+
+Three reasons it cannot sit in the request that caused it:
+
+1. **The request that triggers it is a Stripe webhook.** Stripe retries for up to three days
+   on a non-2xx, so a slow handler turns into duplicate deliveries. The handler must record
+   the event and return 200 quickly; mailing two hundred people is not quick.
+2. **A mail provider outage must not fail a paid order.** The enqueue happens strictly
+   *after* the database transaction commits, so a Redis outage delays a notification and
+   never rolls back a payment.
+3. **Retries need to be per recipient.** BullMQ is at-least-once, so a job that dies at
+   recipient 150 of 200 would re-send 149 emails on retry. One job per recipient with a
+   deterministic job id makes a retry idempotent.
+
+**What I am giving up.** A crash between the commit and the enqueue loses the job, and
+nothing retries it. The correct fix is a transactional outbox: write the intent inside the
+same transaction, enqueue after it resolves, and sweep undispatched rows on a schedule. I
+scoped it and did not build it, because the catalog and orders were ahead of it. The
+alternative that removes the outbox entirely is a queue that lives in Postgres, so the
+enqueue joins the open transaction, at roughly a third of Redis's throughput. At this
+store's volume that trade would be worth taking, and Redis was already in the compose file.
+
+**Dedupe is the defect this feature always ships with.** Stock oscillating around the
+threshold, three to four to three, mails the same person twice. Two things prevent it: a
+`stock_notifications` row with a unique key on the pair, inserted before the mail so the
+database is the arbiter of the race, and re-arming with hysteresis rather than at the
+threshold, so the trigger resets only well above it.
+
+## The deploy shape
+
+A container image, a managed Postgres and a managed Redis. Not Kubernetes, not serverless.
+
+- **Managed Postgres over self-hosted.** Backups, point-in-time recovery and failover are
+  the whole product. For a store, losing an order is worse than any latency I would win.
+- **Container over serverless.** Prisma holds a connection pool, and a serverless platform
+  multiplies connections by concurrency until the database refuses them. A container with a
+  fixed pool has a predictable ceiling.
+- **The worker is a second deployment of the same image.** Separate scaling, separate
+  failure domain, one artifact.
+- **Migrations run as a release step**, before the new image takes traffic, and every
+  migration so far is additive so an old replica keeps working during the rollout.
+
+## What I would monitor
+
+Split deliberately, because the first group tells you the service is up and only the second
+tells you it is working.
+
+**The four signals, per route:** request rate, error rate split 4xx against 5xx, p95 and p99
+latency, and saturation as pool usage and event loop lag. A rising 4xx rate on `/auth` is a
+credential-stuffing attempt; a rising 5xx rate is mine.
+
+**What a store actually loses money on:**
+
+- **Checkout conversion**, orders created against payments succeeded. A drop here is the
+  first sign of a broken payment path, and no infrastructure metric shows it.
+- **Webhook lag**, Stripe event timestamp against processing time, and the count of events
+  that arrive but never reconcile. This is the metric that catches a webhook secret rotated
+  in one place.
+- **Queue depth and job failure rate.** A depth that grows without bound means the worker is
+  down while the API happily keeps enqueueing.
+- **Stock going negative**, which should be impossible and therefore should page.
+
+**Logging.** Structured, one correlation id per request, carried into the job so a
+notification can be traced back to the webhook that caused it. Log authentication successes
+and failures, authorization failures, validation failures and payment events. Never log a
+password, a token, a session id or a card detail. The token hashing in this service means a
+leaked log cannot be replayed even if that rule is broken by accident.
+
+**What I would not add.** Distributed tracing and a metrics scraper, for one service and one
+worker, cost more to run than the questions they answer here. The first thing I would add
+under real traffic is tracing across the webhook and the job, because that is the one path
+where a correlation id in a log line stops being enough.
