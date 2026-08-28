@@ -26,7 +26,12 @@ import { ProblemFilter } from './common/problem/problem.filter';
      * raw 60 would be a sixty millisecond window, which limits nothing while
      * still emitting the rate limit headers that make it look configured.
      *
-     * One throttler, left unnamed so its name stays `default`. The guard
+     * One throttler carrying three tiers. The module default is the browse tier;
+     * `SIGN_IN_THROTTLE` and `PASSWORD_THROTTLE` override it per route through
+     * `@Throttle`, which replaces the `default` entry rather than adding a second
+     * throttler. `test/rate-limit.e2e-spec.ts` is what proves all three fire.
+     *
+     * Left unnamed so its name stays `default`. The guard
      * suffixes its headers with the name, so any other name would emit
      * `Retry-After-<name>` where the contract requires a plain `Retry-After`.
      *

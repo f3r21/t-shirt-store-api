@@ -24,6 +24,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './access-token-payload';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { PASSWORD_THROTTLE } from './password-throttle';
+import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 
 @Controller('auth')
 export class AuthController {
@@ -36,6 +37,7 @@ export class AuthController {
    * later without listing them first.
    */
   @Public()
+  @Throttle(SIGN_IN_THROTTLE)
   @Post('sessions')
   @HttpCode(HttpStatus.CREATED)
   async createSession(

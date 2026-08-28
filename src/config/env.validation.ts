@@ -82,9 +82,16 @@ export class EnvironmentVariables {
   @Min(1)
   THROTTLE_TTL: number = 60;
 
+  /**
+   * The loosest of three tiers, and the one a browsing client lives under. It is
+   * sized for reading the catalog, so it is deliberately too loose for sign-in
+   * and for the password operations. Those two carry their own `@Throttle`, at
+   * `SIGN_IN_THROTTLE` and `PASSWORD_THROTTLE`, and lowering this number is not a
+   * way to tighten them.
+   */
   @IsInt()
   @Min(1)
-  THROTTLE_LIMIT: number = 5;
+  THROTTLE_LIMIT: number = 100;
 
   /**
    * Where the reset link points. It carries a default, so a developer who has
