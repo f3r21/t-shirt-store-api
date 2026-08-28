@@ -119,8 +119,10 @@ export async function createTestApp(
  * saves naming the child tables in dependency order.
  */
 export async function truncateAll(prisma: PrismaService): Promise<void> {
+  // Products join the list because the authorization suite creates one to prove
+  // a manager is allowed through. CASCADE reaches variants and the join rows.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "users" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "users", "products" RESTART IDENTITY CASCADE',
   );
 }
 

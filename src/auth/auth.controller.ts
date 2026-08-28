@@ -24,6 +24,8 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './access-token-payload';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { PASSWORD_THROTTLE } from './password-throttle';
+import { Roles } from './decorators/roles.decorator';
+import { ROLE_NAMES } from '../users/dto/user.dto';
 import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 
 @Controller('auth')
@@ -57,6 +59,7 @@ export class AuthController {
     return this.auth.refreshSession(dto);
   }
 
+  @Roles(...ROLE_NAMES)
   @Get('sessions')
   listSessions(
     @CurrentUser() user: AccessTokenPayload,
@@ -72,12 +75,14 @@ export class AuthController {
    * so the parameterised route would otherwise swallow this one and the handler
    * would receive the literal string `current` as an id.
    */
+  @Roles(...ROLE_NAMES)
   @Delete('sessions/current')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteCurrentSession(@CurrentUser() user: AccessTokenPayload): Promise<void> {
     return this.auth.deleteCurrentSession(user.sub, user.sid);
   }
 
+  @Roles(...ROLE_NAMES)
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteSession(

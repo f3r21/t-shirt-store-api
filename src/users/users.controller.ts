@@ -17,6 +17,8 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { PASSWORD_THROTTLE } from '../auth/password-throttle';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { ROLE_NAMES } from './dto/user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -48,6 +50,7 @@ export class UsersController {
    * reason the contract declares a 429 here.
    */
   @Throttle(PASSWORD_THROTTLE)
+  @Roles(...ROLE_NAMES)
   @Patch('me/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   changePassword(

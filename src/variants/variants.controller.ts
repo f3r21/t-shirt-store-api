@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { VariantsService } from './variants.service';
@@ -18,7 +17,6 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { SetVariantStockDto } from './dto/set-variant-stock.dto';
 import { ProductVariantDto } from './dto/product-variant.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 
 /**
  * Creating a variant hangs off its product, so it lives on the product path.
@@ -28,7 +26,6 @@ import { RolesGuard } from '../auth/roles.guard';
  * which nothing maps, so the caller reads 500 instead of 400.
  */
 @Controller('products')
-@UseGuards(RolesGuard)
 export class ProductVariantsController {
   constructor(private readonly variants: VariantsService) {}
 
@@ -47,7 +44,6 @@ export class ProductVariantsController {
 }
 
 @Controller('variants')
-@UseGuards(RolesGuard)
 export class VariantsController {
   constructor(private readonly variants: VariantsService) {}
 

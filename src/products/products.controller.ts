@@ -11,7 +11,6 @@ import {
   Post,
   Query,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ProductsService } from './products.service';
@@ -20,13 +19,11 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductDto } from './dto/product.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 
 @Controller('products')
-@UseGuards(RolesGuard)
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 
