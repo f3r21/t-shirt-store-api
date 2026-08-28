@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { Request } from 'express';
@@ -79,12 +84,25 @@ export class AccessTokenGuard implements CanActivate {
     return scheme === 'Bearer' && token !== '' ? token : undefined;
   }
 
-  private unauthorized(): ProblemException {
-    return new ProblemException(
-      ProblemType.InvalidCredentials,
-      'Invalid credentials',
-      401,
-      'The server did not accept this email and password.',
-    );
+  /**
+   * A 401 that names no problem type, because none of the six fits.
+   *
+   * This answers three causes: no `Authorization` header, a scheme that is not
+   * Bearer, and a token that fails verification for any reason other than
+   * expiry. None of them is `invalid-credentials`, which the contract reserves
+   * for an email and password the server rejected. Returning that type on a
+   * request that carried no credentials at all tells the caller something
+   * untrue, and it is the first thing anyone sees when they call a protected
+   * route without a token.
+   *
+   * RFC 9457 reads an absent `type` as `about:blank`, meaning the status code is
+   * the whole story, which is exactly right here. `ProblemFilter` still sets
+   * `WWW-Authenticate` on the response.
+   */
+  private unauthorized(): UnauthorizedException {
+    return new UnauthorizedException({
+      title: 'Unauthorized',
+      detail: 'This operation needs a bearer token.',
+    });
   }
 }
