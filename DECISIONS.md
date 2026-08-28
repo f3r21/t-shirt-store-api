@@ -60,7 +60,7 @@ an attacker who waits through two or more legitimate rotations before replaying 
 token is not caught.
 
 **This diverges from the contract, and the divergence is the point of this entry.**
-`openapi.yaml:234-236` says the server deletes every refresh row for that user when it
+`openapi.yaml:245-247` says the server deletes every refresh row for that user when it
 receives an already-used token, and it states no carve-out for how old that token is. This
 implementation recognises one generation, so a token replayed after two rotations revokes
 nothing. The contract outranks the code, which makes this a known defect

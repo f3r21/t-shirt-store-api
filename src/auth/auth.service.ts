@@ -86,7 +86,7 @@ export class AuthService {
   }
 
   /**
-   * Sign in. See `openapi.yaml:79`.
+   * Sign in. See `openapi.yaml:88`.
    *
    * A wrong address and a wrong password produce the identical rejection. The
    * contract is explicit that the server does not say which of the two was
@@ -132,7 +132,7 @@ export class AuthService {
   }
 
   /**
-   * Rotate. See `openapi.yaml:216`.
+   * Rotate. See `openapi.yaml:227`.
    *
    * The rotation is one conditional write and never a read followed by a write.
    * PostgreSQL re-evaluates the WHERE clause after waiting on a concurrent
@@ -222,7 +222,7 @@ export class AuthService {
   }
 
   /**
-   * The device list. See `openapi.yaml:155`.
+   * The device list. See `openapi.yaml:166`.
    *
    * `total` counts every row the filter matches, before limit and offset apply,
    * so it comes from its own count and not from the length of the page.
@@ -254,7 +254,7 @@ export class AuthService {
   }
 
   /**
-   * Sign this device out. See `openapi.yaml:185`.
+   * Sign this device out. See `openapi.yaml:196`.
    *
    * The session id comes from the access token, so the row this deletes is the
    * one belonging to the device that sent the request. Other devices stay signed
@@ -267,7 +267,7 @@ export class AuthService {
   }
 
   /**
-   * Sign another device out. See `openapi.yaml:196`.
+   * Sign another device out. See `openapi.yaml:207`.
    *
    * A session id that belongs to another user answers 404 and never 403. The id
    * is a small integer a caller can guess, so a 403 would confirm that the row
@@ -284,7 +284,7 @@ export class AuthService {
   }
 
   /**
-   * Ask for a reset link. See `openapi.yaml:270`.
+   * Ask for a reset link. See `openapi.yaml:281`.
    *
    * The server answers the same way whether or not the address has an account,
    * because a different answer would tell the caller which addresses are
@@ -320,7 +320,7 @@ export class AuthService {
   }
 
   /**
-   * Set a new password with a reset token. See `openapi.yaml:309`.
+   * Set a new password with a reset token. See `openapi.yaml:320`.
    *
    * An unknown or expired token answers 422 and not 400, because the body is
    * well formed and the server rejects it on its content. It is also not 401:

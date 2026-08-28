@@ -1,6 +1,6 @@
 /**
  * One variant, as `POST /products/{id}/variants`, `PATCH /variants/{id}` and
- * `PATCH /variants/{id}/stock` all return it. See `openapi.yaml:1844-1865`.
+ * `PATCH /variants/{id}/stock` all return it. See `openapi.yaml:1855-1876`.
  *
  * `size` and `color` are absent when the column holds none. The contract admits
  * no null value, so the mapper omits the key. This is the same rule
@@ -16,7 +16,7 @@ export class ProductVariantDto {
   color?: string;
 
   /**
-   * An amount in minor units. 1999 means 19.99. See `openapi.yaml:2143-2149`.
+   * An amount in minor units. 1999 means 19.99. See `openapi.yaml:2154-2160`.
    *
    * The column stores an integer. The ERD gives `numeric(10,2)`, and the
    * contract carries no floating point value, so the schema stores the minor
@@ -28,7 +28,7 @@ export class ProductVariantDto {
    * The units on hand for this variant.
    *
    * The contract states that this API does not treat the number as a secret, at
-   * `openapi.yaml:1859-1862`, so the value reaches every caller who can read
+   * `openapi.yaml:1870-1873`, so the value reaches every caller who can read
    * the variant.
    */
   stock!: number;

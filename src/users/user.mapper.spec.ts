@@ -9,7 +9,7 @@ import { aUser } from './users.fixtures';
  * the behaviour under test and not an implementation detail.
  */
 describe('toUserDto', () => {
-  it('returns the six fields the User schema names at openapi.yaml:1751', () => {
+  it('returns the six fields the User schema names at openapi.yaml:1762', () => {
     const dto = toUserDto(aUser());
 
     // The key set, not field by field. Asserting each field individually would

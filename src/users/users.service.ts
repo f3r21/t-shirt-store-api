@@ -35,7 +35,7 @@ export class UsersService {
   }
 
   /**
-   * Create a client account. See `openapi.yaml:378`.
+   * Create a client account. See `openapi.yaml:389`.
    *
    * The request does not accept a role. Every account this operation creates is
    * a client account, so the role comes from the `roles` table and never from
@@ -90,7 +90,7 @@ export class UsersService {
   }
 
   /**
-   * Replace the password of the signed-in user. See `openapi.yaml:450`.
+   * Replace the password of the signed-in user. See `openapi.yaml:461`.
    *
    * A wrong current password returns 401. It is an authentication failure and
    * not a permissions failure.

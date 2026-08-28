@@ -2,7 +2,7 @@
  * Response shape of POST /auth/sessions and POST /auth/refresh.
  *
  * The two operations return the same shape, because refresh replaces both
- * tokens. A client stores them the same way. See `openapi.yaml:1707-1719`.
+ * tokens. A client stores them the same way. See `openapi.yaml:1718-1730`.
  */
 import { UserDto } from '../../users/dto/user.dto';
 

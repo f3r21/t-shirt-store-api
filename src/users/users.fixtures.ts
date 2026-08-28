@@ -6,7 +6,7 @@ import type { UserWithRole } from './user.mapper';
  * Every default is fixed, so two calls in one test return the same values and an
  * assertion on an id is explicit. Pass `overrides` for the field under test.
  *
- * The date matches the contract's own example, at `openapi.yaml:1771`.
+ * The date matches the contract's own example, at `openapi.yaml:1782`.
  */
 export function aUser(overrides: Partial<UserWithRole> = {}): UserWithRole {
   return {

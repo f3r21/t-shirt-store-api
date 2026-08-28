@@ -1,7 +1,7 @@
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * Request body of POST /products/{id}/variants. See `openapi.yaml:939-962`.
+ * Request body of POST /products/{id}/variants. See `openapi.yaml:950-973`.
  *
  * Each message omits the field name, because `Problem.errors[].field` carries
  * it.

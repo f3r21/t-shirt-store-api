@@ -3,7 +3,7 @@ import { IsString, MaxLength, MinLength } from 'class-validator';
 /**
  * Request body of POST /auth/reset-password.
  *
- * See `openapi.yaml:335-348`. A malformed body returns 400 from this class. A
+ * See `openapi.yaml:346-359`. A malformed body returns 400 from this class. A
  * token that is unknown or expired returns 422 from the service, because the body
  * is well formed and the server rejects it on its content.
  */

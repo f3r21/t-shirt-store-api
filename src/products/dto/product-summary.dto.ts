@@ -1,5 +1,5 @@
 /**
- * One entry of GET /products. See `openapi.yaml:1778-1808`.
+ * One entry of GET /products. See `openapi.yaml:1789-1819`.
  *
  * The entries carry no variants. The contract states that a caller asks for one
  * product to get them, so the server runs a fixed number of queries as the page

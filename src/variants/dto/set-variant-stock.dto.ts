@@ -1,7 +1,7 @@
 import { IsInt, Min } from 'class-validator';
 
 /**
- * Request body of PATCH /variants/{id}/stock. See `openapi.yaml:1085-1097`.
+ * Request body of PATCH /variants/{id}/stock. See `openapi.yaml:1096-1108`.
  *
  * The stock has its own operation and its own body, because the payment webhook
  * writes the same column.

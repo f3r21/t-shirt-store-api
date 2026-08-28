@@ -1,5 +1,5 @@
 /**
- * One entry of GET /auth/sessions. See `openapi.yaml:1609-1632`.
+ * One entry of GET /auth/sessions. See `openapi.yaml:1620-1643`.
  *
  * The field list is the point. The `refresh_tokens` row also holds `token_hash`
  * and `previous_token_hash`. Neither reaches a response.

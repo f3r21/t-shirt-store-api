@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 
 /**
- * Request body of PATCH /products/{id}. See `openapi.yaml:656-679`.
+ * Request body of PATCH /products/{id}. See `openapi.yaml:667-690`.
  *
  * `categoryIds` replaces the whole set. The contract states this, so a caller
  * who sends one id leaves the product in one category.

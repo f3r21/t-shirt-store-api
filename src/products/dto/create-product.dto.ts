@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 
 /**
- * Request body of POST /products. See `openapi.yaml:560-582`.
+ * Request body of POST /products. See `openapi.yaml:571-593`.
  *
  * Each message omits the field name, because `Problem.errors[].field` carries
  * it.

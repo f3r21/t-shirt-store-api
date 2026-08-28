@@ -1,5 +1,5 @@
 /**
- * The `meta` half of every collection envelope. See `openapi.yaml:1723-1742`.
+ * The `meta` half of every collection envelope. See `openapi.yaml:1734-1753`.
  *
  * No endpoint returns a bare array, so every list response carries `data` and
  * this shape together.

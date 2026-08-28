@@ -1,7 +1,7 @@
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * Request body of PATCH /variants/{id}. See `openapi.yaml:1003-1021`.
+ * Request body of PATCH /variants/{id}. See `openapi.yaml:1014-1032`.
  *
  * The body carries no `stock`. The contract gives the stock its own operation,
  * because the payment webhook writes that value too. A request that sends

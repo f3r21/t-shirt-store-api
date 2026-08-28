@@ -191,7 +191,7 @@ describe('UsersService', () => {
       ).resolves.toBe(true);
     });
 
-    it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:441)', async () => {
+    it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:452)', async () => {
       const err = await service
         .changePassword(128, {
           currentPassword: 'not the current one',
@@ -206,7 +206,7 @@ describe('UsersService', () => {
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('deletes every refresh row for this user, including the row of the calling device (openapi.yaml:444)', async () => {
+    it('deletes every refresh row for this user, including the row of the calling device (openapi.yaml:455)', async () => {
       await service.changePassword(128, {
         currentPassword: PASSWORD,
         newPassword: 'a brand new password',
@@ -220,7 +220,7 @@ describe('UsersService', () => {
       });
     });
 
-    it('sends mail to the account address (openapi.yaml:446)', async () => {
+    it('sends mail to the account address (openapi.yaml:457)', async () => {
       await service.changePassword(128, {
         currentPassword: PASSWORD,
         newPassword: 'a brand new password',

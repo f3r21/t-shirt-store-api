@@ -9,7 +9,7 @@ import {
 /**
  * Request body of POST /auth/sessions.
  *
- * Bounds from the contract, at `openapi.yaml:101-128`. The password carries the
+ * Bounds from the contract, at `openapi.yaml:110-137`. The password carries the
  * same minimum as sign-up, so a five-character attempt returns 400 and not 401.
  * That answer names the password policy. It does not say whether the account
  * exists.

@@ -9,7 +9,7 @@ import { SessionDto } from './dto/session.dto';
  *
  * `deviceName` is assigned only when the column holds a value. The contract
  * states that an optional value is absent and never null, at
- * `openapi.yaml:30-33`. Assigning `undefined` would satisfy the wire and still
+ * `openapi.yaml:33-36`. Assigning `undefined` would satisfy the wire and still
  * put the key on the object, where a test that reads the object would find it.
  */
 export function toSessionDto(row: RefreshTokenRow): SessionDto {

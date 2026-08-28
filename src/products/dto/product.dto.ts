@@ -2,7 +2,7 @@ import { CategoryDto } from '../../categories/dto/category.dto';
 import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
 
 /**
- * One image of a product. See `openapi.yaml:1867-1879`.
+ * One image of a product. See `openapi.yaml:1878-1890`.
  *
  * The two image operations need object storage and are out of scope this week,
  * so `ProductDto.images` is an empty array until then. The contract makes the
@@ -18,7 +18,7 @@ export class ProductImageDto {
 
 /**
  * Response shape of GET /products/{id}, POST /products and PATCH /products/{id}.
- * See `openapi.yaml:1811-1841`.
+ * See `openapi.yaml:1822-1852`.
  *
  * The contract makes `variants`, `images` and `categories` required, so each
  * key is present and holds an array. A new product carries three empty arrays,

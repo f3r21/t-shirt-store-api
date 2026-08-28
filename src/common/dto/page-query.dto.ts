@@ -3,7 +3,7 @@ import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 /**
  * Query parameters of every collection. The contract declares the pair at
- * `openapi.yaml:2178-2199`, and every collection references both.
+ * `openapi.yaml:2189-2210`, and every collection references both.
  *
  * `@Type(() => Number)` is required and not decoration. `src/main.ts` sets
  * `enableImplicitConversion: false`, so a query value arrives as a string. A

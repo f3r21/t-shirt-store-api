@@ -3,7 +3,7 @@ import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 
 /**
- * Query parameters of GET /products. See `openapi.yaml:503-521`.
+ * Query parameters of GET /products. See `openapi.yaml:514-532`.
  *
  * The class extends `PageQueryDto`, so `limit` and `offset` keep the defaults
  * every collection declares and this file states only what is new.

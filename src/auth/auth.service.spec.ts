@@ -201,7 +201,7 @@ describe('AuthService', () => {
       expect(call.data.deviceName).toBe('Ana iPhone');
     });
 
-    it('returns the same invalid-credentials problem for a wrong address and for a wrong password (openapi.yaml:91)', async () => {
+    it('returns the same invalid-credentials problem for a wrong address and for a wrong password (openapi.yaml:100)', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       const wrongAddress = await rejection(
         service.createSession({
@@ -285,7 +285,7 @@ describe('AuthService', () => {
       expect(jwt.verify<AccessTokenPayload>(result.accessToken).sub).toBe(128);
     });
 
-    it('keeps the session id, because rotation updates the row in place (openapi.yaml:230)', async () => {
+    it('keeps the session id, because rotation updates the row in place (openapi.yaml:241)', async () => {
       rotates();
 
       const result = await service.refreshSession({ refreshToken: PRESENTED });
@@ -324,7 +324,7 @@ describe('AuthService', () => {
       expect(call.data.previousTokenHash).toBe(hashToken(PRESENTED, PEPPER));
     });
 
-    it('deletes every refresh row for the user when a token is presented twice (openapi.yaml:234)', async () => {
+    it('deletes every refresh row for the user when a token is presented twice (openapi.yaml:245)', async () => {
       // The conditional update matches nothing, because the row no longer
       // answers to this hash, and the hash is found in previous_token_hash.
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
@@ -504,7 +504,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('returns 404 for a session id that belongs to another user, because a 403 would confirm it exists (openapi.yaml:202)', async () => {
+    it('returns 404 for a session id that belongs to another user, because a 403 would confirm it exists (openapi.yaml:213)', async () => {
       // The row exists, but not for this user, so the scoped delete matches
       // nothing and the service cannot tell that case from an absent id.
       prisma.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
@@ -538,7 +538,7 @@ describe('AuthService', () => {
       expect(nthArg(mailer.sendPasswordReset, 0, 0)).toBe('ana@example.com');
     });
 
-    it('accepts an unknown address and sends no mail (openapi.yaml:279)', async () => {
+    it('accepts an unknown address and sends no mail (openapi.yaml:290)', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -614,7 +614,7 @@ describe('AuthService', () => {
       ).resolves.toBe(true);
     });
 
-    it('rejects an unknown token with 422 and not 400, because the body is well formed (openapi.yaml:322)', async () => {
+    it('rejects an unknown token with 422 and not 400, because the body is well formed (openapi.yaml:333)', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([]);
 
       await expect(
@@ -645,7 +645,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('clears the reset token, so it works one time only (openapi.yaml:341)', async () => {
+    it('clears the reset token, so it works one time only (openapi.yaml:352)', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([signedInUser()]);
 
       await service.resetPassword({ token: TOKEN, password: 'a new password' });
@@ -672,7 +672,7 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ status: 422 });
     });
 
-    it('deletes every refresh row for this user (openapi.yaml:326)', async () => {
+    it('deletes every refresh row for this user (openapi.yaml:337)', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([signedInUser()]);
 
       await service.resetPassword({ token: TOKEN, password: 'a new password' });

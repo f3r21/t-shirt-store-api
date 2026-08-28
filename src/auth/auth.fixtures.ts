@@ -4,7 +4,7 @@ import type { RefreshToken as RefreshTokenRow } from '../generated/prisma/client
  * Build a `refresh_tokens` row.
  *
  * The id and both dates match the contract's own examples, at
- * `openapi.yaml:1618`, `:1627` and `:1632`, so a spec reads against the same
+ * `openapi.yaml:1629`, `:1627` and `:1632`, so a spec reads against the same
  * numbers the contract shows.
  */
 export function aRefreshToken(
