@@ -17,6 +17,15 @@ enum Environment {
   Production = 'production',
 }
 
+/**
+ * Every numeric property carries an explicit `: number`.
+ *
+ * Without the annotation `emitDecoratorMetadata` writes `design:type = Object`,
+ * class-transformer has no target to coerce to, and `@IsInt` then fails on the
+ * string dotenv supplies. The result is that setting any numeric variable in
+ * `.env` stops the boot, while leaving it unset works, which reads as the
+ * opposite of a configuration file. Verified against the committed build.
+ */
 export class EnvironmentVariables {
   @IsEnum(Environment)
   NODE_ENV: Environment = Environment.Development;
@@ -24,11 +33,7 @@ export class EnvironmentVariables {
   @IsInt()
   @Min(0)
   @Max(65535)
-  PORT = 3000;
-
-  @IsInt()
-  @Min(1)
-  THROTTLE_TTL = 60;
+  PORT: number = 3000;
 
   @IsString()
   DATABASE_URL!: string;
@@ -40,23 +45,61 @@ export class EnvironmentVariables {
   @MinLength(32)
   JWT_SECRET!: string;
 
-  @IsString()
-  JWT_ACCESS_TTL = '15m';
-
-  @IsString()
-  JWT_REFRESH_TTL = '7d';
+  /**
+   * Seconds, not a duration string.
+   *
+   * `@types/jsonwebtoken` types `expiresIn` as `StringValue | number`, where
+   * `StringValue` is a template literal union from `@types/ms`. A plain `string`
+   * is not assignable to it, so `'15m'` fails the type check at the module
+   * factory. Seconds also let the refresh row compute its own `expires_at`.
+   */
+  @IsInt()
+  @Min(1)
+  JWT_ACCESS_TTL: number = 900;
 
   @IsInt()
   @Min(1)
-  THROTTLE_LIMIT = 5;
+  JWT_REFRESH_TTL: number = 604800;
+
+  /**
+   * The pepper for the refresh and reset token hashes. Separate from
+   * `JWT_SECRET` on purpose: rotating the signing key would otherwise
+   * invalidate every stored token hash at the same time.
+   */
+  @IsString()
+  @MinLength(32)
+  REFRESH_TOKEN_PEPPER!: string;
+
+  /**
+   * A rotating session still ends. Rotation never rewrites `created_at`, so the
+   * cap needs no column of its own.
+   */
+  @IsInt()
+  @Min(1)
+  REFRESH_ABSOLUTE_TTL_DAYS: number = 30;
+
+  @IsInt()
+  @Min(1)
+  THROTTLE_TTL: number = 60;
+
+  @IsInt()
+  @Min(1)
+  THROTTLE_LIMIT: number = 5;
+
+  /**
+   * Where the reset link points. It carries a default, so a developer who has
+   * not set it still gets a working link against a local frontend.
+   */
+  @IsString()
+  APP_URL: string = 'http://localhost:3000';
 
   @IsString()
-  SMTP_HOST = 'localhost';
+  SMTP_HOST: string = 'localhost';
 
   @IsInt()
   @Min(1)
   @Max(65535)
-  SMTP_PORT = 1025;
+  SMTP_PORT: number = 1025;
 
   @IsEmail()
   MAIL_FROM!: string;
