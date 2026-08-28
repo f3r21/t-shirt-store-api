@@ -21,7 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SessionDto } from './dto/session.dto';
 import { SessionTokensDto } from './dto/session-tokens.dto';
 import { toSessionDto } from './session.mapper';
-import { generateToken, hashToken, tokensMatch } from './token-hash';
+import { generateToken, hashToken } from './token-hash';
 import { EnvironmentVariables } from '../config/env.validation';
 import { AccessTokenPayload } from './access-token-payload';
 
@@ -196,15 +196,21 @@ export class AuthService {
    * The contract's response is to end every session for that user rather than
    * only the one that was replayed, because the server cannot tell which of the
    * two holders is the owner.
+   *
+   * Known gap, and the contract does not grant it. `previous_token_hash` is one
+   * column that every rotation overwrites, so only the immediately preceding
+   * token is recognised. Replay a token from two or more rotations ago and it
+   * matches neither `token_hash` nor `previous_token_hash`, so nothing is
+   * revoked and every session survives. The contract says the server deletes
+   * every refresh row when it receives an already-used token, with no carve-out
+   * for how old that token is. Closing it needs a row per consumed hash, or a
+   * family id on the session. See DECISIONS.md item 3.
    */
   private async detectReuse(presentedHash: string): Promise<void> {
     const previous = await this.prisma.refreshToken.findFirst({
       where: { previousTokenHash: presentedHash },
     });
     if (previous === null) {
-      return;
-    }
-    if (!tokensMatch(previous.previousTokenHash ?? '', presentedHash)) {
       return;
     }
     await this.prisma.refreshToken.deleteMany({

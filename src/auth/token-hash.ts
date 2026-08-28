@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 
 /**
  * The refresh token and the password reset token, and how they are stored.
@@ -32,21 +32,4 @@ export function generateToken(): string {
 
 export function hashToken(token: string, pepper: string): string {
   return createHmac('sha256', pepper).update(token).digest('hex');
-}
-
-/**
- * Compare two hex digests without leaking their difference through timing.
- *
- * The lookup itself is an index scan, so this is not the boundary that matters,
- * and at 256 bits of input entropy a timing oracle leaks nothing an attacker can
- * act on. It is here for the one comparison the database does not perform: the
- * presented token against `previous_token_hash`.
- */
-export function tokensMatch(a: string, b: string): boolean {
-  const left = Buffer.from(a, 'hex');
-  const right = Buffer.from(b, 'hex');
-  if (left.length !== right.length || left.length === 0) {
-    return false;
-  }
-  return timingSafeEqual(left, right);
 }

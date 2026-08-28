@@ -57,7 +57,15 @@ account. **What I would do with another hour:** a short grace window keyed on
 
 `previous_token_hash` holds the immediately preceding hash and nothing older. **Given up:**
 an attacker who waits through two or more legitimate rotations before replaying a stolen
-token is not caught. The alternative is a used-token table with an expiry sweep, which
+token is not caught.
+
+**This diverges from the contract, and the divergence is the point of this entry.**
+`openapi.yaml:234-236` says the server deletes every refresh row for that user when it
+receives an already-used token, and it states no carve-out for how old that token is. This
+implementation recognises one generation, so a token replayed after two rotations revokes
+nothing. `CLAUDE.md` puts the contract above the code, which makes this a known defect
+rather than a design choice, and it is recorded here so it is declared rather than
+discovered. The alternative is a used-token table with an expiry sweep, which
 catches every generation at the cost of a table that grows with traffic. For one Postgres
 and one store, one generation is the better trade. This extends the same decision already
 recorded at `4-database/3-erd/DECISIONS.md` row 16.
