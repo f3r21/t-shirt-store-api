@@ -6,32 +6,52 @@ the shape above them.
 
 ## The production shape
 
+```mermaid
+flowchart TB
+    client["Client<br/>browser or mobile"]
+    stripe["Stripe"]
+
+    api["API container, NestJS<br/>stateless, N replicas<br/>helmet, CORS, throttler,<br/>access token guard, CASL"]
+
+    pg[("PostgreSQL<br/>users, sessions, catalog,<br/>carts, orders")]
+    s3[("S3<br/>product images")]
+    redis[("Redis<br/>BullMQ queue")]
+    worker["Worker<br/>same image as the API,<br/>different entrypoint"]
+    smtp["Email provider"]
+
+    client -->|"HTTPS, bearer token"| api
+    stripe -->|"signed webhook,<br/>retried up to 3 days"| api
+
+    api -->|"every read and write"| pg
+    api -->|"images"| s3
+    api -->|"reset and changed mail"| smtp
+    api -.->|"enqueue, after the commit"| redis
+
+    redis -.->|"one job per recipient"| worker
+    worker -.->|"who liked it,<br/>who has not bought it"| pg
+    worker -.->|"restock mail"| smtp
+
+    classDef planned stroke-dasharray:5 3,fill:#fff
+    class worker,redis,stripe,s3 planned
 ```
-                    ┌──────────────┐
-   browser  ────────▶   CDN / TLS   │
-                    └──────┬───────┘
-                           │ HTTPS
-                    ┌──────▼───────────────────────┐
-                    │  API container (NestJS)      │
-                    │  stateless, N replicas       │
-                    │  helmet, CORS, rate limit    │
-                    │  AccessTokenGuard, RolesGuard│
-                    └──┬────────┬─────────┬────────┘
-                       │        │         │
-        ┌──────────────▼──┐  ┌──▼──────┐  ▼ enqueue
-        │ PostgreSQL      │  │  S3     │ ┌──────────────┐
-        │ managed, 1 primary │ images │ │ Redis        │
-        │ + read replica  │  └─────────┘ │ BullMQ queue │
-        └─────────────────┘              └──────┬───────┘
-                       ▲                        │
-                       │                 ┌──────▼─────────┐
-        Stripe ────────┘  webhook        │ worker container│
-        (signed, retried 3 days)         │ same image      │
-                                         │ sends mail      │
-                                         └──────┬──────────┘
-                                                ▼
-                                          email provider
-```
+
+**Solid means built and running today. Dashed means designed and not yet built:** Stripe, the
+queue, the worker and S3 image storage. Authentication and the catalog are behind the solid
+edges, with 129 unit tests and 17 end-to-end tests against a real database.
+
+Three things the picture is trying to say, and they are the reason it is drawn this way.
+
+**Stripe points inward.** The payment is confirmed between the client and Stripe directly, and
+the server learns of it through a signed webhook it must verify against the raw request bytes.
+The server does not poll and does not ask.
+
+**The enqueue happens after the commit, never inside it.** That single edge carries the whole
+queue argument below: a Redis outage delays a notification and can never roll back a paid order.
+The cost of drawing it that way honestly is a crash window between the two, which the queue
+section names rather than hides.
+
+**The worker is the same image.** One build, one dependency tree, one set of migrations, started
+with a different entrypoint. It is a deployment decision rather than a second service.
 
 The API is stateless, so it scales horizontally. Everything that must survive a restart is
 in Postgres, S3 or Redis. The worker runs the **same image** with a different entrypoint, so
