@@ -1,0 +1,2591 @@
+# The contract (paths, schemas, status codes, error shape) is written against
+# DECISIONS.md. Run both linters from the repository root before every commit:
+#
+#   npx --yes @redocly/cli@latest lint 5-api-design/openapi.yaml
+#   npx --yes @stoplight/spectral-cli@6 lint 5-api-design/openapi.yaml \
+#     --ruleset 5-api-design/.spectral.yaml
+#
+# `--ruleset` is not optional. Spectral resolves the ruleset against the working
+# directory, not against the document, so it exits with "No ruleset has been found"
+# when you omit the flag. README.md says the same.
+#
+# Measured 2026-08-28, with all 37 operations authored: Redocly 0 errors and 4 warnings,
+# Spectral 0 errors and 1 warning. Re-measured, not carried over, and the same 4 come back
+# on the file as it stood before this round of edits, so this round added none. Nothing is
+# silenced with placeholder data. Re-measure before you quote either number.
+#
+#   1 info-license           Redocly only. This is coursework, not a published API.
+#   1 info-contact           Spectral only. The two tools ask for different info fields.
+#   1 no-server-example.com  The server really is localhost. That rule guards public
+#                            descriptions.
+#   2 no-illogical-          A one-member `allOf` around a `$ref`, at the two Money
+#     composition-keywords   examples. 3.0 ignores a sibling of `$ref`, so this is the
+#                            only way to attach an example to a referenced schema.
+#
+# The unused-component warnings are gone, and that is the number worth watching. It stood
+# at 8 when only the auth block existed, and each one named a component waiting for an
+# operation nobody had written. At 0, every component in this file is referenced, so no
+# feature was left behind.
+#
+# 3.0.3, not 3.1: @nestjs/swagger emits 3.0.0, so Week 3's generated document stays
+# diffable against this one. The concrete tell is nullability: 3.0 spells it
+# `nullable: true`, 3.1 spells it `type: [string, "null"]`.
+#
+# No field in this document declares nullability. An optional value is ABSENT from the
+# body, never present and null. DECISIONS.md item 11 argues it and states its cost.
+# Re-derive: `grep -cE '^ +nullable:' openapi.yaml` returns 0.
+openapi: 3.0.3
+
+info:
+  title: T-Shirt Store API
+  version: 0.1.0
+  description: |
+    Contract for the T-Shirt Store API. Week 3 implements this document. If the
+    implementation and the document disagree, the document is not out of date.
+
+    Written against the schema in `4-database/3-erd/store.dbml`, which this branch
+    carries since the ERD merge at `f96d62a`.
+
+    **Money.** Every amount is an integer in minor units. 1999 means 19.99. The store
+    is single-currency and prices are in USD. No response carries a currency field.
+
+    **Tokens.** An access token is valid for 15 minutes. A refresh token is valid for
+    7 days and rotates on every use. Sign-out deletes the presented device's refresh
+    row. It does not revoke an access token the server already issued, so revocation
+    lags by up to 15 minutes. Changing or resetting a password deletes every refresh row for
+    that user.
+
+    **Rate limits.** The server limits every operation by source address, in three tiers.
+    Browsing carries the loosest limit. Sign-in carries a tighter limit. The three password
+    operations carry the tightest limit. The server answers 429 with a `Retry-After` header
+    when it refuses a request. This document declares the 429 response only where a client
+    must handle it, but the server can answer 429 on any path.
+
+servers:
+  - url: http://localhost:3000/v1
+    description: Local development. The /v1 prefix lives here, not on each path key.
+
+tags:
+  - name: auth
+    description: Sign up, sign in, sign out, token refresh, password reset.
+  - name: catalog
+    description: Products, variants, images, categories and likes. Reading the catalog is
+      public. Liking a product needs a token.
+  - name: cart
+    description: The cart of the signed-in user. Every user has one cart, because
+      `shopping_carts.user_id` is unique.
+  - name: orders
+    description: Checkout, order history and the status flow. A client sees only its own
+      orders. A manager sees every order.
+  - name: payments
+    description: The two Stripe flows and the webhook that applies their result. A
+      payment link buys one product. A payment intent buys a cart.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Path keys carry NO version prefix. The /v1 lives in servers.url, so writing
+  # `/v1/products` here produces the URL /v1/v1/products. DECISIONS.md item 1.
+  /auth/sessions:
+    post:
+      tags: [auth]
+      summary: Create a session and get tokens
+      description: |
+        This operation is public. It does not need a token.
+
+        Send the email and the password. The server creates a session for this device.
+        The server returns an access token and a refresh token.
+
+        A wrong email or a wrong password returns 401 with the `invalid-credentials`
+        problem type. The server does not say which of the two was wrong.
+      operationId: createSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                # Every property below carries the rule its 400 fires on. `Problem.errors`
+                # promises one message per rejected field, so a field with no rule is a
+                # message the server can never produce. The ERD declares all 18 of its
+                # varchars without a length, so these bounds are the contract's own and the
+                # schema has to be given the matching ones.
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                  description: RFC 5321 4.5.3.1.3 caps a forward-path at 256 octets
+                    including the punctuation, which leaves 254 for the address.
+                  example: ana@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+                  description: The maximum is a cost bound, not a security rule. The server
+                    hashes the value it receives. An unbounded field lets one request
+                    consume a large amount of processor time.
+                deviceName:
+                  type: string
+                  maxLength: 64
+                  description: A label for this device. The user sees this label in the
+                    device list.
+                  example: Ana iPhone
+      responses:
+        '201':
+          description: The server created the session.
+          headers:
+            Location:
+              description: The URL of the new session. Send a DELETE to that URL to sign
+                this device out.
+              schema:
+                type: string
+              example: /v1/auth/sessions/42
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [auth]
+      summary: List the devices signed in to this account
+      description: |
+        The server returns one entry for each device that is signed in to this account.
+        The server returns the entries in pages. Use `limit` and `offset` to select a page.
+      operationId: listSessions
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: The devices signed in to this account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/sessions/current:
+    delete:
+      tags: [auth]
+      summary: Sign out this device
+      description: |
+        The server deletes the refresh row for the device that sends this request. Other
+        devices stay signed in. The access token stays valid until it expires, so
+        revocation lags by up to 15 minutes.
+      operationId: deleteCurrentSession
+      responses:
+        '204':
+          description: The server deleted the session.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/sessions/{id}:
+    delete:
+      tags: [auth]
+      summary: Sign out another device
+      description: |
+        The server deletes one refresh row for this user. A session id that belongs to
+        another user returns 404. A 403 would confirm that the session exists.
+      operationId: deleteSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: The server deleted the session.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for new tokens
+      description: |
+        This operation is public. It does not need an access token.
+
+        Send the refresh token. The server returns a new access token and a new refresh
+        token. The old refresh token stops working.
+
+        The server keeps one row for each device and updates that row on every rotation.
+        The session id does not change, so an id from `GET /auth/sessions` stays valid for
+        the life of the device session.
+
+        A refresh token works one time only. If the server receives one that was already
+        used, the server deletes every refresh row for that user. The server assumes an
+        attacker stole the token. Each device must sign in again.
+
+        A refresh token that is unknown, expired or already used returns 401 with the
+        `refresh-token-unknown` problem type.
+      operationId: refreshSession
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                  description: The value from the previous call. It is opaque, so the
+                    only rules the contract can state are that it is present and bounded.
+      responses:
+        '200':
+          description: The server issued new tokens.
+          content: 
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/forgot-password:
+    post:
+      tags: [auth]
+      summary: Request a password reset link
+      description: |
+        This operation is public. It does not need a token.
+
+        Send the email address. The server sends a reset link to that address.
+
+        The server answers 202 whether or not the address has an account. A different
+        answer would tell the caller which addresses are registered.
+
+        The server limits the request rate. Too many requests return 429.
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                  example: ana@example.com
+      responses:
+        '202':
+          description: The server accepted the request. It sends the mail only if the
+            address has an account.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/reset-password:
+    post:
+      tags: [auth]
+      summary: Set a new password with a reset token
+      description: |
+        This operation is public. It does not need a token.
+
+        Send the token from the reset mail and the new password. The server sets the new
+        password.
+
+        The token travels in the body and never in the path. A path segment reaches the
+        access log and the `Referer` header.
+
+        A token that is unknown or expired returns 422. The body is well formed and the
+        server rejects it on its content.
+
+        On success the server deletes every refresh row for this user. Each device must
+        sign in again. The server also sends an email to the account address.
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                  description: The value from the reset mail. It is opaque and it is
+                    valid one time only.
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+                  description: The new password. The same bounds apply as in `createUser`.
+      responses:
+        '204':
+          description: The server set the new password and ended every session.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users:
+    post:
+      tags: [auth]
+      summary: Create an account
+      description: |
+        This operation is public. It does not need a token.
+
+        Send an email address, a password and a name. The server creates a client
+        account. The server returns the new account and a `Location` header that names
+        it.
+
+        The request does not accept a role. Every account this operation creates is a
+        client account. This contract has no operation that changes a role, so a manager
+        account is seeded.
+
+        An email address that is already registered returns 409 with the `email-taken`
+        problem type.
+      operationId: createUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, firstName, lastName]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                  description: RFC 5321 4.5.3.1.3 caps a forward-path at 256 octets
+                    including the punctuation, which leaves 254 for the address.
+                  example: ana@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+                  description: The maximum is a cost bound, not a security rule. The
+                    server hashes the value it receives. An unbounded field lets one
+                    request consume a large amount of processor time.
+                firstName:
+                  type: string
+                  maxLength: 100
+                  example: Ana
+                lastName:
+                  type: string
+                  maxLength: 100
+                  example: Ramirez
+      responses:
+        '201':
+          description: The server created the account.
+          headers:
+            Location:
+              description: The URL of the new account.
+              schema:
+                type: string
+              example: /v1/users/128
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/password:
+    patch:
+      tags: [auth]
+      summary: Change the password of the signed-in account
+      description: |
+        Send the current password and the new password. The server changes the password.
+
+        The server needs the current password. An access token is valid for 15 minutes,
+        so a stolen token alone must not be enough to seize the account.
+
+        A wrong current password returns 401. It is an authentication failure and not a
+        permissions failure.
+
+        On success the server deletes every refresh row for this user, including the row
+        for the device that sent this request. The caller must sign in again. The server
+        also sends an email to the account address.
+
+        The server limits the request rate, because this operation accepts a password
+        guess.
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        '204':
+          description: The server changed the password and ended every session.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /products:
+    get:
+      tags: [catalog]
+      summary: List products
+      description: |
+        This operation is public. It does not need a token.
+
+        The server returns one page of products. Each entry carries the lowest price of
+        its variants, so a storefront can draw a card without the sizes.
+
+        The entries do not carry the variants. Ask for one product to get them. The
+        server therefore runs a fixed number of queries as the page grows.
+
+        The server hides a deleted product from every caller. The server hides a disabled
+        product unless the caller is a manager and sets `includeInactive`.
+      operationId: listProducts
+      # An empty array removes every scheme, and this operation declares 401, 403 and a
+      # manager-only parameter. The empty object is the 3.0.3 spelling for optional
+      # authentication: a token is allowed and not required. REVIEW.md R3-3.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: categoryId
+          in: query
+          required: false
+          description: Return only the products in this category.
+          schema:
+            type: integer
+          example: 3
+        - name: includeInactive
+          in: query
+          required: false
+          description: Include the disabled products. Only a manager may set this to
+            true. A caller with no token receives 401. A caller who is not a manager
+            receives 403.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: One page of products.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [catalog]
+      summary: Create a product
+      description: |
+        Only a manager may use this operation.
+
+        Send the name, the description and the categories. The server creates the
+        product and enables it.
+
+        A new product has no variant, so it has no price. Add a variant before a buyer
+        can order it.
+
+        A `categoryIds` entry that names no category returns 422. The body is well
+        formed and the server rejects it on its content.
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  example: Ringspun cotton tee
+                description:
+                  type: string
+                  maxLength: 5000
+                  example: A heavyweight tee in a regular fit.
+                categoryIds:
+                  type: array
+                  description: The categories of this product.
+                  items:
+                    type: integer
+                  example: [3]
+      responses:
+        '201':
+          description: The server created the product.
+          headers:
+            Location:
+              description: The URL of the new product.
+              schema:
+                type: string
+              example: /v1/products/12
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /products/{id}:
+    get:
+      tags: [catalog]
+      summary: Get one product
+      description: |
+        This operation is public. It does not need a token.
+
+        The server returns the product with its variants, its images and its categories.
+
+        A deleted product returns 404. A disabled product returns 404 unless the caller
+        is a manager.
+      operationId: getProduct
+      # Optional authentication, as on listProducts. A disabled product is visible to a
+      # manager and to nobody else, so this operation reads the caller.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: The product, with its variants, images and categories.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags: [catalog]
+      summary: Update a product
+      description: |
+        Only a manager may use this operation.
+
+        Send only the fields to change. Set `isActive` to false to disable the product.
+        A disabled product stays visible to a manager and disappears for every other
+        caller.
+
+        Disabling is not deleting. Use DELETE to remove a product from the catalog
+        permanently.
+
+        A `categoryIds` entry that names no category returns 422, as on `createProduct`.
+      operationId: updateProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: Send at least one field.
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 5000
+                isActive:
+                  type: boolean
+                  description: Set this field to false to disable the product.
+                categoryIds:
+                  type: array
+                  description: The server replaces the whole set of categories.
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: The updated product.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [catalog]
+      summary: Delete a product
+      description: |
+        Only a manager may use this operation.
+
+        The server marks the product deleted and keeps the row. Order history points at
+        the variants of this product, so the row must survive.
+
+        A deleted product is gone for every caller, a manager included. To hide a
+        product and keep it, set `isActive` to false instead.
+      operationId: deleteProduct
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '204':
+          description: The server deleted the product.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /variants/{id}/like:
+    # Review round 5, 2026-08-25. The mentor asked that likes and stock notifications
+    # attach to the variant rather than the product, for size and colour precision. The
+    # ERD moved on 2026-08-26; this is the contract following. R4-1, which recorded the
+    # product grain as applied, is reopened and superseded by this.
+    #
+    # The consequence a reader will ask about: `ProductSummary` carries no variant ids,
+    # so a like cannot be sent from the product list. It is sent from the product page,
+    # where `Product.variants` carries them, which is also where a person picks a size.
+    put:
+      tags: [catalog]
+      summary: Like a variant
+      description: |
+        The server records that this user likes this variant, meaning this size and colour
+        of the product rather than the product in general.
+
+        The operation is idempotent. A second call leaves the same single like. The
+        server reads the user from the token, so the request carries no body.
+
+        The server stores no like counter. A count is read from the likes themselves.
+      operationId: likeVariant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of the product variant.
+          schema:
+            type: integer
+          example: 340
+      responses:
+        '204':
+          description: The user likes this variant.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [catalog]
+      summary: Remove a like
+      description: |
+        The server removes the like of this user for this variant.
+
+        The operation is idempotent. The server answers 204 even if the user did not like
+        the variant. A variant that does not exist still returns 404.
+      operationId: unlikeVariant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of the product variant.
+          schema:
+            type: integer
+          example: 340
+      responses:
+        '204':
+          description: The user does not like this variant.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/likes:
+    get:
+      tags: [catalog]
+      summary: List the products this user likes
+      description: |
+        The server returns one page of the products this user likes. A like is stored
+        against a variant, so a product with two liked variants appears once here.
+
+        An entry has the
+        same shape as an entry of the product list.
+      operationId: listLikedProducts
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: One page of liked products.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /categories:
+    get:
+      tags: [catalog]
+      summary: List categories
+      description: |
+        This operation is public. It does not need a token.
+
+        The server returns one page of categories. Send the id of a category as the
+        `categoryId` parameter of the product list.
+      operationId: listCategories
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: One page of categories.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /products/{id}/images:
+    post:
+      tags: [catalog]
+      summary: Upload a product image
+      description: |
+        Only a manager may use this operation.
+
+        Send the image file. The server stores the file and returns the new image.
+
+        Set `isPrimary` to true to make this the card image. The server clears the flag
+        on the image that held it, because a product has one primary image.
+
+        A file that is not an image returns 415. A file above the size limit returns
+        413.
+      operationId: uploadProductImage
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The image file.
+                isPrimary:
+                  type: boolean
+                  default: false
+                  description: Make this the card image of the product.
+      responses:
+        '201':
+          description: The server stored the image.
+          headers:
+            Location:
+              description: The URL of the new image.
+              schema:
+                type: string
+              example: /v1/images/88
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/ContentTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /images/{id}:
+    delete:
+      tags: [catalog]
+      summary: Remove a product image
+      description: |
+        Only a manager may use this operation.
+
+        The server removes the image from the product and from storage.
+
+        If a manager removes the primary image, the product has no card image until the
+        manager marks another image as primary.
+      operationId: deleteProductImage
+      parameters:
+        - $ref: '#/components/parameters/ImageId'
+      responses:
+        '204':
+          description: The server removed the image.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /products/{id}/variants:
+    post:
+      tags: [catalog]
+      summary: Create a variant
+      description: |
+        Only a manager may use this operation.
+
+        Send the size, the color, the price and the stock. The server creates one
+        variant of this product.
+
+        A size and color pair that this product already has returns 409. A buyer chooses
+        that pair, so two variants that share it look the same to a buyer.
+
+        A stock below zero returns 400. The request schema bounds the value at zero, so
+        the value fails validation rather than the rules.
+      operationId: createVariant
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [price, stock]
+              properties:
+                size:
+                  type: string
+                  maxLength: 20
+                  example: M
+                color:
+                  type: string
+                  maxLength: 40
+                  example: black
+                price:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The price of this variant, in minor units.
+                stock:
+                  type: integer
+                  minimum: 0
+                  example: 25
+      responses:
+        '201':
+          description: The server created the variant.
+          headers:
+            Location:
+              description: The URL of the new variant.
+              schema:
+                type: string
+              example: /v1/variants/340
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /variants/{id}:
+    patch:
+      tags: [catalog]
+      summary: Update a variant
+      description: |
+        Only a manager may use this operation.
+
+        Send only the fields to change.
+
+        This operation does not change the stock. The stock has its own operation,
+        because the payment webhook writes that value too.
+      operationId: updateVariant
+      parameters:
+        - $ref: '#/components/parameters/VariantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: Send at least one field.
+              properties:
+                size:
+                  type: string
+                  maxLength: 20
+                color:
+                  type: string
+                  maxLength: 40
+                price:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The new price, in minor units.
+      responses:
+        '200':
+          description: The updated variant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [catalog]
+      summary: Remove a variant
+      description: |
+        Only a manager may use this operation.
+
+        A variant that appears in any order returns 409. Order history points at the
+        variant row, so removing it would rewrite what a customer bought. Set the stock
+        to zero instead.
+      operationId: deleteVariant
+      parameters:
+        - $ref: '#/components/parameters/VariantId'
+      responses:
+        '204':
+          description: The server removed the variant.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /variants/{id}/stock:
+    patch:
+      tags: [catalog]
+      summary: Set the stock of a variant
+      description: |
+        Only a manager may use this operation.
+
+        Send the number of units on hand. The value is absolute. The server does not add
+        the value to the current stock.
+
+        This value has a second writer. The payment webhook lowers it after a buyer pays
+        for an order. The stock has its own path, so a developer can find both writers.
+
+        A value below zero returns 400. The request schema bounds the value at zero, so
+        the value fails validation rather than the rules.
+      operationId: setVariantStock
+      parameters:
+        - $ref: '#/components/parameters/VariantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stock]
+              properties:
+                stock:
+                  type: integer
+                  minimum: 0
+                  description: The units on hand after this call.
+                  example: 25
+      responses:
+        '200':
+          description: The variant, with the new stock.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductVariant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/cart:
+    get:
+      tags: [cart]
+      summary: Get the cart of this user
+      description: |
+        The server returns the cart of the signed-in user. Every user has one cart.
+
+        A user who never added anything receives an empty cart and not a 404. The cart
+        exists because the user exists.
+
+        The cart holds no price of its own. Each line reads the price of its variant now.
+        A manager who changes a price also changes the `subtotal` of a cart that already
+        holds that variant.
+      operationId: getCart
+      responses:
+        '200':
+          description: The cart of this user.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    # Review round 5, 2026-08-25. The mentor asked that emptying the cart sit on the
+    # same path the cart is read from, so the collection and its verbs match. The
+    # item-level paths below are unchanged, which was his instruction too.
+    delete:
+      tags: [cart]
+      summary: Empty the cart
+      description: |
+        The server removes every line from the cart of this user.
+
+        The operation is idempotent. An empty cart answers 204 as well.
+      operationId: clearCart
+      responses:
+        '204':
+          description: The cart is empty.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/cart/items:
+    # Review round 5, 2026-08-25. The mentor observed that the contract had no way to
+    # add to the cart, only to set a line by id. Both belong: a product page adds, and a
+    # cart page sets. They differ in one word and the difference is the point.
+    post:
+      tags: [cart]
+      summary: Add a quantity of one variant to the cart
+      description: |
+        Send the variant and how many to add. The value is a quantity to add, not the
+        quantity you want. A variant already in the cart has this amount added to it.
+
+        Send `PUT /users/me/cart/items/{variantId}` instead to set an absolute quantity.
+
+        The resulting quantity may not exceed the units on hand. A request that would take
+        it above the stock returns 409 with the `insufficient-stock` problem type, and the
+        cart does not change.
+
+        A variant of a product that is deleted or disabled returns 404.
+      operationId: addCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variantId, quantity]
+              properties:
+                variantId:
+                  type: integer
+                  description: The variant to add.
+                  example: 340
+                quantity:
+                  type: integer
+                  minimum: 1
+                  description: How many to add. One or more, because adding nothing is not
+                    a request the server needs to answer. Send a DELETE to remove a line.
+                  example: 2
+      responses:
+        '200':
+          description: The cart after the line was added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/cart/items/{variantId}:
+    parameters:
+      - name: variantId
+        in: path
+        required: true
+        description: The id of the product variant this line holds. A cart holds one line
+          for each variant, so the variant identifies the line.
+        schema:
+          type: integer
+        example: 340
+    put:
+      tags: [cart]
+      summary: Set the quantity of one variant in the cart
+      description: |
+        Send the quantity you want in the cart. The value is absolute and it is not an
+        amount to add.
+
+        The operation is idempotent. Two identical calls leave the same quantity, so a
+        repeat on a slow connection cannot double the line.
+
+        The server creates the line when it is absent and replaces the quantity when it
+        is present.
+
+        A quantity above the stock on hand returns 409 with the `insufficient-stock`
+        problem type. A variant that does not exist, or whose product is deleted or
+        disabled, returns 404.
+      operationId: setCartItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+                  description: The units of this variant to hold in the cart. Send a
+                    DELETE to remove the line instead of a quantity of zero.
+                  example: 2
+      responses:
+        '200':
+          description: The cart, with this line set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cart'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [cart]
+      summary: Remove one variant from the cart
+      description: |
+        The server removes the line for this variant.
+
+        The operation is idempotent. A line that is already absent answers 204. A variant
+        that does not exist returns 404.
+      operationId: deleteCartItem
+      responses:
+        '204':
+          description: The cart holds no line for this variant.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /orders:
+    post:
+      tags: [orders]
+      summary: Create an order from the cart
+      description: |
+        The server creates an order from the cart of this user and empties the cart.
+
+        The order starts in `pending`. The server does not lower any stock here. The
+        stock falls when the payment webhook reports success, so an unpaid order
+        reserves no stock.
+
+        Each line copies the price of its variant into the order. An order is a fixed
+        record and a cart is a live view, so a later price change does not reach an
+        order.
+
+        An empty cart returns 409. A line above the stock on hand returns 409 with the
+        `insufficient-stock` problem type.
+      operationId: createOrder
+      responses:
+        '201':
+          description: The server created the order.
+          headers:
+            Location:
+              description: The URL of the new order.
+              schema:
+                type: string
+              example: /v1/orders/501
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [orders]
+      summary: List every order
+      description: |
+        Only a manager may use this operation. A client reads its own orders at
+        `/users/me/orders`.
+
+        The server returns one page of orders across every user. Each entry carries the
+        client who placed it, because a manager cannot act on an order without knowing
+        whose it is. Set `userId` to read one client's orders.
+
+        The other filters match the ones on the client history.
+      operationId: listAllOrders
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/OrderStatusFilter'
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
+        - $ref: '#/components/parameters/MinTotal'
+        - $ref: '#/components/parameters/MaxTotal'
+      responses:
+        '200':
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrderSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/me/orders:
+    get:
+      tags: [orders]
+      summary: List the orders of this user
+      description: |
+        The server returns one page of the orders of the signed-in user.
+
+        Every filter is optional and the server applies the ones it receives. To select
+        one day, set `createdFrom` to that day and `createdTo` to the next day.
+
+        The price filters read the order total in minor units.
+      operationId: listMyOrders
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/OrderStatusFilter'
+        - $ref: '#/components/parameters/CreatedFrom'
+        - $ref: '#/components/parameters/CreatedTo'
+        - $ref: '#/components/parameters/MinTotal'
+        - $ref: '#/components/parameters/MaxTotal'
+      responses:
+        '200':
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrderSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /orders/{id}:
+    get:
+      tags: [orders]
+      summary: Get one order
+      description: |
+        The server returns the order with its lines, its payment method and its status
+        history.
+
+        An order that belongs to another client returns 404 and not 403. An order id is
+        an integer a caller can guess, so a 403 would confirm that the order exists. A
+        manager reads any order.
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /orders/{id}/status:
+    patch:
+      tags: [orders]
+      summary: Move an order to another status
+      description: |
+        The server moves the order to the status you send. The caller and the current
+        status decide which moves are legal.
+
+        A client may send `cancelled`, and only while the order is `pending`, `paid` or
+        `processing`. A manager may send `processing`, `shipped` or `cancelled`.
+
+        No caller may send `paid`. The payment webhook sets that status, because Stripe
+        confirms the payment and a request does not.
+
+        No caller may send `delivered`. That status belongs to the optional delivery
+        feature, which this contract does not cover.
+
+        A move that the current status does not allow returns 409. A cancel after the
+        order ships returns 409 with the `order-not-cancellable` problem type.
+      operationId: setOrderStatus
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [processing, shipped, cancelled]
+                  description: The status to move to. The set is narrower than
+                    `OrderStatus`, because `pending` is the start, the webhook sets
+                    `paid`, and `delivered` is out of scope.
+                  example: processing
+      responses:
+        '200':
+          description: The order, with its new status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /payment-links:
+    post:
+      tags: [payments]
+      summary: Create a payment link for one product
+      description: |
+        The server creates an order for one variant and returns a Stripe payment link.
+        This is the flow that buys a single product without the cart.
+
+        The order belongs to the caller. `orders.user_id` cannot be null, so the server
+        cannot record an anonymous purchase. Another person can pay the link, but the
+        order still belongs to the caller.
+
+        The order starts in `pending`. The stock falls when the
+        `checkout.session.completed` event arrives, and not here.
+
+        A quantity above the stock on hand returns 409 with the `insufficient-stock`
+        problem type.
+      operationId: createPaymentLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variantId, quantity]
+              properties:
+                variantId:
+                  type: integer
+                  example: 340
+                quantity:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                  example: 1
+      responses:
+        '201':
+          description: The server created the order and the payment link.
+          headers:
+            Location:
+              description: The URL of the order this link pays for. The addressable row
+                this operation creates is the order.
+              schema:
+                type: string
+              example: /v1/orders/502
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentLink'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /orders/{id}/payments:
+    post:
+      tags: [payments]
+      summary: Create a payment intent for an order
+      description: |
+        The server creates a Stripe payment intent for this order and returns its client
+        secret. This is the flow that pays for a cart.
+
+        The server checks the stock of every line before it creates the intent. A line
+        above the stock on hand returns 409 with the `insufficient-stock` problem type.
+
+        The amount comes from the order and never from the request. A client that sent
+        its own amount could choose what to pay.
+
+        An order that is not `pending` returns 409. An order that belongs to another
+        client returns 404.
+
+        The response carries no `Location` header. This operation creates a payment
+        attempt, no operation in this contract reads one back, and the order it pays for
+        is already named in the request path.
+      operationId: createPaymentIntent
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '201':
+          description: The server created the payment intent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentIntent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webhooks/stripe:
+    post:
+      tags: [payments]
+      summary: Receive a Stripe event
+      description: |
+        Stripe calls this operation. A person does not.
+
+        The operation carries no bearer token. Stripe signs the request and the server
+        verifies the `Stripe-Signature` header against the raw request body. The body
+        must reach the verifier byte for byte, so this route reads the raw body and not
+        a parsed one.
+
+        The server handles `checkout.session.completed` for the payment link flow and
+        `payment_intent.succeeded` for the cart flow. Both move the order to `paid` and
+        lower the stock of every line.
+
+        A signature that does not verify returns 400. An event that the server has
+        already applied returns 200 and changes nothing, because Stripe retries and a
+        retry must not lower the stock twice. `order_payments.stripe_reference` is
+        unique, which is what makes that check reliable.
+
+        Any other outcome that is not 2xx makes Stripe retry.
+      operationId: receiveStripeEvent
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          description: The signature Stripe computes over the raw body and the timestamp.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A Stripe event object. The server reads `type` and `data`, and
+                it treats the rest as opaque.
+              required: [id, type]
+              properties:
+                id:
+                  type: string
+                  example: evt_1P0000000000000000000000
+                type:
+                  type: string
+                  example: payment_intent.succeeded
+                data:
+                  type: object
+      responses:
+        '200':
+          description: The server applied the event, or it had applied the event already.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Session:
+      type: object
+      required: [id, createdAt, expiresAt]
+      properties:
+        id:
+          type: integer
+          description: The id of this device session. Token rotation updates the row and
+            keeps the id, so a client can hold this value and send it to
+            `DELETE /auth/sessions/{id}`.
+          example: 42
+        deviceName:
+          type: string
+          example: Ana iPhone
+        createdAt:
+          type: string
+          format: date-time
+          description: When this device first signed in. Token rotation does not change
+            this value.
+          example: '2026-08-21T09:14:00Z'
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the refresh token expires. Every rotation moves this value.
+          example: '2026-08-28T09:14:00Z'
+
+    # ---- Errors, DECISIONS.md item 2 ----------------------------------------
+    # RFC 9457, which obsoletes RFC 7807. Served as application/problem+json, never
+    # application/json.
+
+    # The closed set of problem kinds this API emits. A client branches on this value and
+    # on nothing else. Only failures the status code cannot tell apart get a member here.
+    # Everything else omits `type`, which RFC 9457 defines as `about:blank`, meaning no
+    # semantics beyond the status code.
+    #
+    # These URIs are identifiers first. RFC 9457 says consumers SHOULD NOT dereference them
+    # automatically. Week 3 serves a short page per member at /problems/{slug}.
+    ProblemType:
+      type: string
+      format: uri
+      enum:
+        # 401, and a client must tell these apart or it loops between refreshing and
+        # sending the user back to the login screen.
+        - https://tshirt.store/problems/invalid-credentials
+        - https://tshirt.store/problems/access-token-expired
+        - https://tshirt.store/problems/refresh-token-unknown
+        # 409, and a client must tell these apart to show the right message.
+        - https://tshirt.store/problems/email-taken
+        - https://tshirt.store/problems/order-not-cancellable
+        - https://tshirt.store/problems/insufficient-stock
+
+    Problem:
+      type: object
+      # `type` is deliberately NOT required. The enum above names only the failures a
+      # status code cannot tell apart, so a 404 or a 429 carries no member. RFC 9457
+      # reads an absent `type` as `about:blank`.
+      required: [title, status]
+      properties:
+        type:
+          # `allOf` wraps the `$ref` because OpenAPI 3.0.3 ignores any sibling of a bare
+          # `$ref`.
+          allOf:
+            - $ref: '#/components/schemas/ProblemType'
+          description: >
+            This member identifies the problem kind. Two requests that failed for the
+            same reason carry the same value. An absent member means `about:blank`, so
+            the status code is the whole story.
+        title:
+          type: string
+          description: A short summary of the problem kind. It does not change between
+            occurrences.
+        status:
+          type: integer
+          description: The HTTP status code. It repeats the status line.
+        detail:
+          type: string
+          description: An explanation of this specific occurrence.
+        instance:
+          type: string
+          format: uri
+          description: A URI reference that identifies this occurrence.
+        errors:
+          type: array
+          description: An extension member. The server sends it only on a 400 from
+            request validation. It carries one entry per rejected field.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                example: email
+              message:
+                type: string
+                example: must be a valid email address
+
+    # ---- Sessions, DECISIONS.md items 8 and 10 ------------------------------
+    # Returned by POST /auth/sessions and by POST /auth/refresh. The two return the same
+    # shape because refresh replaces both tokens, so a client stores them the same way.
+    SessionTokens:
+      type: object
+      # Review round 5, 2026-08-25. The mentor asked that the sign-in response carry the
+      # user as well as the tokens, so a client does not need a second request to learn
+      # who it just signed in as. `user` is required on this response: the server has the
+      # row in hand at that moment, so making it optional would only invite a client to
+      # handle an absence that never happens.
+      required: [accessToken, refreshToken, user]
+      properties:
+        user:
+          allOf:
+            - $ref: '#/components/schemas/User'
+          description: The account that just signed in. The same shape `POST /users`
+            returns, so a client parses one schema and not two.
+        accessToken:
+          type: string
+          description: A bearer token. It is valid for 15 minutes.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.PAYLOAD.SIGNATURE
+        refreshToken:
+          type: string
+          description: It is valid for 7 days. It rotates on every use. Keep the new
+            value. Discard the old value.
+          example: 8f14e45fceea167a5a36dedd4bea2543f8b3c9e1d0a7b264
+
+    # ---- Pagination, DECISIONS.md item 3 ------------------------------------
+    # Every collection returns this envelope. No endpoint returns a bare array.
+    PageMeta:
+      type: object
+      required: [total, limit, offset]
+      properties:
+        total:
+          type: integer
+          description: The number of rows that match the filter, before limit and offset
+            apply.
+          example: 347
+        limit:
+          type: integer
+          description: The number of rows in this page. The `limit` query parameter sets
+            it and carries the default. The maximum is 100 in both directions.
+          maximum: 100
+          example: 20
+        offset:
+          type: integer
+          description: The number of rows the server skipped. Offset pagination drifts
+            if another request inserts rows during a scan.
+          example: 40
+
+    # ---- Users --------------------------------------------------------------
+    # The field list is the point. `users` also carries `password_hash`,
+    # `reset_token` and `reset_token_expires_at`. A Week 3 serializer that returns the row
+    # whole would put a live password-reset token in a 200. Naming the fields here makes
+    # that a contract violation rather than an accident.
+    User:
+      type: object
+      required: [id, email, firstName, lastName, role, createdAt]
+      properties:
+        id:
+          type: integer
+          example: 128
+        email:
+          type: string
+          format: email
+          example: ana@example.com
+        firstName:
+          type: string
+          example: Ana
+        lastName:
+          type: string
+          example: Ramirez
+        role:
+          $ref: '#/components/schemas/Role'
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-08-21T13:45:00Z'
+
+    # ---- Catalog ------------------------------------------------------------
+    # Two product shapes on purpose. The list entry carries a price summary and no
+    # variants, so one page costs a fixed number of queries however many sizes a product
+    # has. The detail carries the variants, and a client asks for it one product at a
+    # time. That split is the answer to the N+1 reading.
+    ProductSummary:
+      type: object
+      required: [id, name, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+          example: 12
+        name:
+          type: string
+          example: Ringspun cotton tee
+        priceFrom:
+          # `allOf` wraps the `$ref` because OpenAPI 3.0.3 ignores any sibling of a bare
+          # `$ref`.
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The lowest price among the variants of this product. It is
+            absent when the product has no variant, which is the state `createProduct`
+            leaves it in.
+        primaryImageUrl:
+          type: string
+          description: The primary image of the product. It is absent when the product
+            has no image.
+          example: https://cdn.tshirt.store/products/12/front.jpg
+        isActive:
+          type: boolean
+          description: A disabled product carries false. Only a manager sees a disabled
+            product in a list.
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-08-01T10:00:00Z'
+
+    Product:
+      type: object
+      required: [id, name, isActive, createdAt, variants, images, categories]
+      properties:
+        id:
+          type: integer
+          example: 12
+        name:
+          type: string
+          example: Ringspun cotton tee
+        description:
+          type: string
+          example: A heavyweight tee in a regular fit.
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-08-01T10:00:00Z'
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductVariant'
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductImage'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+
+    ProductVariant:
+      type: object
+      required: [id, price, stock]
+      properties:
+        id:
+          type: integer
+          example: 340
+        size:
+          type: string
+          example: M
+        color:
+          type: string
+          example: black
+        price:
+          $ref: '#/components/schemas/Money'
+        stock:
+          type: integer
+          description: The units on hand for this variant. Feature 8 mails the users who
+            like this variant when this value reaches 3. The trigger is per variant, so a
+            customer waiting on one size hears when that size arrives and not when some
+            other size does. This API does not treat the number as a secret.
+          minimum: 0
+          example: 7
+
+    ProductImage:
+      type: object
+      required: [id, url, isPrimary]
+      properties:
+        id:
+          type: integer
+          example: 88
+        url:
+          type: string
+          example: https://cdn.tshirt.store/products/12/front.jpg
+        isPrimary:
+          type: boolean
+          example: true
+
+    Category:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          example: 3
+        name:
+          type: string
+          example: T-shirts
+
+    # ---- Cart ---------------------------------------------------------------
+    # `shopping_cart_items` carries no price column, so a line reads the price of its
+    # variant at request time. A cart is therefore a live view and not a quote. The
+    # order fixes the price.
+    Cart:
+      type: object
+      required: [items, subtotal]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        subtotal:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The sum of the line totals. It carries no tax and no delivery
+            charge, because this store applies neither.
+
+    CartItem:
+      type: object
+      required: [variantId, productId, productName, unitPrice, quantity, lineTotal, stock]
+      properties:
+        variantId:
+          type: integer
+          example: 340
+        productId:
+          type: integer
+          example: 12
+        productName:
+          type: string
+          example: Ringspun cotton tee
+        size:
+          type: string
+          example: M
+        color:
+          type: string
+          example: black
+        imageUrl:
+          type: string
+          description: The primary image of the product. It is absent when the product
+            has no image.
+          example: https://cdn.tshirt.store/products/12/front.jpg
+        unitPrice:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The price of the variant now.
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        lineTotal:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The unit price multiplied by the quantity.
+        stock:
+          type: integer
+          minimum: 0
+          description: The units on hand for this variant now. It can fall below the
+            quantity after the user added the line. The checkout then fails.
+          example: 7
+
+    # ---- Orders -------------------------------------------------------------
+    # Feature 4 asks a manager to "Show client orders". Neither order shape carried a
+    # customer, so a manager reading every order could not tell whose any of them was.
+    # REVIEW.md R3-2.
+    OrderCustomer:
+      type: object
+      description: The client who placed this order. It is present when the caller is a
+        manager. A client reading its own history already knows whose the order is, so the
+        member is absent there.
+      required: [id, email, firstName, lastName]
+      properties:
+        id:
+          type: integer
+          example: 128
+        email:
+          type: string
+          format: email
+          example: ana@example.com
+        firstName:
+          type: string
+          example: Ana
+        lastName:
+          type: string
+          example: Ramirez
+
+    # `subtotal` and `total` are equal in this contract, because promo codes are
+    # Optional Feature 13 and out of scope. Both fields ship anyway. The ERD already
+    # carries `subtotal_amount` and `total_amount`. The week's own table lists an added
+    # optional field as the one genuinely safe change, so shipping the pair now makes
+    # promo support additive later, not a break.
+    OrderSummary:
+      type: object
+      required: [id, status, subtotal, total, itemCount, createdAt]
+      properties:
+        id:
+          type: integer
+          example: 501
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        subtotal:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The sum of the lines, before any discount.
+        total:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The amount the store charges.
+        customer:
+          allOf:
+            - $ref: '#/components/schemas/OrderCustomer'
+          description: Present only when the caller is a manager.
+        itemCount:
+          type: integer
+          description: The number of units in the order, across every line.
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-08-15T18:22:00Z'
+
+    Order:
+      type: object
+      required: [id, status, subtotal, total, items, createdAt, statusHistory]
+      properties:
+        id:
+          type: integer
+          example: 501
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        subtotal:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The sum of the lines, before any discount.
+        total:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The amount the store charges.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        customer:
+          allOf:
+            - $ref: '#/components/schemas/OrderCustomer'
+          description: Present only when the caller is a manager.
+        paymentMethod:
+          allOf:
+            - $ref: '#/components/schemas/PaymentMethod'
+          description: The Stripe flow that paid this order. It is absent until a
+            payment succeeds.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-08-15T18:22:00Z'
+        statusHistory:
+          type: array
+          description: Every status this order has held, oldest first.
+          items:
+            $ref: '#/components/schemas/OrderStatusChange'
+
+    OrderItem:
+      type: object
+      required: [variantId, productId, productName, unitPrice, quantity, lineTotal]
+      properties:
+        variantId:
+          type: integer
+          example: 340
+        productId:
+          type: integer
+          example: 12
+        productName:
+          type: string
+          description: The name of the product when the client placed the order.
+          example: Ringspun cotton tee
+        size:
+          type: string
+          example: M
+        color:
+          type: string
+          example: black
+        unitPrice:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The price of the variant when the client placed the order. It
+            does not follow a later price change.
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        lineTotal:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The unit price multiplied by the quantity.
+
+    OrderStatusChange:
+      type: object
+      required: [status, changedAt]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        changedAt:
+          type: string
+          format: date-time
+          example: '2026-08-15T18:24:11Z'
+
+    PaymentLink:
+      type: object
+      required: [orderId, url]
+      properties:
+        orderId:
+          type: integer
+          description: The order this link pays for. It starts in `pending`.
+          example: 502
+        url:
+          type: string
+          description: The Stripe page that takes the payment. Send the buyer to this
+            page.
+          example: https://checkout.stripe.com/c/pay/cs_test_a1b2c3
+        expiresAt:
+          type: string
+          format: date-time
+          description: When Stripe stops accepting this link.
+          example: '2026-08-22T18:22:00Z'
+
+    PaymentIntent:
+      type: object
+      required: [orderId, clientSecret, amount]
+      properties:
+        orderId:
+          type: integer
+          example: 501
+        clientSecret:
+          type: string
+          description: Stripe.js completes the payment with this value. It is not a
+            server credential. It identifies one payment attempt.
+          example: pi_3P000000000000_secret_a1b2c3
+        amount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The amount Stripe will charge. It comes from the order, so a
+            client cannot choose what to pay.
+
+    PaymentMethod:
+      type: string
+      description: Feature 7 requires both Stripe flows. A payment link buys one product
+        and a payment intent buys a cart.
+      enum: [payment_link, payment_intent]
+      example: payment_intent
+
+    # ---- Money, DECISIONS.md item 6 -----------------------------------------
+    Money:
+      type: integer
+      minimum: 0
+      description: An amount in minor units. 1999 means 19.99. The store is
+        single-currency and prices are in USD. No amount in this contract is negative,
+        because it carries no refund and no discount.
+      example: 1999
+
+    # ---- Enums --------------------------------------------------------------
+    # `delivered` and `delivery_person` belong to the Optional Features. The
+    # operations that use them are out of scope for this contract. The values stay
+    # so the contract and the Week 1 ERD describe the same domain.
+    OrderStatus:
+      type: string
+      enum: [pending, paid, processing, shipped, delivered, cancelled]
+    # Lower case to match OrderStatus above. The document had two enums in two
+    # conventions. OrderStatus reproduces the ERD's `order_status` exactly, so
+    # OrderStatus wins.
+    #
+    # This still does not match the ERD, which stores roles as rows in `roles` with
+    # `name varchar // Manager, Client, Delivery`. Two gaps remain, and the three ERD
+    # passes since `8d47aae` closed neither: the schema leaves open a set this contract
+    # closes, and it spells the third role `Delivery` where the brief says Delivery
+    # Person. Both are cosmetic here, because the contract does not read a role name
+    # off the schema.
+    Role:
+      type: string
+      enum: [manager, client, delivery_person]
+
+  # ---- Query parameters, DECISIONS.md item 3 ------------------------------
+  # Every collection takes this pair. The bounds repeat PageMeta, so a caller reads the
+  # same numbers on the request side and on the response side. A collection that does
+  # not reference both returns an unbounded array.
+  parameters:
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: The maximum number of rows to return. The default is 20 and the
+        maximum is 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      example: 20
+
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: The number of rows to skip before the first row of this page.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 40
+
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: The id of the product.
+      schema:
+        type: integer
+      example: 12
+
+    VariantId:
+      name: id
+      in: path
+      required: true
+      description: The id of the variant.
+      schema:
+        type: integer
+      example: 340
+
+    ImageId:
+      name: id
+      in: path
+      required: true
+      description: The id of the image.
+      schema:
+        type: integer
+      example: 88
+
+    OrderId:
+      name: id
+      in: path
+      required: true
+      description: The id of the order.
+      schema:
+        type: integer
+      example: 501
+
+    # ---- Order history filters, Feature 9 -----------------------------------
+    # These five settle the "filter and sort parameter naming" entry in DECISIONS.md,
+    # which was deferred to the first operation that needed it. Names are camelCase per
+    # item 4. The date pair follows item 5: RFC 3339 with Z, `from` inclusive and `to`
+    # exclusive, so one day is `createdFrom` that day and `createdTo` the next.
+    UserId:
+      name: userId
+      in: query
+      required: false
+      description: Return only the orders of this client. Only a manager may set this
+        parameter.
+      schema:
+        type: integer
+      example: 128
+    OrderStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return only the orders in this status.
+      schema:
+        $ref: '#/components/schemas/OrderStatus'
+    CreatedFrom:
+      name: createdFrom
+      in: query
+      required: false
+      description: Return the orders created at this time or after it. The bound is
+        inclusive.
+      schema:
+        type: string
+        format: date-time
+      example: '2026-08-01T00:00:00Z'
+    CreatedTo:
+      name: createdTo
+      in: query
+      required: false
+      description: Return the orders created before this time. The bound is exclusive.
+      schema:
+        type: string
+        format: date-time
+      example: '2026-09-01T00:00:00Z'
+    MinTotal:
+      name: minTotal
+      in: query
+      required: false
+      description: Return the orders whose total is this value or more. The value is in
+        minor units, the same as every other amount.
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/Money'
+      example: 1000
+    MaxTotal:
+      name: maxTotal
+      in: query
+      required: false
+      description: Return the orders whose total is this value or less. The value is in
+        minor units.
+      schema:
+        allOf:
+          - $ref: '#/components/schemas/Money'
+      example: 50000
+
+  responses:
+
+    # Every non-2xx response $refs one of these. DECISIONS.md item 7.
+    BadRequest:
+      description: The request body failed validation. `errors` names each rejected field.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Validation failed
+            status: 400
+            detail: One or more fields did not pass validation.
+            errors:
+              - field: email
+                message: must be a valid email address
+    Unauthorized:
+      description: No token, an expired token, or a refresh row that no longer exists.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          description: Required on every 401.
+          example: Bearer realm="tshirt-store"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          # One named example per `ProblemType` member this status can carry. A client
+          # that cannot separate these three loops between refreshing and sending the
+          # user back to the login screen. DECISIONS.md item 2.
+          examples:
+            expired:
+              summary: The access token expired
+              value:
+                type: https://tshirt.store/problems/access-token-expired
+                title: Access token expired
+                status: 401
+                detail: Refresh the token and send the request again.
+            credentials:
+              summary: Wrong email or wrong password
+              value:
+                type: https://tshirt.store/problems/invalid-credentials
+                title: Invalid credentials
+                status: 401
+                detail: The server did not accept this email and password.
+            refresh:
+              summary: The refresh token is unknown or already used
+              value:
+                type: https://tshirt.store/problems/refresh-token-unknown
+                title: Refresh token unknown
+                status: 401
+                detail: Sign in again. The server ended every session for this user.
+    Forbidden:
+      description: The caller is authenticated, but may not perform this action. The
+        endpoint is forbidden whichever resource the caller names, so the refusal leaks
+        nothing.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Forbidden
+            status: 403
+            detail: This operation is available to a manager only.
+    NotFound:
+      description: The resource does not exist, or this caller may not know that it
+        exists. A 403 would confirm the row exists, so an ownership failure returns 404.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          # Two causes, one status code, and the split is deliberate. DECISIONS.md
+          # item 7: 403 protects an action, 404 protects a fact.
+          examples:
+            absent:
+              summary: The resource does not exist
+              value:
+                title: Not found
+                status: 404
+                detail: The server did not find this resource.
+            notYours:
+              summary: It exists and belongs to another client
+              value:
+                title: Not found
+                status: 404
+                detail: The server did not find this resource.
+    Conflict:
+      description: The request conflicts with the current state. The same request can
+        succeed later.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          # The three 409 members. A client that cannot separate them shows the wrong
+          # message. DECISIONS.md item 2.
+          examples:
+            emailTaken:
+              summary: Sign-up against an existing account
+              value:
+                type: https://tshirt.store/problems/email-taken
+                title: Email already registered
+                status: 409
+                detail: An account with this email already exists.
+            insufficientStock:
+              summary: Fewer units on hand than the request asks for
+              value:
+                type: https://tshirt.store/problems/insufficient-stock
+                title: Not enough stock
+                status: 409
+                detail: This variant has 3 units on hand and the request asks for 5.
+            notCancellable:
+              summary: Cancel after the order shipped
+              value:
+                type: https://tshirt.store/problems/order-not-cancellable
+                title: Order cannot be cancelled
+                status: 409
+                detail: This order already shipped.
+    UnprocessableEntity:
+      description: The request is well formed, and invalid whatever the state. The same
+        request cannot succeed later.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            resetToken:
+              summary: The reset token is unknown or expired
+              value:
+                title: Unprocessable content
+                status: 422
+                detail: The reset token is unknown or expired.
+            missingCategory:
+              summary: A categoryIds entry names no category
+              value:
+                title: Unprocessable content
+                status: 422
+                detail: The request names a category that does not exist.
+    # RFC 9110 15.5.14 names this code Content Too Large. The assigned HTTP Status Codes
+    # reading prints the RFC 2616 name, Request Entity Too Large. RFC 2616 is obsolete
+    # twice over, so the current name is the one used here.
+    ContentTooLarge:
+      description: The file is above the size limit for this operation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Content too large
+            status: 413
+            detail: The image is above the size limit for this operation.
+    UnsupportedMediaType:
+      description: The request carries a media type this operation does not accept. A
+        wrong media type is 415 and not 400.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Unsupported media type
+            status: 415
+            detail: This operation accepts an image file only.
+    TooManyRequests:
+      description: The caller reached the rate limit.
+      headers:
+        Retry-After:
+          schema:
+            type: string
+          description: How long the caller must wait. RFC 9110 10.2.3 allows a number of
+            seconds or an HTTP-date.
+          example: '60'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Too many requests
+            status: 429
+            detail: Wait before you send this request again.
+    InternalServerError:
+      description: The server failed. The caller may retry the same request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Internal server error
+            status: 500
+            detail: The server failed to handle the request.

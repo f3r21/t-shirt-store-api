@@ -48,13 +48,7 @@ describe('OpenAPI document against the contract (e2e)', () => {
     ctx = await createTestApp();
     generated = buildOpenApiDocument(ctx.app);
     contract = parseYaml(
-      readFileSync(
-        join(
-          __dirname,
-          '../../BE-Nerdery-Challenges/5-api-design/openapi.yaml',
-        ),
-        'utf8',
-      ),
+      readFileSync(join(__dirname, '../contract/openapi.yaml'), 'utf8'),
     ) as OpenAPIObject;
   });
 
