@@ -1,3 +1,4 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { CategoryDto } from '../../categories/dto/category.dto';
 import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
 
@@ -40,9 +41,22 @@ export class ProductDto {
   /** ISO 8601. The mapper converts the `Date` the database returns. */
   createdAt!: string;
 
+  /**
+   * The three composite arrays carry an explicit `@ApiProperty` with a lazy
+   * `type`, and that is not decoration. The Swagger compiler plugin infers a
+   * lazy resolver of its own for a class-valued property, and when the document
+   * is built it explores `ProductDto` before the classes it points at are
+   * registered, then reports a circular dependency that does not exist:
+   * `ProductVariantDto` imports nothing. Naming the type here resolves it at the
+   * point of use rather than by inference, so the document builds the same way
+   * under `nest build` and under the test runner.
+   */
+  @ApiProperty({ type: () => ProductVariantDto, isArray: true })
   variants!: ProductVariantDto[];
 
+  @ApiProperty({ type: () => ProductImageDto, isArray: true })
   images!: ProductImageDto[];
 
+  @ApiProperty({ type: () => CategoryDto, isArray: true })
   categories!: CategoryDto[];
 }

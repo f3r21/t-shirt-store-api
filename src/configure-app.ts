@@ -1,6 +1,8 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import { SwaggerModule } from '@nestjs/swagger';
 import { VALIDATION_PIPE_OPTIONS } from './common/validation-pipe-options';
+import { buildOpenApiDocument } from './openapi/document';
 
 /**
  * Everything the application needs beyond its modules.
@@ -21,6 +23,10 @@ export function configureApp(app: INestApplication): INestApplication {
   app.enableCors();
 
   app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
+
+  // Served under the global prefix at /v1/docs. The document itself is built
+  // with the prefix stripped, so it matches the contract's bare path keys.
+  SwaggerModule.setup('docs', app, buildOpenApiDocument(app));
 
   return app;
 }
