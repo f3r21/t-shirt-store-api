@@ -16,6 +16,7 @@ import { nthArg } from '../common/mock-args';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { CreateUserDto } from './dto/create-user.dto';
+import { Prisma } from '../generated/prisma/client';
 
 /**
  * The two /users operations.
@@ -123,6 +124,28 @@ describe('UsersService', () => {
       expect(err?.type).toBe(ProblemType.EmailTaken);
       expect(err?.getStatus()).toBe(409);
       expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('answers the same problem when two sign-ups race and the index rejects the loser', async () => {
+      // Both requests pass the pre-check, then one loses on the unique index.
+      // Without the catch this falls through to the generic P2002 branch, which
+      // answers a bare 409 with no type, and the contract says a client
+      // branches on the type and on nothing else.
+      prisma.user.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: '7.10.0',
+        }),
+      );
+
+      const err = await service
+        .createUser(validBody())
+        .then(() => null)
+        .catch((e: unknown) => e as ProblemException);
+
+      expect(err).toBeInstanceOf(ProblemException);
+      expect(err?.type).toBe(ProblemType.EmailTaken);
+      expect(err?.getStatus()).toBe(409);
     });
 
     it('reports the new id, so the controller can set the Location header', async () => {

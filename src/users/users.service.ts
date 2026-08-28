@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '../generated/prisma/client';
 import { MAILER, type Mailer } from '../mail/mailer';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
@@ -24,6 +25,15 @@ export class UsersService {
     @Inject(MAILER) private readonly mailer: Mailer,
   ) {}
 
+  private emailTaken(): ProblemException {
+    return new ProblemException(
+      ProblemType.EmailTaken,
+      'Email already registered',
+      409,
+      'An account with this email already exists.',
+    );
+  }
+
   /**
    * Create a client account. See `openapi.yaml:378`.
    *
@@ -31,9 +41,12 @@ export class UsersService {
    * a client account, so the role comes from the `roles` table and never from
    * the body.
    *
-   * A registered address returns 409 with the `email-taken` type. This method
-   * reads the address first. The alternative is to catch `P2002`, which is free
-   * of a race and reads worse.
+   * A registered address returns 409 with the `email-taken` type. The read is
+   * the common path and reads better, and the catch is what makes it correct:
+   * two simultaneous sign-ups both pass the read, and the loser hits the unique
+   * index. Without the catch that loser falls through to the generic `P2002`
+   * branch, which answers a bare 409 carrying no type, and the contract says a
+   * client branches on the type and on nothing else.
    */
   async createUser(dto: CreateUserDto): Promise<UserDto> {
     const email = normalizeEmail(dto.email);
@@ -42,12 +55,7 @@ export class UsersService {
       where: { email },
     });
     if (taken !== null) {
-      throw new ProblemException(
-        ProblemType.EmailTaken,
-        'Email already registered',
-        409,
-        'An account with this email already exists.',
-      );
+      throw this.emailTaken();
     }
 
     const role = await this.prisma.role.findUnique({
@@ -57,18 +65,28 @@ export class UsersService {
       throw new Error('The roles table holds no client role. Run the seed.');
     }
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        passwordHash: await argon2.hash(dto.password),
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        roleId: role.id,
-      },
-      include: { role: true },
-    });
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          passwordHash: await argon2.hash(dto.password),
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          roleId: role.id,
+        },
+        include: { role: true },
+      });
 
-    return toUserDto(user);
+      return toUserDto(user);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw this.emailTaken();
+      }
+      throw err;
+    }
   }
 
   /**
