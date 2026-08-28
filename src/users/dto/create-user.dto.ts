@@ -4,7 +4,7 @@ import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
  * Request body of POST /users.
  *
  * Every bound comes from the contract, at
- * `BE-Nerdery-Challenges/5-api-design/openapi.yaml:397-421`. The contract sets
+ * `contract/openapi.yaml:397-421`. The contract sets
  * no minimum length on `firstName` and `lastName`, so an empty name passes.
  *
  * Each message omits the field name, because `Problem.errors[].field` carries

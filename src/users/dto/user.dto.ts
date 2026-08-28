@@ -1,6 +1,6 @@
 /**
  * The role names the contract declares, at
- * `BE-Nerdery-Challenges/5-api-design/openapi.yaml:2179-2181`. The `roles`
+ * `contract/openapi.yaml:2179-2181`. The `roles`
  * table stores the name as text, so the mapper narrows that text to this union.
  * The seed writes these three spellings.
  */

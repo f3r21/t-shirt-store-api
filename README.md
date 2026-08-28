@@ -4,7 +4,7 @@ A store API built on NestJS, Prisma and PostgreSQL. It is the capstone of RAVN's
 programme, and it answers to a hand-written OpenAPI contract that was designed in week 2.
 
 **The contract is authoritative.** It lives at
-`../BE-Nerdery-Challenges/5-api-design/openapi.yaml`. Where this code and that document
+`contract/openapi.yaml`. Where this code and that document
 disagree, the document is right and the code is wrong.
 
 ## Run it
@@ -139,6 +139,7 @@ speaks and it is what a JSON float cannot represent exactly.
 - `DECISIONS.md`, in this repository, records the implementation choices: why the token
   hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries no rate
   limit, and what each of those cost.
+- `contract/README.md` says where the contract came from and why it lives here.
 - `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
 - `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.
 
