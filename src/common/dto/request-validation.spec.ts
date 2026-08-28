@@ -1,5 +1,5 @@
-import { ValidationPipe } from '@nestjs/common';
-import { validationExceptionFactory } from '../problem/validation-exception.factory';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { VALIDATION_PIPE_OPTIONS } from '../validation-pipe-options';
 import { PageQueryDto } from './page-query.dto';
 import { CreateUserDto } from '../../users/dto/create-user.dto';
 import { ChangePasswordDto } from '../../users/dto/change-password.dto';
@@ -7,16 +7,17 @@ import { CreateSessionDto } from '../../auth/dto/create-session.dto';
 import { RefreshSessionDto } from '../../auth/dto/refresh-session.dto';
 import { RequestPasswordResetDto } from '../../auth/dto/request-password-reset.dto';
 import { ResetPasswordDto } from '../../auth/dto/reset-password.dto';
+import { ProblemField } from '../problem/problem';
 
 /**
- * Scaffolding for the request DTOs.
+ * The request DTOs, exercised through the pipe the application actually runs.
  *
- * `runPipe` is the same pipe `src/main.ts` installs, with the same options. A
- * spec that builds its own `ValidationPipe` with different options tests a pipe
- * the application does not run.
+ * The options come from `VALIDATION_PIPE_OPTIONS`, the same object
+ * `configure-app.ts` builds the global pipe from. A spec that declared its own
+ * would test a pipe the application does not run, and both would still pass.
  *
  * The pipe resolves when the body passes and rejects with a `BadRequestException`
- * when it fails. Read `getResponse()` for the problem body, which is where
+ * when it fails. `getResponse()` carries the problem body, which is where
  * `errors[]` lives.
  */
 export function runPipe(
@@ -24,97 +25,283 @@ export function runPipe(
   value: unknown,
   type: 'body' | 'query' = 'body',
 ): Promise<unknown> {
-  const pipe = new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-    transformOptions: { enableImplicitConversion: false },
-    exceptionFactory: validationExceptionFactory,
-  });
-
+  const pipe = new ValidationPipe(VALIDATION_PIPE_OPTIONS);
   return pipe.transform(value, { type, metatype });
 }
 
-void runPipe;
+/** The rejected fields, or a failure if the pipe accepted the value. */
+async function rejectedFields(
+  metatype: new () => object,
+  value: unknown,
+  type: 'body' | 'query' = 'body',
+): Promise<ProblemField[]> {
+  let caught: unknown;
+  let accepted = false;
+  try {
+    await runPipe(metatype, value, type);
+    accepted = true;
+  } catch (err) {
+    caught = err;
+  }
+  if (accepted) {
+    throw new Error(
+      'expected the pipe to reject this value, and it accepted it',
+    );
+  }
+  expect(caught).toBeInstanceOf(BadRequestException);
+  const payload = (caught as BadRequestException).getResponse() as {
+    errors: ProblemField[];
+  };
+  return payload.errors;
+}
+
+const names = (fields: ProblemField[]) => fields.map((f) => f.field);
 
 describe('request validation', () => {
   describe('CreateUserDto', () => {
-    void CreateUserDto;
+    const valid = {
+      email: 'ana@example.com',
+      password: 'correct horse battery',
+      firstName: 'Ana',
+      lastName: 'Ramirez',
+    };
 
-    it.todo('accepts a body with all four fields inside their bounds');
+    it('accepts a body with all four fields inside their bounds', async () => {
+      await expect(runPipe(CreateUserDto, valid)).resolves.toMatchObject(valid);
+    });
 
-    it.todo('rejects an email that is not an email address');
+    it('rejects an email that is not an email address', async () => {
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        email: 'ana at example dot com',
+      });
+      expect(names(fields)).toEqual(['email']);
+    });
 
-    it.todo('rejects an email longer than 254 characters');
+    it('rejects an email longer than 254 characters', async () => {
+      const long = `${'a'.repeat(250)}@example.com`;
+      expect(long.length).toBeGreaterThan(254);
 
-    it.todo('rejects a password shorter than 8 characters');
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        email: long,
+      });
+      expect(names(fields)).toContain('email');
+    });
 
-    it.todo('rejects a password longer than 128 characters');
+    it('rejects a password shorter than 8 characters', async () => {
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        password: '1234567',
+      });
+      expect(names(fields)).toEqual(['password']);
+    });
 
-    it.todo('rejects a first name longer than 100 characters');
+    it('rejects a password longer than 128 characters', async () => {
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        password: 'a'.repeat(129),
+      });
+      expect(names(fields)).toEqual(['password']);
+    });
 
-    it.todo(
-      'rejects an unknown property, so a role in the body cannot be ignored',
-    );
+    it('rejects a first name longer than 100 characters', async () => {
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        firstName: 'a'.repeat(101),
+      });
+      expect(names(fields)).toEqual(['firstName']);
+    });
 
-    it.todo('names every rejected field once in errors[]');
+    it('rejects an unknown property, so a role in the body cannot be ignored', async () => {
+      // The whole reason sign-up can be public: an undeclared property is a 400
+      // rather than a value the service silently drops.
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        role: 'manager',
+      });
+      expect(names(fields)).toContain('role');
+    });
+
+    it('names every rejected field once in errors[]', async () => {
+      // The password breaks three constraints at once. The contract says the
+      // member carries one entry per rejected field, so this must be one entry
+      // and not three, or a caller could count decorators.
+      const fields = await rejectedFields(CreateUserDto, {
+        ...valid,
+        email: 'not an email',
+        password: 1234,
+      });
+
+      expect(names(fields).sort()).toEqual(['email', 'password']);
+      expect(new Set(names(fields)).size).toBe(fields.length);
+      for (const field of fields) {
+        expect(typeof field.message).toBe('string');
+        expect(field.message.length).toBeGreaterThan(0);
+      }
+    });
   });
 
   describe('CreateSessionDto', () => {
-    void CreateSessionDto;
+    const valid = { email: 'ana@example.com', password: 'correct horse' };
 
-    it.todo('accepts a body without deviceName');
+    it('accepts a body without deviceName, and carries no value for it', async () => {
+      const result = (await runPipe(
+        CreateSessionDto,
+        valid,
+      )) as CreateSessionDto;
 
-    it.todo('accepts a deviceName of 64 characters');
+      // The key is present on the instance, because `plainToInstance` builds
+      // every declared property. What matters is that it holds no value, which
+      // is what Prisma reads as "not provided". The absent-key rule the contract
+      // states applies to responses, and `toSessionDto` is where it is enforced.
+      expect(result.deviceName).toBeUndefined();
+      expect(result.email).toBe('ana@example.com');
+    });
 
-    it.todo('rejects a deviceName longer than 64 characters');
+    it('accepts a deviceName of 64 characters', async () => {
+      await expect(
+        runPipe(CreateSessionDto, { ...valid, deviceName: 'a'.repeat(64) }),
+      ).resolves.toMatchObject({ deviceName: 'a'.repeat(64) });
+    });
 
-    it.todo(
-      'rejects a password shorter than 8 characters, which is a 400 and not a 401',
-    );
+    it('rejects a deviceName longer than 64 characters', async () => {
+      const fields = await rejectedFields(CreateSessionDto, {
+        ...valid,
+        deviceName: 'a'.repeat(65),
+      });
+      expect(names(fields)).toEqual(['deviceName']);
+    });
+
+    it('rejects an explicit null deviceName, because an optional value is absent and never null', async () => {
+      // `@IsOptional()` would treat null as missing and skip every decorator
+      // after it, so the null would reach the service unchecked.
+      const fields = await rejectedFields(CreateSessionDto, {
+        ...valid,
+        deviceName: null,
+      });
+      expect(names(fields)).toEqual(['deviceName']);
+    });
+
+    it('rejects a password shorter than 8 characters, which is a 400 and not a 401', async () => {
+      // The answer names the password policy. It does not say whether the
+      // account exists, so it leaks nothing the policy does not already state.
+      const fields = await rejectedFields(CreateSessionDto, {
+        ...valid,
+        password: 'short',
+      });
+      expect(names(fields)).toEqual(['password']);
+    });
   });
 
   describe('RefreshSessionDto', () => {
-    void RefreshSessionDto;
+    it('rejects an empty refreshToken', async () => {
+      const fields = await rejectedFields(RefreshSessionDto, {
+        refreshToken: '',
+      });
+      expect(names(fields)).toEqual(['refreshToken']);
+    });
 
-    it.todo('rejects an empty refreshToken');
-
-    it.todo('rejects a refreshToken longer than 512 characters');
+    it('rejects a refreshToken longer than 512 characters', async () => {
+      const fields = await rejectedFields(RefreshSessionDto, {
+        refreshToken: 'a'.repeat(513),
+      });
+      expect(names(fields)).toEqual(['refreshToken']);
+    });
   });
 
   describe('RequestPasswordResetDto', () => {
-    void RequestPasswordResetDto;
-
-    it.todo('rejects an email that is not an email address');
+    it('rejects an email that is not an email address', async () => {
+      const fields = await rejectedFields(RequestPasswordResetDto, {
+        email: 'nope',
+      });
+      expect(names(fields)).toEqual(['email']);
+    });
   });
 
   describe('ResetPasswordDto', () => {
-    void ResetPasswordDto;
+    it('rejects an empty token', async () => {
+      const fields = await rejectedFields(ResetPasswordDto, {
+        token: '',
+        password: 'a good password',
+      });
+      expect(names(fields)).toEqual(['token']);
+    });
 
-    it.todo('rejects an empty token');
-
-    it.todo('rejects a password shorter than 8 characters');
+    it('rejects a password shorter than 8 characters', async () => {
+      const fields = await rejectedFields(ResetPasswordDto, {
+        token: 'a'.repeat(64),
+        password: 'short',
+      });
+      expect(names(fields)).toEqual(['password']);
+    });
   });
 
   describe('ChangePasswordDto', () => {
-    void ChangePasswordDto;
+    it('rejects a body that carries only currentPassword', async () => {
+      const fields = await rejectedFields(ChangePasswordDto, {
+        currentPassword: 'the current one',
+      });
+      expect(names(fields)).toContain('newPassword');
+    });
 
-    it.todo('rejects a body that carries only currentPassword');
-
-    it.todo('rejects a newPassword shorter than 8 characters');
+    it('rejects a newPassword shorter than 8 characters', async () => {
+      const fields = await rejectedFields(ChangePasswordDto, {
+        currentPassword: 'the current one',
+        newPassword: 'short',
+      });
+      expect(names(fields)).toEqual(['newPassword']);
+    });
   });
 
   describe('PageQueryDto', () => {
-    void PageQueryDto;
+    it('applies limit 20 and offset 0 when the query carries neither', async () => {
+      const result = (await runPipe(PageQueryDto, {}, 'query')) as PageQueryDto;
 
-    it.todo('applies limit 20 and offset 0 when the query carries neither');
+      expect(result.limit).toBe(20);
+      expect(result.offset).toBe(0);
+    });
 
-    it.todo('converts the string a query carries into a number');
+    it('converts the string a query carries into a number', async () => {
+      // A query string is always text. Without the conversion the service would
+      // pass "40" to Prisma's skip, which expects a number.
+      const result = (await runPipe(
+        PageQueryDto,
+        { limit: '50', offset: '40' },
+        'query',
+      )) as PageQueryDto;
 
-    it.todo('rejects limit 0');
+      expect(result.limit).toBe(50);
+      expect(result.offset).toBe(40);
+      expect(typeof result.limit).toBe('number');
+      expect(typeof result.offset).toBe('number');
+    });
 
-    it.todo('rejects limit 101');
+    it('rejects limit 0', async () => {
+      const fields = await rejectedFields(
+        PageQueryDto,
+        { limit: '0' },
+        'query',
+      );
+      expect(names(fields)).toEqual(['limit']);
+    });
 
-    it.todo('rejects a negative offset');
+    it('rejects limit 101', async () => {
+      const fields = await rejectedFields(
+        PageQueryDto,
+        { limit: '101' },
+        'query',
+      );
+      expect(names(fields)).toEqual(['limit']);
+    });
+
+    it('rejects a negative offset', async () => {
+      const fields = await rejectedFields(
+        PageQueryDto,
+        { offset: '-1' },
+        'query',
+      );
+      expect(names(fields)).toEqual(['offset']);
+    });
   });
 });

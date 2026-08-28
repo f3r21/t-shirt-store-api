@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { validateEnv } from './config/env.validation';
+import { validateEnv, EnvironmentVariables } from './config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
-import { APP_FILTER } from '@nestjs/core';
+import { MailModule } from './mail/mail.module';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import { ProblemFilter } from './common/problem/problem.filter';
 
 @Module({
@@ -13,9 +17,46 @@ import { ProblemFilter } from './common/problem/problem.filter';
       isGlobal: true,
       validate: validateEnv,
     }),
+    /**
+     * `ttl` is milliseconds in this major version, and `THROTTLE_TTL` is a
+     * number of seconds, so the value is wrapped rather than passed through. A
+     * raw 60 would be a sixty millisecond window, which limits nothing while
+     * still emitting the rate limit headers that make it look configured.
+     *
+     * One throttler, left unnamed so its name stays `default`. The guard
+     * suffixes its headers with the name, so any other name would emit
+     * `Retry-After-<name>` where the contract requires a plain `Retry-After`.
+     *
+     * `errorMessage` is set because the default is the literal
+     * `ThrottlerException: Too Many Requests`, which the problem mapper would
+     * copy into `title` against the contract's `Too many requests`. The object
+     * form is required to carry it: the array form has no such member.
+     *
+     * No storage adapter. One process, so the in-memory counter is correct
+     * here, and it is the first thing to change if this ever runs twice.
+     */
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
+        errorMessage: 'Too many requests',
+        throttlers: [
+          {
+            ttl: seconds(config.getOrThrow<number>('THROTTLE_TTL')),
+            limit: config.getOrThrow<number>('THROTTLE_LIMIT'),
+          },
+        ],
+      }),
+    }),
     PrismaModule,
+    MailModule,
+    AuthModule,
+    UsersModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_FILTER, useClass: ProblemFilter }],
+  providers: [
+    AppService,
+    { provide: APP_FILTER, useClass: ProblemFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

@@ -1,25 +1,15 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import helmet from 'helmet';
-import { validationExceptionFactory } from './common/problem/validation-exception.factory';
+import { configureApp } from './configure-app';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('v1');
 
-  app.use(helmet());
-  app.enableCors();
+  configureApp(app);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: false },
-      exceptionFactory: validationExceptionFactory,
-    }),
-  );
+  // Without this the Prisma disconnect hook never runs on a signal, so a
+  // restart leaves the connection to close on its own.
+  app.enableShutdownHooks();
 
   await app.listen(process.env.PORT ?? 3000);
 }

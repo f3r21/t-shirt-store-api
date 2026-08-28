@@ -1,9 +1,9 @@
 import {
   IsEmail,
-  IsOptional,
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 /**
@@ -24,8 +24,15 @@ export class CreateSessionDto {
   @MaxLength(128, { message: 'must be at most 128 characters' })
   password!: string;
 
-  /** A label for this device. The user sees it in the device list. */
-  @IsOptional()
+  /**
+   * A label for this device. The user sees it in the device list.
+   *
+   * `@ValidateIf` on undefined rather than `@IsOptional()`. `@IsOptional()`
+   * treats null as missing and skips every decorator after it, so an explicit
+   * `"deviceName": null` would reach the service unchecked, against a contract
+   * whose optional values are absent and never null.
+   */
+  @ValidateIf((body: CreateSessionDto) => body.deviceName !== undefined)
   @IsString({ message: 'must be a string' })
   @MaxLength(64, { message: 'must be at most 64 characters' })
   deviceName?: string;
