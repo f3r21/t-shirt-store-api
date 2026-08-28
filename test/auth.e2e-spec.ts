@@ -1,0 +1,324 @@
+import request from 'supertest';
+import {
+  createTestApp,
+  ensureRoles,
+  truncateAll,
+  TestApp,
+} from './app-factory';
+
+/**
+ * The authentication flow, end to end, against a real database.
+ *
+ * The brief names this as the flow every other test depends on, so it goes in
+ * first. What it covers that no unit test can: the guard actually running, the
+ * global pipe actually validating, the problem filter actually shaping the body,
+ * and the rotation being one statement against real Postgres rather than a mock
+ * that answers whatever the test told it to.
+ */
+describe('Authentication (e2e)', () => {
+  let ctx: TestApp;
+
+  const CLIENT = {
+    email: 'ana@example.com',
+    password: 'correct horse battery',
+    firstName: 'Ana',
+    lastName: 'Ramirez',
+  };
+
+  const http = () => request(ctx.app.getHttpServer());
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await ensureRoles(ctx.prisma);
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(ctx.prisma);
+    ctx.mail.clear();
+  });
+
+  /** Register and sign in, returning both tokens and the session id. */
+  const signUpAndIn = async () => {
+    await http().post('/v1/users').send(CLIENT).expect(201);
+
+    // Only the three fields the session body declares. The pipe runs with
+    // `forbidNonWhitelisted`, so spreading the sign-up body here is a 400.
+    const res = await http()
+      .post('/v1/auth/sessions')
+      .send({
+        email: CLIENT.email,
+        password: CLIENT.password,
+        deviceName: 'Ana laptop',
+      })
+      .expect(201);
+
+    return {
+      accessToken: res.body.accessToken as string,
+      refreshToken: res.body.refreshToken as string,
+      location: res.headers.location,
+    };
+  };
+
+  describe('sign up', () => {
+    it('creates a client account and names it in Location', async () => {
+      const res = await http().post('/v1/users').send(CLIENT).expect(201);
+
+      expect(Object.keys(res.body).sort()).toEqual(
+        ['createdAt', 'email', 'firstName', 'id', 'lastName', 'role'].sort(),
+      );
+      expect(res.body.role).toBe('client');
+      expect(res.headers.location).toBe(`/v1/users/${res.body.id}`);
+    });
+
+    it('rejects a second sign-up on the same address with the email-taken type', async () => {
+      await http().post('/v1/users').send(CLIENT).expect(201);
+
+      const res = await http().post('/v1/users').send(CLIENT).expect(409);
+
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect(res.body.type).toBe('https://tshirt.store/problems/email-taken');
+      expect(res.body.title).toBe('Email already registered');
+    });
+
+    it('treats two capitalisations of one address as one account', async () => {
+      await http().post('/v1/users').send(CLIENT).expect(201);
+
+      await http()
+        .post('/v1/users')
+        .send({ ...CLIENT, email: 'ANA@Example.COM' })
+        .expect(409);
+    });
+
+    it('rejects a role in the body rather than granting it', async () => {
+      const res = await http()
+        .post('/v1/users')
+        .send({ ...CLIENT, role: 'manager' })
+        .expect(400);
+
+      expect(res.body.title).toBe('Validation failed');
+      expect(res.body.errors.map((e: { field: string }) => e.field)).toContain(
+        'role',
+      );
+    });
+  });
+
+  describe('sign in and the protected route', () => {
+    it('returns both tokens and a Location naming the session', async () => {
+      const { accessToken, refreshToken, location } = await signUpAndIn();
+
+      expect(accessToken.split('.')).toHaveLength(3);
+      expect(refreshToken).toHaveLength(64);
+      expect(location).toMatch(/^\/v1\/auth\/sessions\/\d+$/);
+    });
+
+    it('answers the same way for a wrong address and a wrong password', async () => {
+      await http().post('/v1/users').send(CLIENT).expect(201);
+
+      const wrongAddress = await http()
+        .post('/v1/auth/sessions')
+        .send({ email: 'nobody@example.com', password: CLIENT.password })
+        .expect(401);
+
+      const wrongPassword = await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: 'not the one at all' })
+        .expect(401);
+
+      expect(wrongAddress.body).toEqual(wrongPassword.body);
+      expect(wrongAddress.body.type).toBe(
+        'https://tshirt.store/problems/invalid-credentials',
+      );
+    });
+
+    it('allows a protected route with the token', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      const res = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(Object.keys(res.body).sort()).toEqual(['data', 'meta']);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].deviceName).toBe('Ana laptop');
+      expect(res.body.data[0]).not.toHaveProperty('tokenHash');
+    });
+
+    it('refuses it without a token, and says so without naming a credential', async () => {
+      await signUpAndIn();
+
+      const res = await http().get('/v1/auth/sessions').expect(401);
+
+      expect(res.headers['www-authenticate']).toBe('Bearer');
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      // No credential was sent, so no credential can have been rejected.
+      expect(res.body).not.toHaveProperty('type');
+    });
+
+    it('refuses a malformed token and a token signed with another key', async () => {
+      await signUpAndIn();
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', 'Bearer not.a.token')
+        .expect(401);
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', 'Basic dXNlcjpwYXNz')
+        .expect(401);
+    });
+  });
+
+  describe('rotation', () => {
+    it('issues new tokens and keeps the session id', async () => {
+      const { accessToken, refreshToken } = await signUpAndIn();
+
+      const before = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const res = await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(200);
+
+      expect(res.body.refreshToken).not.toBe(refreshToken);
+
+      const after = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${res.body.accessToken}`)
+        .expect(200);
+
+      // Rotation updates the row in place, so the id a client holds stays valid.
+      expect(after.body.data[0].id).toBe(before.body.data[0].id);
+      expect(after.body.meta.total).toBe(1);
+    });
+
+    it('ends every session when a used token is presented again', async () => {
+      const { refreshToken } = await signUpAndIn();
+
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(200);
+
+      const replay = await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+
+      expect(replay.body.type).toBe(
+        'https://tshirt.store/problems/refresh-token-unknown',
+      );
+
+      // Both halves. Rejecting without revoking leaves the thief signed in.
+      const rows = await ctx.prisma.refreshToken.count();
+      expect(rows).toBe(0);
+    });
+  });
+
+  describe('password reset', () => {
+    it('answers 202 for a known and an unknown address, and mails only one', async () => {
+      await http().post('/v1/users').send(CLIENT).expect(201);
+
+      await http()
+        .post('/v1/auth/forgot-password')
+        .send({ email: CLIENT.email })
+        .expect(202);
+      await http()
+        .post('/v1/auth/forgot-password')
+        .send({ email: 'nobody@example.com' })
+        .expect(202);
+
+      expect(ctx.mail.sent).toHaveLength(1);
+      expect(ctx.mail.sent[0].to).toBe(CLIENT.email);
+    });
+
+    it('sets the password with the mailed token, once, and ends every session', async () => {
+      await signUpAndIn();
+      await http()
+        .post('/v1/auth/forgot-password')
+        .send({ email: CLIENT.email })
+        .expect(202);
+
+      const token = ctx.mail.sent[0].token as string;
+
+      await http()
+        .post('/v1/auth/reset-password')
+        .send({ token, password: 'a different password' })
+        .expect(204);
+
+      // The token works one time only.
+      await http()
+        .post('/v1/auth/reset-password')
+        .send({ token, password: 'a third password' })
+        .expect(422);
+
+      expect(await ctx.prisma.refreshToken.count()).toBe(0);
+
+      // The new password works and the old one does not.
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: 'a different password' })
+        .expect(201);
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: CLIENT.password })
+        .expect(401);
+    });
+  });
+
+  describe('sign out', () => {
+    it('signs this device out and leaves the others signed in', async () => {
+      const first = await signUpAndIn();
+      const second = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
+
+      await http()
+        .delete('/v1/auth/sessions/current')
+        .set('authorization', `Bearer ${first.accessToken}`)
+        .expect(204);
+
+      const left = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${second.body.accessToken}`)
+        .expect(200);
+
+      expect(left.body.data).toHaveLength(1);
+      expect(left.body.data[0].deviceName).toBe('Ana phone');
+    });
+
+    it('answers 404 for a session id that belongs to another user', async () => {
+      const ana = await signUpAndIn();
+
+      await http()
+        .post('/v1/users')
+        .send({ ...CLIENT, email: 'beto@example.com' })
+        .expect(201);
+      const beto = await http()
+        .post('/v1/auth/sessions')
+        .send({ email: 'beto@example.com', password: CLIENT.password })
+        .expect(201);
+
+      const anasSessionId = Number(ana.location.split('/').pop());
+
+      // 404 and not 403: a 403 would confirm the session exists.
+      const res = await http()
+        .delete(`/v1/auth/sessions/${anasSessionId}`)
+        .set('authorization', `Bearer ${beto.body.accessToken}`)
+        .expect(404);
+
+      expect(res.body.title).toBe('Not found');
+      expect(res.body).not.toHaveProperty('type');
+    });
+  });
+});
