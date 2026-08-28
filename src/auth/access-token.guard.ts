@@ -16,9 +16,9 @@ import { IS_OPTIONAL_AUTH_KEY } from './decorators/optional-auth.decorator';
 /**
  * Verify the bearer token and put its payload on the request.
  *
- * Bound globally, because 27 of the contract's 36 operations need a token. The
- * seven public ones carry `@Public()` and the two optional ones carry
- * `@OptionalAuth()`.
+ * Bound globally, because 28 of the contract's 37 operations need a token. The
+ * seven the contract marks `security: []` carry `@Public()`, and the two spelled
+ * with `{}` beside `bearerAuth` carry `@OptionalAuth()`.
  *
  * The guard raises problem documents rather than `UnauthorizedException`,
  * because the contract's 401 carries three distinguishable types and a client

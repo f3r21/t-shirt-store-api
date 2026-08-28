@@ -19,8 +19,14 @@ export const NOT_DELETED = { deletedAt: null } as const;
  *
  * Deleted is 404 for everyone. Disabled is 404 unless the caller is a manager
  * who asked for it. Active is public. Writing it once is the point: the same
- * predicate has to hold on the list, on the detail read, and on every write
- * that resolves a product first, and three copies would drift.
+ * predicate has to hold on the list and on the detail read, and two copies
+ * would drift.
+ *
+ * The writes do not call this. `updateProduct` and `deleteProduct` are manager
+ * only and resolve through `assertProductExists`, which filters on
+ * `NOT_DELETED` alone, so a manager can still update a product they disabled.
+ * `NOT_DELETED` is the half those paths share, and the variant lookups share it
+ * too, which is why it is exported on its own.
  */
 export function visibleProductWhere(
   viewer: AccessTokenPayload | undefined,
