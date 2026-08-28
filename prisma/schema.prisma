@@ -4,8 +4,8 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
@@ -14,22 +14,23 @@ datasource db {
 }
 
 model Role {
-  id Int @id @default(autoincrement())
-  name String @unique
+  id    Int    @id @default(autoincrement())
+  name  String @unique
   users User[]
+
   @@map("roles")
 }
 
 model User {
-  id Int @id @default(autoincrement())
-  email String @unique
-  passwordHash String @map("password_hash")
-  firstName String @map("first_name")
-  lastName String @map("last_name")
-  roleId Int @map("role_id")
-  resetTokenHash String? @unique @map("reset_token_hash")
+  id                  Int       @id @default(autoincrement())
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  roleId              Int       @map("role_id")
+  resetTokenHash      String?   @unique @map("reset_token_hash")
   resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   role Role @relation(fields: [roleId], references: [id])
 
@@ -39,13 +40,13 @@ model User {
 }
 
 model RefreshToken {
-  id Int @id @default(autoincrement())
-  userId Int @map("user_id")
-  tokenHash String @unique @map("token_hash")
-  previousTokenHash String? @map("previous_token_hash")
-  deviceName String? @map("device_name")
-  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                Int      @id @default(autoincrement())
+  userId            Int      @map("user_id")
+  tokenHash         String   @unique @map("token_hash")
+  previousTokenHash String?  @map("previous_token_hash")
+  deviceName        String?  @map("device_name")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -55,4 +56,96 @@ model RefreshToken {
   @@index([userId])
   @@index([previousTokenHash])
   @@map("refresh_tokens")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Soft delete lives on this table alone. deleteProduct sets the column and
+  // keeps the row, because order history points at the variants of a product
+  // that may since have been withdrawn.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  variants   ProductVariant[]
+  categories ProductCategory[]
+
+  // No index beyond the primary key, and no unique on `name`. createProduct
+  // declares 400, 401, 403, 422 and 500 and no 409, so a repeated name is
+  // legal. `deleted_at IS NULL` matches nearly every row and `is_active` holds
+  // two values, so the planner would decline an index on either.
+  @@map("products")
+}
+
+model ProductVariant {
+  id        Int @id @default(autoincrement())
+  productId Int @map("product_id")
+
+  // The empty string is the stored spelling of "this variant has no size".
+  // PostgreSQL treats two NULLs in a unique index as distinct and Prisma 7.10
+  // cannot ask for NULLS NOT DISTINCT, so nullable columns would admit exactly
+  // the duplicate pair the contract answers with a 409. The mapper drops the
+  // empty string again on the way out, so the wire still shows absence.
+  size  String @default("")
+  color String @default("")
+
+  // Minor units, so 1999 means 19.99. Not numeric(10,2), which is what the ERD
+  // says: an integer needs no conversion inbound, outbound, or at Stripe, and
+  // Prisma hands a numeric back as a Decimal instance that serialises to a
+  // string. This is a deliberate departure from the ERD, recorded in
+  // DECISIONS.md.
+  priceCents Int @map("price_cents")
+
+  // No default on purpose. Prisma makes a defaulted field optional in the
+  // create input, and the contract makes stock required on createVariant, so
+  // the absence of a default is what turns a forgotten value into a type error.
+  stock Int
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // One index doing two jobs: it enforces the 409 on createVariant and
+  // updateVariant, and its leading column serves both the variants of one
+  // product and the `productId IN (...)` lookup behind priceFrom. A second
+  // @@index([productId]) would index the same leading column twice and slow
+  // every insert for nothing.
+  @@unique([productId, size, color])
+  @@map("product_variants")
+}
+
+model Category {
+  id Int @id @default(autoincrement())
+
+  // Unique so the seed can upsert on the name, the way the three role rows
+  // already do.
+  name String @unique
+
+  products ProductCategory[]
+
+  @@map("categories")
+}
+
+model ProductCategory {
+  productId  Int @map("product_id")
+  categoryId Int @map("category_id")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  // An explicit model rather than an implicit many-to-many, which would create
+  // a table named _CategoryToProduct with columns A and B, against both the ERD
+  // and this schema's rule that every model carries @@map.
+  //
+  // The composite key serves every product-first read. The categoryId filter on
+  // listProducts drives from the other side, and nothing leads with category_id
+  // without the second index.
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@map("product_categories")
 }

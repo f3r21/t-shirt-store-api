@@ -31,6 +31,29 @@ export interface PrismaMock {
   role: {
     findUnique: jest.Mock;
   };
+  product: {
+    findFirst: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+  };
+  productVariant: {
+    findFirst: jest.Mock;
+    findMany: jest.Mock;
+    groupBy: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  category: {
+    findMany: jest.Mock;
+    count: jest.Mock;
+  };
+  productCategory: {
+    deleteMany: jest.Mock;
+    createMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -65,6 +88,29 @@ export function createPrismaMock(): PrismaMock {
     },
     role: {
       findUnique: jest.fn(),
+    },
+    product: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    productVariant: {
+      findFirst: jest.fn(),
+      findMany: jest.fn(),
+      groupBy: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    category: {
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    productCategory: {
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
     },
     $transaction: jest.fn(),
   };

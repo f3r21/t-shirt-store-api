@@ -40,6 +40,17 @@ async function main() {
       role: { connect: { name: 'client' } },
     },
   });
+
+  // Categories, so a manager can create a product against a real id straight
+  // after seeding. Upserted on the name for the same reason the roles are: the
+  // seed has to be safe to run twice.
+  for (const name of ['T-shirts', 'Hoodies', 'Accessories']) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  }
 }
 
 main()

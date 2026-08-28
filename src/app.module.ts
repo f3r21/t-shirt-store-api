@@ -9,6 +9,9 @@ import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { CategoriesModule } from './categories/categories.module';
+import { ProductsModule } from './products/products.module';
+import { VariantsModule } from './variants/variants.module';
 import { ProblemFilter } from './common/problem/problem.filter';
 
 @Module({
@@ -51,6 +54,9 @@ import { ProblemFilter } from './common/problem/problem.filter';
     MailModule,
     AuthModule,
     UsersModule,
+    CategoriesModule,
+    ProductsModule,
+    VariantsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
@@ -46,7 +45,6 @@ export class UpdateProductDto {
   @IsOptional()
   @IsArray({ message: 'must be an array' })
   @ArrayUnique({ message: 'must not repeat a category' })
-  @Type(() => Number)
   @IsInt({ each: true, message: 'must be an integer' })
   @Min(1, { each: true, message: 'must be at least 1' })
   categoryIds?: number[];
