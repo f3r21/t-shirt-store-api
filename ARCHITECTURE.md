@@ -148,8 +148,13 @@ credential-stuffing attempt; a rising 5xx rate is mine.
 notification can be traced back to the request that caused it, whether that was a manager
 setting stock by hand or a payment webhook. Log authentication successes
 and failures, authorization failures, validation failures and payment events. Never log a
-password, a token, a session id or a card detail. The token hashing in this service means a
-leaked log cannot be replayed even if that rule is broken by accident.
+password, a token, a session id or a card detail.
+
+That last rule has no safety net, and it is worth being precise about why. Refresh and reset
+tokens are stored as keyed hashes, so a dump of the database yields nothing replayable. Logs are
+a different exposure: the access token is a signed JWT, so one that reaches a log line is usable
+by whoever reads it until it expires. The fifteen minute lifetime is what bounds that, not the
+hashing, and it is the reason the lifetime is short.
 
 **What I would not add.** Distributed tracing and a metrics scraper, for one service and one
 worker, cost more to run than the questions they answer here. The first thing I would add
