@@ -40,14 +40,21 @@ there is one build, one dependency tree and one set of migrations.
 ## Why a queue, and not just doing the work in the request
 
 The stock notification is the only feature that fans out. When a variant's stock reaches
-three, every user who liked that product and has not bought it gets an email. That is one
+three, every user who liked that variant and has not bought it gets an email. That is one
 database write followed by an unbounded number of network calls to a mail provider.
 
-Three reasons it cannot sit in the request that caused it:
+**Two things move stock, so there are two producers.** A manager setting it by hand through
+`PATCH /variants/{id}/stock`, and the Stripe webhook lowering it when a payment succeeds. The
+manager path is the one that exists in code today and the one the feature is built against
+first, because it can be exercised without Stripe. The webhook becomes a second call site on
+the same producer rather than a second design.
 
-1. **The request that triggers it is a Stripe webhook.** Stripe retries for up to three days
-   on a non-2xx, so a slow handler turns into duplicate deliveries. The handler must record
-   the event and return 200 quickly; mailing two hundred people is not quick.
+Three reasons the work cannot sit in the request that caused it:
+
+1. **One of the two producers is a Stripe webhook.** Stripe retries for up to three days on a
+   non-2xx, so a slow handler turns into duplicate deliveries. The handler must record the
+   event and return 200 quickly; mailing two hundred people is not quick. The manager path has
+   no such deadline, and building for the stricter of the two producers costs nothing.
 2. **A mail provider outage must not fail a paid order.** The enqueue happens strictly
    *after* the database transaction commits, so a Redis outage delays a notification and
    never rolls back a payment.
@@ -68,6 +75,12 @@ threshold, three to four to three, mails the same person twice. Two things preve
 `stock_notifications` row with a unique key on the pair, inserted before the mail so the
 database is the arbiter of the race, and re-arming with hysteresis rather than at the
 threshold, so the trigger resets only well above it.
+
+**One question this design has not answered.** A unique key on `(user, variant)` means a
+person is told once, ever, and never again when that variant is restocked months later. The
+alternative is a notion of a restock episode, which the key would have to carry. The ERD
+ledger records it as open, and it is a question for the next review rather than a guess made
+here, because it chooses the table's primary key.
 
 ## The deploy shape
 
