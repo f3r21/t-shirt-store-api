@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SessionDto } from './dto/session.dto';
 import { SessionTokensDto } from './dto/session-tokens.dto';
 import { toSessionDto } from './session.mapper';
+import { toUserDto } from '../users/user.mapper';
 import { generateToken, hashToken } from './token-hash';
 import { EnvironmentVariables } from '../config/env.validation';
 import { AccessTokenPayload } from './access-token-payload';
@@ -125,6 +126,7 @@ export class AuthService {
     return {
       accessToken: await this.issueAccessToken(user.id, row.id, user.role.name),
       refreshToken,
+      user: toUserDto(user),
       sessionId: row.id,
     };
   }
@@ -187,6 +189,7 @@ export class AuthService {
     return {
       accessToken: await this.issueAccessToken(user.id, row.id, user.role.name),
       refreshToken: nextToken,
+      user: toUserDto(user),
     };
   }
 

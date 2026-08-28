@@ -233,6 +233,22 @@ describe('AuthService', () => {
       expect(wrongAddress.getStatus()).toBe(401);
     });
 
+    it('returns the account that just signed in, so a client needs no second request', async () => {
+      const result = await service.createSession({
+        email: 'ana@example.com',
+        password: PASSWORD,
+      });
+
+      // Review round 5, 2026-08-25. The same six fields POST /users returns, so a
+      // client parses one schema and not two, and no more than six: the sign-in
+      // path must not become a way to read a field the User schema excludes.
+      expect(Object.keys(result.user).sort()).toEqual(
+        ['createdAt', 'email', 'firstName', 'id', 'lastName', 'role'].sort(),
+      );
+      expect(result.user.role).toBe('client');
+      expect(result.user).not.toHaveProperty('passwordHash');
+    });
+
     it('reports the new session id, so the controller can set Location', async () => {
       const result = await service.createSession({
         email: 'ana@example.com',
