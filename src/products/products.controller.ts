@@ -12,6 +12,12 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ProductsService } from './products.service';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -23,6 +29,8 @@ import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 
+@ApiTags('catalog')
+@ApiBearerAuth('bearerAuth')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
@@ -37,6 +45,12 @@ export class ProductsController {
    * sent a token would be invisible to the handler.
    */
   @OptionalAuth()
+  @ApiOperation({ summary: 'List products' })
+  @ApiResponse({ status: 200, description: 'A page of products.' })
+  @ApiResponse({ status: 400, description: 'The query is invalid.' })
+  @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
+  @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listProducts(
     @CurrentUser() viewer: AccessTokenPayload | undefined,
@@ -46,6 +60,15 @@ export class ProductsController {
   }
 
   @OptionalAuth()
+  @ApiOperation({ summary: 'Get one product' })
+  @ApiResponse({
+    status: 200,
+    description: 'The product.',
+    type: ProductDto,
+  })
+  @ApiResponse({ status: 401, description: 'The token is invalid.' })
+  @ApiResponse({ status: 404, description: 'The product does not exist.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get(':id')
   getProduct(
     @CurrentUser() viewer: AccessTokenPayload | undefined,
@@ -55,6 +78,17 @@ export class ProductsController {
   }
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Create a product' })
+  @ApiResponse({
+    status: 201,
+    description: 'The product is created.',
+    type: ProductDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
+  @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
+  @ApiResponse({ status: 422, description: 'The request body fails a rule.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createProduct(
@@ -67,6 +101,18 @@ export class ProductsController {
   }
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Update a product' })
+  @ApiResponse({
+    status: 200,
+    description: 'The product is updated.',
+    type: ProductDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
+  @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
+  @ApiResponse({ status: 404, description: 'The product does not exist.' })
+  @ApiResponse({ status: 422, description: 'The request body fails a rule.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateProduct(
     @Param('id', ParseIntPipe) id: number,
@@ -76,6 +122,12 @@ export class ProductsController {
   }
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Delete a product' })
+  @ApiResponse({ status: 204, description: 'The product is deleted.' })
+  @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
+  @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
+  @ApiResponse({ status: 404, description: 'The product does not exist.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteProduct(@Param('id', ParseIntPipe) id: number): Promise<void> {

@@ -10,6 +10,12 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { VariantsService } from './variants.service';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -25,11 +31,25 @@ import { Roles } from '../auth/decorators/roles.decorator';
  * hands the string through, and `NaN` reaches Prisma as an invalid argument,
  * which nothing maps, so the caller reads 500 instead of 400.
  */
+@ApiTags('catalog')
+@ApiBearerAuth('bearerAuth')
 @Controller('products')
 export class ProductVariantsController {
   constructor(private readonly variants: VariantsService) {}
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Create a variant' })
+  @ApiResponse({
+    status: 201,
+    description: 'The variant is created.',
+    type: ProductVariantDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
+  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
+  @ApiResponse({ status: 404, description: 'The product does not exist.' })
+  @ApiResponse({ status: 409, description: 'The variant already exists.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post(':id/variants')
   @HttpCode(HttpStatus.CREATED)
   async createVariant(
@@ -43,11 +63,25 @@ export class ProductVariantsController {
   }
 }
 
+@ApiTags('catalog')
+@ApiBearerAuth('bearerAuth')
 @Controller('variants')
 export class VariantsController {
   constructor(private readonly variants: VariantsService) {}
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Update a variant' })
+  @ApiResponse({
+    status: 200,
+    description: 'The variant is updated.',
+    type: ProductVariantDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
+  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
+  @ApiResponse({ status: 404, description: 'The variant does not exist.' })
+  @ApiResponse({ status: 409, description: 'The variant conflicts.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateVariant(
     @Param('id', ParseIntPipe) id: number,
@@ -57,6 +91,13 @@ export class VariantsController {
   }
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Remove a variant' })
+  @ApiResponse({ status: 204, description: 'The variant is removed.' })
+  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
+  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
+  @ApiResponse({ status: 404, description: 'The variant does not exist.' })
+  @ApiResponse({ status: 409, description: 'The variant is in use.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteVariant(@Param('id', ParseIntPipe) id: number): Promise<void> {
@@ -64,6 +105,17 @@ export class VariantsController {
   }
 
   @Roles('manager')
+  @ApiOperation({ summary: 'Set the stock of a variant' })
+  @ApiResponse({
+    status: 200,
+    description: 'The stock is set.',
+    type: ProductVariantDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
+  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
+  @ApiResponse({ status: 404, description: 'The variant does not exist.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id/stock')
   setVariantStock(
     @Param('id', ParseIntPipe) id: number,
