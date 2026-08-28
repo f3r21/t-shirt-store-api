@@ -9,7 +9,7 @@ disagree, the document is right and the code is wrong.
 
 ## Run it
 
-Four commands, in this order. Two of them carry a trap, noted below.
+Six commands, in this order. Two of them carry a trap, noted below.
 
 ```bash
 npm install
@@ -31,9 +31,19 @@ container from week 1 of the programme. A default `DATABASE_URL` gets connection
 service reads the role out of the `roles` table, so sign-up fails with "The roles table
 holds no client role. Run the seed." until `db:seed` has run.
 
+The seed also creates two demo accounts, so a reviewer can sign in as a manager without promoting
+a row by hand. Both use the password `Password123!`:
+
+    manager@tshirt.store   creates and edits products and variants
+    client@tshirt.store    everything a customer can reach
+
+They are development fixtures with a published password. `prisma/seed.ts` refuses to create them
+when `NODE_ENV` is `production`, and seeds only the roles and categories there.
+
 ### The two secrets
 
-`.env.example` fills in every value except two, which are blank because they are secrets.
+`.env.example` fills in every value except two, `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, which
+are blank because they are secrets.
 Both need at least 32 characters:
 
 ```bash
@@ -49,9 +59,15 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ```bash
 npm run typecheck    # tsc --noEmit
-npm test             # jest
-npm run lint         # eslint --fix
+npm test             # jest, unit
+npm run test:e2e     # jest, against a real database
+npm run lint:ci      # eslint, reports and changes nothing
+npm run format:check # prettier, reports and changes nothing
 ```
+
+`lint:ci` and `format:check` are the read-only pair, and they are what CI runs. `npm run lint`
+and `npm run format` exist too and carry `--fix` and `--write`, so they edit the tree. Reach for
+those when you mean to change something, not when you mean to check it.
 
 `npm run typecheck` is worth running after any schema change. **A green typecheck is not
 evidence that the generated Prisma client matches the schema**: every file under
@@ -69,7 +85,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Mail on password change and password reset | Done, delivered through Mailpit locally |
 | RFC 9457 problem documents on every error | Done |
 | Helmet, CORS, environment schema validation | Done |
-| Rate limiting | Done, on the three operations the contract declares a 429 for |
+| Rate limiting | Done, in three tiers: browsing, sign-in, and the three password operations |
 | Products, variants, categories | Done, with unit tests |
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | End-to-end tests | Done for the authentication flow, against a real database |
