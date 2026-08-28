@@ -78,7 +78,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
 The unit suite is 129 tests over the authentication, user and catalog surfaces, and the
-end-to-end suite is 17 more against a real database. Neither has a placeholder entry left.
+end-to-end suite is 20 more against a real database. Neither has a placeholder entry left.
 What is untested is what is unwritten.
 
 ```bash

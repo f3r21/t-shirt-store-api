@@ -46,7 +46,7 @@ flowchart TB
 ```
 
 Built is the API, Postgres, the roles guard, the password mail and the pipeline, under 129 unit and
-17 end-to-end tests on a real database.
+20 end-to-end tests on a real database.
 
 The shared ceiling is Postgres. `src/prisma/prisma.service.ts:14` builds `PrismaPg` from a
 connection string and nothing else, so the pool is `pg`'s default of ten *per process* and the
@@ -130,6 +130,8 @@ and the mailer, nothing stamps an id, and the job it would follow is unwritten.
 `createProduct` (`src/products/products.controller.ts:60`). The no-roles branch returns true, the
 global token guard still accepts any signed-in client, and `POST /v1/products` opens to every
 registered customer with nothing turning red. The 21 product unit tests call the service directly,
-there is no `roles.guard.spec.ts`, and the end-to-end suite is two files with no catalog request.
+there is no `roles.guard.spec.ts`, and the only catalog request in the end-to-end suite is an
+unauthenticated `GET /v1/products` that the rate-limit spec makes to prove browsing is not
+throttled.
 The test that would catch it is four lines: sign in as a client, POST a product, expect 403. Its
 absence is the largest hole in the suite.

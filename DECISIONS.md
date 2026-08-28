@@ -111,7 +111,7 @@ handler. An optional route tolerates a missing token and still rejects a broken 
 missing one makes a public route answer 401. That failure is loud and a test catches it,
 which is the argument for it: the failure that gets noticed is the safe one.
 
-## 7. Rate limiting is per source address, and it covers every route
+## 7. Rate limiting is per source address, in three tiers
 
 **Per address, not per account.** Keying the reset throttle on the email address would
 answer 429 for a registered address and 202 for an unknown one, which rebuilds exactly the
@@ -120,17 +120,29 @@ overriding `getTracker`, and guards run before pipes, so the body is unvalidated
 point. **Given up:** a distributed attacker spreading requests across addresses is not
 slowed by a per-address limit.
 
-**Sign-in answers 429, and the contract does not declare it.** Every security source says
-throttle sign-in hardest, and the global guard already does. `ThrottlerGuard` is bound as an
-`APP_GUARD` in `app.module.ts`, and no `@SkipThrottle` exists anywhere in `src` or `test`, so
-every one of the 20 route handlers runs behind the throttler, sign-in included, at the module
-default of `THROTTLE_LIMIT` 5 requests per `THROTTLE_TTL` 60 seconds unless a decorator
-tightens it. The contract declares a 429 on exactly three operations, `requestPasswordReset`,
-`resetPassword` and `changePassword`, and `createSession` is not one of them, so the server can
-answer a status the document does not declare. **The fix is to amend the contract** and add the
-429 to `createSession`, not to exempt sign-in from the guard. What those three operations carry
-on top is a tighter window, `PASSWORD_THROTTLE` at 5 requests per 900 seconds, and that is the
-part the contract does declare.
+**One limit could not be right for both browsing and sign-in.** `ThrottlerGuard` is bound as
+an `APP_GUARD` in `app.module.ts` and no `@SkipThrottle` exists anywhere in `src` or `test`, so
+all 20 route handlers run behind it. The module default used to be 5 requests per 60 seconds,
+which is the number this entry got wrong: it is a plausible sign-in limit and an unusable
+browse limit, and it applied to `GET /products` as much as to a password reset. Raising it to
+serve browsing would have loosened sign-in by the same factor, which is the operation every
+credential-stuffing run targets first.
+
+So there are three tiers, all keyed `default` so the guard emits a plain `Retry-After` rather
+than `Retry-After-<name>`. Browsing takes `THROTTLE_LIMIT`, now 100 per 60 seconds. Sign-in
+takes `SIGN_IN_THROTTLE`, 10 per 60 seconds, because a person who mistypes a password retries
+within seconds and a script does not stop at ten. The three password operations take
+`PASSWORD_THROTTLE`, 5 per 900 seconds.
+
+**The contract was amended rather than the guard weakened.** It declared a 429 on
+`requestPasswordReset`, `resetPassword` and `changePassword`, and sign-in answered a status the
+document did not declare. `createSession` now declares it, and `info.description` states the
+tiers once instead of adding a 429 to all 37 paths.
+
+**Only a test proves any of this.** `@Throttle` takes a plain record, so a misspelled key
+compiles and is ignored at run time. `test/rate-limit.e2e-spec.ts` runs against the real
+counter, which every other suite replaces, and asserts the eleventh sign-in is refused, the
+header is unsuffixed, and twenty catalog reads are not.
 
 **In-memory storage.** One process, so the counter is correct. This is the first thing to
 change if the service ever runs more than once, and a Lua error from a Redis store would
