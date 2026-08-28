@@ -15,6 +15,11 @@ export class ProblemFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(err);
+    } else {
+      // `toProblem` never puts a message in the body, because Nest fills one with
+      // request-derived text. The message is still worth having, so it is logged
+      // here rather than returned.
+      this.logger.debug(err);
     }
     if (status === 401) {
       res.setHeader('WWW-Authenticate', 'Bearer');
