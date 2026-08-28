@@ -63,7 +63,7 @@ token is not caught.
 `openapi.yaml:234-236` says the server deletes every refresh row for that user when it
 receives an already-used token, and it states no carve-out for how old that token is. This
 implementation recognises one generation, so a token replayed after two rotations revokes
-nothing. `CLAUDE.md` puts the contract above the code, which makes this a known defect
+nothing. The contract outranks the code, which makes this a known defect
 rather than a design choice, and it is recorded here so it is declared rather than
 discovered. The alternative is a used-token table with an expiry sweep, which
 catches every generation at the cost of a table that grows with traffic. For one Postgres
@@ -122,7 +122,7 @@ slowed by a per-address limit.
 
 **Login carries no 429, and this is the uncomfortable one.** Every security source says
 throttle sign-in hardest. The contract declares a 429 on exactly three operations, and
-sign-in is not among them, and `CLAUDE.md` says the contract wins where the code and the
+sign-in is not among them, and the contract wins where the code and the
 contract disagree. The choice here is to follow the contract and record the divergence
 rather than emit a status the document does not declare. **The alternative, and it is
 defensible:** amend the contract to add the 429 to `createSession`. What is not defensible
