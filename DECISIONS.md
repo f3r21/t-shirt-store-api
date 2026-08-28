@@ -101,7 +101,7 @@ branching that a library would otherwise own.
 
 `@Public()` for the seven operations the contract marks `security: []`, `@OptionalAuth()`
 for the two that are spelled with an empty security object beside the bearer scheme, and
-the global guard for the remaining twenty-seven.
+the global guard for the remaining twenty-eight.
 
 `@Public()` cannot express the optional case, because it returns before any token work and
 leaves the request user unset, so a manager who does send a token would be invisible to the
@@ -111,7 +111,7 @@ handler. An optional route tolerates a missing token and still rejects a broken 
 missing one makes a public route answer 401. That failure is loud and a test catches it,
 which is the argument for it: the failure that gets noticed is the safe one.
 
-## 7. Rate limiting is per source address, and login carries none
+## 7. Rate limiting is per source address, and it covers every route
 
 **Per address, not per account.** Keying the reset throttle on the email address would
 answer 429 for a registered address and 202 for an unknown one, which rebuilds exactly the
@@ -120,13 +120,17 @@ overriding `getTracker`, and guards run before pipes, so the body is unvalidated
 point. **Given up:** a distributed attacker spreading requests across addresses is not
 slowed by a per-address limit.
 
-**Login carries no 429, and this is the uncomfortable one.** Every security source says
-throttle sign-in hardest. The contract declares a 429 on exactly three operations, and
-sign-in is not among them, and the contract wins where the code and the
-contract disagree. The choice here is to follow the contract and record the divergence
-rather than emit a status the document does not declare. **The alternative, and it is
-defensible:** amend the contract to add the 429 to `createSession`. What is not defensible
-is shipping it silently either way.
+**Sign-in answers 429, and the contract does not declare it.** Every security source says
+throttle sign-in hardest, and the global guard already does. `ThrottlerGuard` is bound as an
+`APP_GUARD` in `app.module.ts`, and no `@SkipThrottle` exists anywhere in `src` or `test`, so
+every one of the 20 route handlers runs behind the throttler, sign-in included, at the module
+default of `THROTTLE_LIMIT` 5 requests per `THROTTLE_TTL` 60 seconds unless a decorator
+tightens it. The contract declares a 429 on exactly three operations, `requestPasswordReset`,
+`resetPassword` and `changePassword`, and `createSession` is not one of them, so the server can
+answer a status the document does not declare. **The fix is to amend the contract** and add the
+429 to `createSession`, not to exempt sign-in from the guard. What those three operations carry
+on top is a tighter window, `PASSWORD_THROTTLE` at 5 requests per 900 seconds, and that is the
+part the contract does declare.
 
 **In-memory storage.** One process, so the counter is correct. This is the first thing to
 change if the service ever runs more than once, and a Lua error from a Redis store would
@@ -225,9 +229,11 @@ and they are not synonyms: **deleted** is 404 for everyone including a manager, 
 is 404 for everyone except a manager, and **out of stock** is a visible product with a
 variant at zero.
 
-The rule lives in one predicate, `visibleProductWhere`, because the same test has to hold on
-the list, on the detail read, and on every write that resolves a product first. Three copies
-would drift, and the drift would be silent.
+The rule lives in one predicate, `visibleProductWhere`, and the list and the detail read both
+call it. The writes do not: `updateProduct` and `deleteProduct` are manager only and resolve
+through `assertProductExists`, which filters on `NOT_DELETED` alone, so a manager can still
+update a product they disabled. `NOT_DELETED` is the piece all of those paths share, and it is
+exported on its own for that reason.
 
 **Deleting a variant is hard**, because nothing points at one yet. That changes the day order
 items exist, and the contract already declares a 409 there for a variant that appears on an
