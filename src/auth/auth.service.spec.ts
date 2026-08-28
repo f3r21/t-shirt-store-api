@@ -149,13 +149,25 @@ describe('AuthService', () => {
       expect(payload.role).toBe('client');
     });
 
-    it('creates one refresh row for this device', async () => {
+    it('creates one refresh row for this device, owned by the caller and with an expiry', async () => {
+      const before = Date.now();
       await service.createSession({
         email: 'ana@example.com',
         password: PASSWORD,
       });
 
       expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1);
+
+      const created = nthArg(prisma.refreshToken.create) as {
+        data: { userId: number; expiresAt: Date };
+      };
+      // Without these two the row could belong to anybody and never expire, and
+      // every other assertion in this block would still pass.
+      expect(created.data.userId).toBe(128);
+      expect(created.data.expiresAt.getTime()).toBeGreaterThan(before);
+      expect(created.data.expiresAt.getTime()).toBeLessThanOrEqual(
+        Date.now() + 604800 * 1000,
+      );
     });
 
     it('stores a hash of the refresh token and never the token itself', async () => {
@@ -333,6 +345,7 @@ describe('AuthService', () => {
     it('rejects an expired token with the refresh-token-unknown problem type', async () => {
       // Expiry is part of the conditional update's WHERE clause, so an expired
       // row matches nothing and takes the same path as an unknown token.
+      const before = Date.now();
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
       prisma.refreshToken.findFirst.mockResolvedValue(null);
 
@@ -352,7 +365,11 @@ describe('AuthService', () => {
       const call = nthArg(prisma.refreshToken.updateManyAndReturn, 0, 0) as {
         where: { expiresAt: { gt: Date } };
       };
-      expect(call.where.expiresAt.gt).toBeInstanceOf(Date);
+      // The bound must be *now*, not merely a Date. `toBeInstanceOf(Date)`
+      // alone is satisfied by `new Date(0)`, which would let a row that expired
+      // months ago rotate forever while this test stayed green.
+      expect(call.where.expiresAt.gt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(call.where.expiresAt.gt.getTime()).toBeLessThanOrEqual(Date.now());
     });
   });
 
@@ -592,6 +609,7 @@ describe('AuthService', () => {
     it('rejects an expired token with 422', async () => {
       // Expiry rides in the same WHERE clause, so an expired token matches
       // nothing and answers exactly as an unknown one does.
+      const before = Date.now();
       prisma.user.updateManyAndReturn.mockResolvedValue([]);
       const err = await rejection(
         service.resetPassword({ token: TOKEN, password: 'a new password' }),
@@ -601,7 +619,14 @@ describe('AuthService', () => {
       const call = nthArg(prisma.user.updateManyAndReturn, 0, 0) as {
         where: { resetTokenExpiresAt: { gt: Date } };
       };
-      expect(call.where.resetTokenExpiresAt.gt).toBeInstanceOf(Date);
+      // Same reasoning as the refresh bound: a Date is not enough, it has to
+      // be now, or a link mailed six months ago still sets a password.
+      expect(
+        call.where.resetTokenExpiresAt.gt.getTime(),
+      ).toBeGreaterThanOrEqual(before);
+      expect(call.where.resetTokenExpiresAt.gt.getTime()).toBeLessThanOrEqual(
+        Date.now(),
+      );
     });
 
     it('clears the reset token, so it works one time only (openapi.yaml:341)', async () => {
