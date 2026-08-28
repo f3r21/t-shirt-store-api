@@ -104,7 +104,8 @@ here, because it chooses the table's primary key.
 
 ## The deploy shape
 
-A container image, a managed Postgres and a managed Redis. Not Kubernetes, not serverless.
+A container image, a managed Postgres, a managed Redis and an object store. Not Kubernetes, not
+serverless.
 
 - **Managed Postgres over self-hosted.** Backups, point-in-time recovery and failover are
   the whole product. For a store, losing an order is worse than any latency I would win.
@@ -113,8 +114,15 @@ A container image, a managed Postgres and a managed Redis. Not Kubernetes, not s
   fixed pool has a predictable ceiling.
 - **The worker is a second deployment of the same image.** Separate scaling, separate
   failure domain, one artifact.
-- **Migrations run as a release step**, before the new image takes traffic, and every
-  migration so far is additive so an old replica keeps working during the rollout.
+- **Object storage rather than a volume.** Images outlive any container and are served
+  directly, so putting them on a disk the API owns would make the API stateful, which is the
+  one property the rest of this shape depends on.
+- **Migrations run as a release step**, before the new image takes traffic. Three of the four
+  so far are additive, so an old replica keeps working through the rollout. The fourth is not:
+  `reset_token_hash_and_indexes` drops a column, which would break a replica still running the
+  previous image mid-deploy. The additive-only discipline is the one to hold to, and the
+  expand-and-contract version of that rename, adding the new column, backfilling, then dropping
+  the old one in a later release, is what a zero-downtime deploy would have required.
 
 ## What I would monitor
 
@@ -137,7 +145,8 @@ credential-stuffing attempt; a rising 5xx rate is mine.
 - **Stock going negative**, which should be impossible and therefore should page.
 
 **Logging.** Structured, one correlation id per request, carried into the job so a
-notification can be traced back to the webhook that caused it. Log authentication successes
+notification can be traced back to the request that caused it, whether that was a manager
+setting stock by hand or a payment webhook. Log authentication successes
 and failures, authorization failures, validation failures and payment events. Never log a
 password, a token, a session id or a card detail. The token hashing in this service means a
 leaked log cannot be replayed even if that rule is broken by accident.
