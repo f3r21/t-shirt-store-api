@@ -13,6 +13,8 @@ export interface PrismaMock {
     findFirst: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
+    updateManyAndReturn: jest.Mock;
   };
   refreshToken: {
     findUnique: jest.Mock;
@@ -21,6 +23,8 @@ export interface PrismaMock {
     count: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
+    updateManyAndReturn: jest.Mock;
     delete: jest.Mock;
     deleteMany: jest.Mock;
   };
@@ -44,6 +48,8 @@ export function createPrismaMock(): PrismaMock {
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
+      updateManyAndReturn: jest.fn(),
     },
     refreshToken: {
       findUnique: jest.fn(),
@@ -52,6 +58,8 @@ export function createPrismaMock(): PrismaMock {
       count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
+      updateManyAndReturn: jest.fn(),
       delete: jest.fn(),
       deleteMany: jest.fn(),
     },
