@@ -27,7 +27,7 @@ model User {
   firstName String @map("first_name")
   lastName String @map("last_name")
   roleId Int @map("role_id")
-  resetToken String? @map("reset_token")
+  resetTokenHash String? @unique @map("reset_token_hash")
   resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.Timestamptz(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -49,5 +49,10 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Every rotation looks a presented token up by previous_token_hash, and
+  // listSessions filters by user_id. Prisma indexes no foreign key on its own,
+  // and the auth migration created neither.
+  @@index([userId])
+  @@index([previousTokenHash])
   @@map("refresh_tokens")
 }

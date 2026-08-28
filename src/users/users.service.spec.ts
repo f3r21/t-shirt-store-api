@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import argon2 from 'argon2';
 import { UsersService } from './users.service';
 import {
   createPrismaMock,
@@ -11,13 +12,16 @@ import {
   MailerMock,
 } from '../mail/mailer.mock';
 import { aUser } from './users.fixtures';
+import { nthArg } from '../common/mock-args';
+import { ProblemException } from '../common/problem/problem.exception';
+import { ProblemType } from '../common/problem/problem-type';
+import { CreateUserDto } from './dto/create-user.dto';
 
 /**
- * Scaffolding for the two /users operations.
+ * The two /users operations.
  *
  * Every entry below is a behaviour the contract states, with the line that states
- * it. No entry is an assertion. Convert an `it.todo` to an `it` as you implement,
- * and write the assertion yourself.
+ * it.
  *
  * `prismaMockProvider` and `mailerMockProvider` hold the only casts, so this file
  * needs none. Both mocks are rebuilt in `beforeEach`, so no state crosses a test.
@@ -25,13 +29,17 @@ import { aUser } from './users.fixtures';
  * `aUser()` returns a fixed row whose `passwordHash` is a real argon2id string,
  * so an assertion on a replaced hash compares against a value of the right shape.
  */
+const PASSWORD = 'correct horse battery';
+
 describe('UsersService', () => {
-  // The `!` says these are assigned in `beforeEach`. The `void` statements below
-  // keep the linter quiet until the first assertion reads them. Both go away as
-  // the ten `it.todo` entries become real tests.
-  let service!: UsersService;
-  let prisma!: PrismaMock;
-  let mailer!: MailerMock;
+  let service: UsersService;
+  let prisma: PrismaMock;
+  let mailer: MailerMock;
+  let digest: string;
+
+  beforeAll(async () => {
+    digest = await argon2.hash(PASSWORD);
+  });
 
   beforeEach(async () => {
     prisma = createPrismaMock();
@@ -48,42 +56,186 @@ describe('UsersService', () => {
     service = module.get(UsersService);
   });
 
-  void service;
-  void prisma;
-  void mailer;
-  void aUser;
+  const validBody = (): CreateUserDto => ({
+    email: 'ana@example.com',
+    password: PASSWORD,
+    firstName: 'Ana',
+    lastName: 'Ramirez',
+  });
 
   describe('createUser, POST /users', () => {
-    it.todo('returns the six fields the User schema names, and no seventh');
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.role.findUnique.mockResolvedValue({ id: 2, name: 'client' });
+      prisma.user.create.mockResolvedValue(aUser());
+    });
 
-    it.todo('stores an argon2id hash and never the password itself');
+    it('returns the six fields the User schema names, and no seventh', async () => {
+      const result = await service.createUser(validBody());
 
-    it.todo(
-      'gives the account the client role, whatever the request body says',
-    );
+      expect(Object.keys(result).sort()).toEqual(
+        ['id', 'email', 'firstName', 'lastName', 'role', 'createdAt'].sort(),
+      );
+    });
 
-    it.todo(
-      'rejects an address that is already registered with the email-taken problem type and a 409',
-    );
+    it('stores an argon2id hash and never the password itself', async () => {
+      await service.createUser(validBody());
 
-    it.todo(
-      'reports the new id, so the controller can set the Location header',
-    );
+      const call = nthArg(prisma.user.create) as {
+        data: { passwordHash: string };
+      };
+
+      // Both halves. A hash of the wrong algorithm passes the second alone, and
+      // storing the password under another key would pass the first alone.
+      expect(call.data.passwordHash).toMatch(/^\$argon2id\$/);
+      expect(call.data.passwordHash).not.toBe(PASSWORD);
+      expect(JSON.stringify(call)).not.toContain(PASSWORD);
+      await expect(
+        argon2.verify(call.data.passwordHash, PASSWORD),
+      ).resolves.toBe(true);
+    });
+
+    it('gives the account the client role, whatever the request body says', async () => {
+      // The DTO would have stripped a role, so the cast is what lets this test
+      // prove the service reads the roles table rather than the body.
+      await service.createUser({
+        ...validBody(),
+        role: 'manager',
+      } as CreateUserDto & { role: string });
+
+      expect(prisma.role.findUnique).toHaveBeenCalledWith({
+        where: { name: 'client' },
+      });
+
+      const call = nthArg(prisma.user.create) as { data: { roleId: number } };
+      expect(call.data.roleId).toBe(2);
+    });
+
+    it('rejects an address that is already registered with the email-taken problem type and a 409', async () => {
+      prisma.user.findUnique.mockResolvedValue(aUser());
+
+      const err = await service
+        .createUser(validBody())
+        .then(() => null)
+        .catch((e: unknown) => e as ProblemException);
+
+      expect(err).toBeInstanceOf(ProblemException);
+      expect(err?.type).toBe(ProblemType.EmailTaken);
+      expect(err?.getStatus()).toBe(409);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('reports the new id, so the controller can set the Location header', async () => {
+      const result = await service.createUser(validBody());
+
+      expect(result.id).toBe(128);
+    });
+
+    it('matches and stores the address in one case, so two capitalisations are one account', async () => {
+      await service.createUser({ ...validBody(), email: 'Ana@EXAMPLE.com' });
+
+      // The lookup and the insert must use the same form, or the uniqueness
+      // check passes for an address that then collides on the index.
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'ana@example.com' },
+      });
+      const call = nthArg(prisma.user.create) as { data: { email: string } };
+      expect(call.data.email).toBe('ana@example.com');
+    });
   });
 
   describe('changePassword, PATCH /users/me/password', () => {
-    it.todo('replaces the stored hash when the current password matches');
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(aUser({ passwordHash: digest }));
+      prisma.user.update.mockResolvedValue(aUser());
+      prisma.refreshToken.deleteMany.mockResolvedValue({ count: 3 });
+    });
 
-    it.todo(
-      'rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:441)',
-    );
+    it('replaces the stored hash when the current password matches', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
 
-    it.todo(
-      'deletes every refresh row for this user, including the row of the calling device (openapi.yaml:444)',
-    );
+      const call = nthArg(prisma.user.update) as {
+        where: { id: number };
+        data: { passwordHash: string };
+      };
+      expect(call.where).toEqual({ id: 128 });
+      expect(call.data.passwordHash).not.toBe(digest);
+      await expect(
+        argon2.verify(call.data.passwordHash, 'a brand new password'),
+      ).resolves.toBe(true);
+    });
 
-    it.todo('sends mail to the account address (openapi.yaml:446)');
+    it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:441)', async () => {
+      const err = await service
+        .changePassword(128, {
+          currentPassword: 'not the current one',
+          newPassword: 'a brand new password',
+        })
+        .then(() => null)
+        .catch((e: unknown) => e as ProblemException);
 
-    it.todo('never reads the new password back out of the database');
+      expect(err).toBeInstanceOf(ProblemException);
+      expect(err?.getStatus()).toBe(401);
+      expect(err?.type).toBe(ProblemType.InvalidCredentials);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('deletes every refresh row for this user, including the row of the calling device (openapi.yaml:444)', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
+
+      // Argument equality rather than a call count, because the behaviour is
+      // that nothing is excluded. A filter naming an id to keep would still be
+      // one call.
+      expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128 },
+      });
+    });
+
+    it('sends mail to the account address (openapi.yaml:446)', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
+
+      expect(mailer.sendPasswordChanged).toHaveBeenCalledWith(
+        'ana@example.com',
+      );
+    });
+
+    it('never reads the new password back out of the database', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
+
+      // There is no observable result here, which is why this is a call
+      // assertion. A select or include on the update would put the fresh hash
+      // into a value the caller could return by accident.
+      const call = nthArg(prisma.user.update) as Record<string, unknown>;
+      expect(call).not.toHaveProperty('select');
+      expect(call).not.toHaveProperty('include');
+    });
+
+    it('clears any live reset token, so an unexpected reset mail cannot still be used', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
+
+      const call = nthArg(prisma.user.update) as {
+        data: {
+          resetTokenHash: string | null;
+          resetTokenExpiresAt: Date | null;
+        };
+      };
+      expect(call.data.resetTokenHash).toBeNull();
+      expect(call.data.resetTokenExpiresAt).toBeNull();
+    });
   });
 });

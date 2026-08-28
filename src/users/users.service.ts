@@ -8,6 +8,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UserDto } from './dto/user.dto';
 import { toUserDto } from './user.mapper';
+import { normalizeEmail } from '../common/email';
 
 /**
  * The two operations under /users.
@@ -35,11 +36,18 @@ export class UsersService {
    * of a race and reads worse.
    */
   async createUser(dto: CreateUserDto): Promise<UserDto> {
+    const email = normalizeEmail(dto.email);
+
     const taken = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { email },
     });
     if (taken !== null) {
-      throw new ProblemException(ProblemType.EmailTaken, 'Conflict', 409);
+      throw new ProblemException(
+        ProblemType.EmailTaken,
+        'Email already registered',
+        409,
+        'An account with this email already exists.',
+      );
     }
 
     const role = await this.prisma.role.findUnique({
@@ -51,7 +59,7 @@ export class UsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         passwordHash: await argon2.hash(dto.password),
         firstName: dto.firstName,
         lastName: dto.lastName,
@@ -72,17 +80,23 @@ export class UsersService {
    * The method deletes every refresh row for this user, including the row of
    * the device that sent this request. Every device must sign in again.
    *
-   * `argon2.verify` takes the digest first and the plain text second. That is
-   * the opposite order of `bcrypt.compare`, and the wrong order returns false
-   * for every password.
+   * The method also clears any live password reset token. A user who reacts to
+   * an unexpected reset mail by changing their own password would otherwise
+   * leave the attacker's link working for the rest of its window.
+   *
+   * `argon2.verify` takes the digest first and the plain text second, which is
+   * the opposite order of `bcrypt.compare`. The wrong order does not return
+   * false, it throws `TypeError: pchstr must contain a $ as first char`, because
+   * the first argument goes straight into the PHC parser before any comparison.
    */
   async changePassword(userId: number, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (user === null) {
       throw new ProblemException(
         ProblemType.InvalidCredentials,
-        'Unauthorized',
+        'Invalid credentials',
         401,
+        'The server did not accept this email and password.',
       );
     }
 
@@ -90,14 +104,19 @@ export class UsersService {
     if (!matches) {
       throw new ProblemException(
         ProblemType.InvalidCredentials,
-        'Unauthorized',
+        'Invalid credentials',
         401,
+        'The server did not accept this email and password.',
       );
     }
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: await argon2.hash(dto.newPassword) },
+      data: {
+        passwordHash: await argon2.hash(dto.newPassword),
+        resetTokenHash: null,
+        resetTokenExpiresAt: null,
+      },
     });
 
     await this.prisma.refreshToken.deleteMany({ where: { userId } });

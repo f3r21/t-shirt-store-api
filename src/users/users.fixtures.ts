@@ -16,7 +16,7 @@ export function aUser(overrides: Partial<UserWithRole> = {}): UserWithRole {
     firstName: 'Ana',
     lastName: 'Ramirez',
     roleId: 2,
-    resetToken: null,
+    resetTokenHash: null,
     resetTokenExpiresAt: null,
     createdAt: new Date('2026-08-21T13:45:00.000Z'),
     role: { id: 2, name: 'client' },
