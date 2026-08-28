@@ -11,7 +11,25 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "astTransformers": {
+          "before": [
+            {
+              "path": "<rootDir>/swagger-ast-transformer.js",
+              "options": {
+                "classValidatorShim": true,
+                "introspectComments": true,
+                "dtoFileNameSuffix": [
+                  ".dto.ts"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
   },
   "setupFiles": [
     "<rootDir>/setup-e2e.ts"
