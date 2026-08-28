@@ -30,6 +30,8 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@casl/ability": "^6.8.1",
+    "@casl/prisma": "^1.6.2",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
