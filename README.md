@@ -1,98 +1,124 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# T-Shirt Store API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A store API built on NestJS, Prisma and PostgreSQL. It is the capstone of RAVN's NodeJS
+programme, and it answers to a hand-written OpenAPI contract that was designed in week 2.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+**The contract is authoritative.** It lives at
+`../BE-Nerdery-Challenges/5-api-design/openapi.yaml`. Where this code and that document
+disagree, the document is right and the code is wrong.
 
-## Description
+## Run it
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+Four commands, in this order. Two of them carry a trap, noted below.
 
 ```bash
-$ npm install
+npm install
+cp .env.example .env      # then fill in the two blank secrets, see below
+npm run docker:up         # Postgres, Redis and Mailpit
+npm run db:migrate        # applies the migrations
+npm run db:seed           # NOT optional, see below
+npm run start:dev
 ```
 
-## Compile and run the project
+The API is then on `http://localhost:3000/v1`. Mailpit's web interface, where every message
+this API sends can be read, is on `http://localhost:8025`.
+
+**Postgres is published on 5433, not 5432.** The compose file avoids a clash with a
+container from week 1 of the programme. A default `DATABASE_URL` gets connection refused.
+`.env.example` already carries the right one.
+
+**The seed is a hard prerequisite, not a convenience.** `users.role_id` is not null and the
+service reads the role out of the `roles` table, so sign-up fails with "The roles table
+holds no client role. Run the seed." until `db:seed` has run.
+
+### The two secrets
+
+`.env.example` fills in every value except two, which are blank because they are secrets.
+Both need at least 32 characters:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-## Run tests
+- `JWT_SECRET` signs the access token.
+- `REFRESH_TOKEN_PEPPER` keys the hash of the refresh and reset tokens. It is deliberately
+  a separate value: rotating the signing key would otherwise invalidate every stored token
+  hash at the same moment.
+
+## Check it
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run typecheck    # tsc --noEmit
+npm test             # jest
+npm run lint         # eslint --fix
 ```
 
-## Deployment
+`npm run typecheck` is worth running after any schema change. **A green typecheck is not
+evidence that the generated Prisma client matches the schema**: every file under
+`src/generated/` carries `// @ts-nocheck` and the directory is ignored by ESLint. Run
+`npm run db:generate` after editing `prisma/schema.prisma`.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## What is implemented
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Area | State |
+|---|---|
+| Sign up, sign in, sign out | Done, with unit tests |
+| Refresh token rotation and reuse detection | Done, with unit tests |
+| Device session list, per-device sign out | Done, with unit tests |
+| Forgot password, reset password, change password | Done, with unit tests |
+| Mail on password change and password reset | Done, delivered through Mailpit locally |
+| RFC 9457 problem documents on every error | Done |
+| Helmet, CORS, environment schema validation | Done |
+| Rate limiting | Done, on the three operations the contract declares a 429 for |
+| Products, variants, categories | Not started. No models, no services |
+| Cart, orders, order history | Not started |
+| CASL authorization | Not started. The role claim it needs is already in the token |
+| Stripe, the notification queue, S3 uploads | Not started |
+| End-to-end tests | Not started. The unit suite covers the service layer |
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+The unit suite is 84 tests over the authentication and user surface, and it has no
+placeholder entries left. What is untested is what is unwritten.
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## How it works, in five paragraphs
 
-## Resources
+**Tokens.** The access token is a JWT valid for 15 minutes, carrying the user id, the role,
+and the id of the device's session. The refresh token is an opaque random string valid for
+7 days, stored only as a keyed hash, and it rotates on every use. Rotation updates one row
+in place, so a session keeps its id and a client can sign one device out by that id.
 
-Check out a few resources that may come in handy when working with NestJS:
+**Reuse detection.** The previous hash is retained for one generation. A refresh token
+presented twice means the server is holding a stolen one, so it deletes every refresh row
+for that user and each device must sign in again.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+**403 protects an action, 404 protects a fact.** A caller who lacks the role for an
+operation gets 403. A caller who asks for a row belonging to somebody else gets 404, because
+an integer id is guessable and a 403 would confirm the row exists.
 
-## Support
+**Errors are problem documents**, `application/problem+json` per RFC 9457, with a `type`
+URI only on the failures a status code cannot tell apart. A 404 and a 429 deliberately carry
+no type.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Money is an integer in minor units** on the wire, so 1999 means 19.99. That is what Stripe
+speaks and it is what a JSON float cannot represent exactly.
 
-## Stay in touch
+## Where the reasoning lives
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- `DECISIONS.md`, in this repository, records the implementation choices: why the token
+  hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries no rate
+  limit, and what each of those cost.
+- `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
+- `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.
 
-## License
+## Known gaps
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Stated here rather than discovered later. The longer list, with the reasoning, is in
+`DECISIONS.md`.
+
+- `POST /auth/forgot-password` answers identically for a known and an unknown address, but
+  the two paths do not take the same time. The endpoint is rate limited instead.
+- Two browser tabs refreshing in the same moment can trip reuse detection and sign the user
+  out of every device, with no attacker involved. This follows the contract literally and is
+  at one end of the industry range.
+- The rate limit counter is in process memory. Correct for one instance, wrong for two.
+- Email addresses are folded to lower case in the service. The durable form is a unique
+  index on `lower(email)`, which is not yet written.
