@@ -1,0 +1,13 @@
+# node_modules is 599M of the 605M build context.
+node_modules
+dist
+coverage
+
+# Written by `prisma generate` and absent on a clean checkout. Without this line
+# a stale client rides in through `COPY src ./src`.
+src/generated
+
+.git
+.env
+.env.*
+*.log

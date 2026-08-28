@@ -1,0 +1,116 @@
+name: CI
+
+# Every branch. `main` has never taken a merge and the repository has never had a
+# pull request, so a `branches: [main]` plus `pull_request` pair would fire zero
+# times on the way this repository is actually worked.
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+# A newer push makes an older run obsolete, except on main, where the run is the
+# record of what that commit passed.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      # Same major version and published port as docker-compose.yml, so a failure
+      # here reproduces locally with one connection string. The database name is
+      # the one test/setup-e2e.ts falls back to.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tshirt_store_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5433/tshirt_store_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/tshirt_store_test
+      # `npm ci` runs the `prepare` script, which installs git hooks. A runner
+      # makes no commits.
+      HUSKY: '0'
+
+    steps:
+      # Actions are pinned to a commit. A tag moves, and an action runs on the
+      # runner holding the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Prisma CLI downloads a schema engine and keeps it here. The client
+      # itself ships no engine, because schema.prisma uses the `prisma-client`
+      # generator and PrismaService supplies a driver adapter.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/prisma
+          key: prisma-engines-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: prisma-engines-${{ runner.os }}-
+
+      - run: npm ci
+
+      # src/generated is not in version control, and 15 files import from it, so
+      # nothing below this step compiles without it.
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint:ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm test -- --ci
+
+      - name: Apply the migrations
+        run: npx prisma migrate deploy
+
+      # Catches a schema edit that was never turned into a migration. Exit code 2
+      # means the two disagree.
+      - name: Schema matches the migrated database
+        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      - name: End to end tests
+        run: npm run test:e2e
+
+  image:
+    name: Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the runtime image
+        run: docker build --tag t-shirt-store-api:${{ github.sha }} .
+
+# The deploy leg is designed and not built. It would push this image to a
+# registry, run `prisma migrate deploy` as a release step before the new
+# container takes traffic, and roll back by redeploying the previous tag. It is
+# absent because there is no environment to deploy to.
