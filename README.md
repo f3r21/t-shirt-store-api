@@ -70,14 +70,29 @@ evidence that the generated Prisma client matches the schema**: every file under
 | RFC 9457 problem documents on every error | Done |
 | Helmet, CORS, environment schema validation | Done |
 | Rate limiting | Done, on the three operations the contract declares a 429 for |
-| Products, variants, categories | Not started. No models, no services |
+| Products, variants, categories | Done, with unit tests |
+| Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
+| End-to-end tests | Done for the authentication flow, against a real database |
 | Cart, orders, order history | Not started |
-| CASL authorization | Not started. The role claim it needs is already in the token |
-| Stripe, the notification queue, S3 uploads | Not started |
-| End-to-end tests | Not started. The unit suite covers the service layer |
+| CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
+| Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
-The unit suite is 84 tests over the authentication and user surface, and it has no
-placeholder entries left. What is untested is what is unwritten.
+The unit suite is 128 tests over the authentication, user and catalog surfaces, and the
+end-to-end suite is 17 more against a real database. Neither has a placeholder entry left.
+What is untested is what is unwritten.
+
+```bash
+npm test          # unit
+npm run test:e2e  # needs a tshirt_store_test database, see below
+```
+
+The end-to-end suite runs against its own database, because it truncates between tests and
+doing that to the development database would delete the seed on every run:
+
+```bash
+docker compose exec -T postgres psql -U postgres -c 'CREATE DATABASE tshirt_store_test'
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx prisma migrate deploy
+```
 
 ## How it works, in five paragraphs
 
@@ -103,6 +118,8 @@ speaks and it is what a JSON float cannot represent exactly.
 
 ## Where the reasoning lives
 
+- `ARCHITECTURE.md`, in this repository, is the production shape: the diagram, why the
+  notification is queue-backed, the deploy shape, and what would be monitored.
 - `DECISIONS.md`, in this repository, records the implementation choices: why the token
   hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries no rate
   limit, and what each of those cost.

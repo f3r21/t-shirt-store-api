@@ -186,3 +186,80 @@ three entries all named `password` would let a caller count decorators.
   Argon2id row. They are not yet stated explicitly at the call sites, which they should be,
   because `verify` reads them back out of the stored digest and changing them invalidates
   nothing.
+
+## 13. Money is an integer column named for what it holds
+
+`product_variants.price_cents` is an `Int` in minor units, so 1999 means 19.99. The ERD says
+`numeric(10,2)`, so this is a deliberate departure and the reason is the wire: the contract
+types Money as an integer, and Prisma 7 hands a `numeric` column back as a `Decimal`
+instance that serialises to a **string**, not a number. Storing the integer means no
+conversion inbound, none outbound, and none at Stripe, which speaks minor units too.
+
+**Cost:** the schema no longer matches the ERD column for column, and a future requirement
+for sub-cent precision would need a migration. **Why the name matters:** a column called
+`price` holding 1999 is a trap for the next reader. One called `price_cents` is not.
+
+## 14. A variant's size and colour are NOT NULL with an empty-string default
+
+The contract promises 409 when a product already has a variant with a given size and colour
+pair, and both fields are optional. The obvious model is two nullable columns and a unique
+index, and it does not work: PostgreSQL treats two NULLs in a unique index as **distinct**,
+so one product could hold two variants that both have no size and no colour, which is
+exactly the duplicate the 409 exists to prevent.
+
+PostgreSQL 16 has `NULLS NOT DISTINCT`, and Prisma 7.10 cannot express it, so an index
+written by hand would exist in the database and not in the schema, and the next
+`prisma migrate dev` would drop it. Storing the empty string gets the same guarantee inside
+the schema language, and lets the unique index be the arbiter rather than a pre-read that
+two concurrent creates could both pass.
+
+**Cost:** the storage spelling and the wire spelling differ. `variant.mapper.ts` is the one
+place they meet, and it drops the empty string so the response still shows absence, which is
+what the contract requires of every optional value.
+
+## 15. Deleting a product is soft, disabling it is not the same thing
+
+`products.deleted_at` is set and the row survives, because order history points at the
+variants of products that may since have been withdrawn. Three states have to stay distinct
+and they are not synonyms: **deleted** is 404 for everyone including a manager, **disabled**
+is 404 for everyone except a manager, and **out of stock** is a visible product with a
+variant at zero.
+
+The rule lives in one predicate, `visibleProductWhere`, because the same test has to hold on
+the list, on the detail read, and on every write that resolves a product first. Three copies
+would drift, and the drift would be silent.
+
+**Deleting a variant is hard**, because nothing points at one yet. That changes the day order
+items exist, and the contract already declares a 409 there for a variant that appears on an
+order. That branch is a named TODO rather than a faked check.
+
+## 16. `includeInactive` is a three-way answer, not a boolean
+
+Anonymous plus `includeInactive` is **401**, a client is **403**, a manager is allowed. The
+401 is the one worth explaining: the server cannot know whether an anonymous caller is a
+manager until they say who they are, so refusing for lack of identity comes before refusing
+for lack of permission.
+
+This is also why `@OptionalAuth()` exists as a third state beside `@Public()`. A public route
+returns before any token work, so a manager who did send a token would be invisible to the
+handler.
+
+## 17. `priceFrom` comes from one query for the whole page
+
+The cheapest variant of each product on a page is a single `groupBy` over the page's ids,
+not a query per row. The per-row version passes every review and is the N+1 this endpoint is
+most likely to grow, so there is a test asserting the call count is one.
+
+A product with no variants is absent from the result and therefore **absent** from the
+response, rather than carrying zero. Zero would read as free.
+
+## 18. Roles are enforced by a guard today and by CASL tomorrow
+
+`RolesGuard` with a `@Roles('manager')` decorator, bound per controller rather than as a
+third global guard, so it runs after the token guard has populated the request. The brief
+requires CASL, and this is the seam it replaces: no service method takes a role, so the swap
+touches the controllers and nothing else.
+
+The 403 body is a bare `ForbiddenException` on purpose. Nest's default payload carries no
+title and no detail, so the problem mapper falls back to the table, which holds the
+contract's own wording. Supplying them at the throw site would risk drifting from it.
