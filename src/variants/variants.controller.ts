@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Res,
@@ -23,6 +22,7 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { SetVariantStockDto } from './dto/set-variant-stock.dto';
 import { ProductVariantDto } from './dto/product-variant.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
  * Creating a variant hangs off its product, so it lives on the product path.
@@ -53,7 +53,7 @@ export class ProductVariantsController {
   @Post(':id/variants')
   @HttpCode(HttpStatus.CREATED)
   async createVariant(
-    @Param('id', ParseIntPipe) productId: number,
+    @Param('id', ParseIdPipe) productId: number,
     @Body() dto: CreateVariantDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<ProductVariantDto> {
@@ -84,7 +84,7 @@ export class VariantsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateVariant(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
     @Body() dto: UpdateVariantDto,
   ): Promise<ProductVariantDto> {
     return this.variants.updateVariant(id, dto);
@@ -100,7 +100,7 @@ export class VariantsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deleteVariant(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  deleteVariant(@Param('id', ParseIdPipe) id: number): Promise<void> {
     return this.variants.deleteVariant(id);
   }
 
@@ -118,7 +118,7 @@ export class VariantsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id/stock')
   setVariantStock(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
     @Body() dto: SetVariantStockDto,
   ): Promise<ProductVariantDto> {
     return this.variants.setVariantStock(id, dto);

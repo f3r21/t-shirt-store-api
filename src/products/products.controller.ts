@@ -6,7 +6,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -28,6 +27,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 
 @ApiTags('catalog')
 @ApiBearerAuth('bearerAuth')
@@ -72,7 +72,7 @@ export class ProductsController {
   @Get(':id')
   getProduct(
     @CurrentUser() viewer: AccessTokenPayload | undefined,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ): Promise<ProductDto> {
     return this.products.getProduct(viewer, id);
   }
@@ -115,7 +115,7 @@ export class ProductsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateProduct(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
     @Body() dto: UpdateProductDto,
   ): Promise<ProductDto> {
     return this.products.updateProduct(id, dto);
@@ -130,7 +130,7 @@ export class ProductsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deleteProduct(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  deleteProduct(@Param('id', ParseIdPipe) id: number): Promise<void> {
     return this.products.deleteProduct(id);
   }
 }

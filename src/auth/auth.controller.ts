@@ -6,7 +6,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   Res,
@@ -33,6 +32,7 @@ import { PASSWORD_THROTTLE } from './password-throttle';
 import { Roles } from './decorators/roles.decorator';
 import { ROLE_NAMES } from '../users/dto/user.dto';
 import { SIGN_IN_THROTTLE } from './sign-in-throttle';
+import { ParseIdPipe } from '../common/parse-id.pipe';
 
 @ApiTags('auth')
 @ApiBearerAuth('bearerAuth')
@@ -128,7 +128,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteSession(
     @CurrentUser() user: AccessTokenPayload,
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', ParseIdPipe) id: number,
   ): Promise<void> {
     return this.auth.deleteSession(user.sub, id);
   }
