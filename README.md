@@ -88,13 +88,14 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Rate limiting | Done, in three tiers: browsing, sign-in, and the three password operations |
 | Products, variants, categories | Done, with unit tests |
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
+| Likes, images, cart, orders, payments | Not built. The tables ship, the operations are week 4 |
 | End-to-end tests | Done for the authentication flow, against a real database |
 | Cart, orders, order history | Not started |
 | CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
-The unit suite is 129 tests over the authentication, user and catalog surfaces, and the
-end-to-end suite is 20 more against a real database. Neither has a placeholder entry left.
+The unit suite is 135 tests over the authentication, user and catalog surfaces, and the
+end-to-end suite is 27 more against a real database. Neither has a placeholder entry left.
 What is untested is what is unwritten.
 
 ```bash
@@ -137,8 +138,8 @@ speaks and it is what a JSON float cannot represent exactly.
 - `ARCHITECTURE.md`, in this repository, is the production shape: the diagram, why the
   notification is queue-backed, the deploy shape, and what would be monitored.
 - `DECISIONS.md`, in this repository, records the implementation choices: why the token
-  hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries no rate
-  limit, and what each of those cost.
+  hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries a tighter
+  rate limit than browsing and a looser one than a password change, and what each of those cost.
 - `contract/README.md` says where the contract came from and why it lives here.
 - `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
 - `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.

@@ -45,8 +45,8 @@ flowchart TB
     class casl,deploy,stripe,store,redis,worker planned
 ```
 
-Built is the API, Postgres, the roles guard, the password mail and the pipeline, under 129 unit and
-20 end-to-end tests on a real database.
+Built is the API, Postgres, the roles guard, the password mail and the pipeline, under 135 unit and
+27 end-to-end tests on a real database.
 
 The shared ceiling is Postgres. `src/prisma/prisma.service.ts:14` builds `PrismaPg` from a
 connection string and nothing else, so the pool is `pg`'s default of ten *per process* and the
@@ -93,8 +93,8 @@ tables are there and the handler is not: `20260828140754_orders_and_cart` create
 them yet. The webhook is the only writer of `paid`: checkout creates a `pending` order and decrements
 nothing, and stock comes down inside the transaction that sets `paid`, so a disagreement is one
 transaction failing rather than two systems drifting. The
-Stripe event id is a unique column inserted first in that transaction, so a retry becomes a unique
-violation the handler answers 200 to. And reserved is not sold: the decrement is conditional on
+Stripe event id is the primary key of `stripe_events`, inserted first in that transaction, so a
+retry becomes a unique violation the handler answers 200 to. And reserved is not sold: the decrement is conditional on
 `stock >= quantity`, and an order matching nothing is cancelled.
 
 ## Where the security risks are
