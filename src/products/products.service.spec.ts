@@ -129,6 +129,25 @@ describe('ProductsService', () => {
       expect(result.data).toHaveLength(1);
     });
 
+    /**
+     * The total is a second query and it has to carry the same visibility rule.
+     *
+     * The test above asserts what the mock returned, which is the shape of
+     * assertion that cannot see this: counting the whole table would satisfy it
+     * and would tell an anonymous caller how many withdrawn and disabled
+     * products exist. `meta.total` is a read of hidden rows if it is not
+     * filtered, even though none of them appears in `data`.
+     */
+    it('counts with the visibility rule and not the whole table', async () => {
+      await service.listProducts(undefined, query());
+
+      const call = nthArg(prisma.product.count) as {
+        where: { deletedAt: null; isActive: boolean };
+      };
+      expect(call.where.deletedAt).toBeNull();
+      expect(call.where.isActive).toBe(true);
+    });
+
     it('orders by an expression that pins the rows uniquely', async () => {
       await service.listProducts(undefined, query());
 
@@ -136,6 +155,50 @@ describe('ProductsService', () => {
         orderBy: Record<string, string>[];
       };
       expect(call.orderBy[call.orderBy.length - 1]).toEqual({ id: 'desc' });
+    });
+
+    /**
+     * "Search products by category" is the one catalog behaviour the challenge
+     * names by its own name, and until these three tests it could be deleted
+     * whole with the suite green.
+     *
+     * `some` and not `every`: a product sits in several categories, and asking
+     * for one of them must not require it to sit in only that one.
+     */
+    it('filters by the category the query names', async () => {
+      await service.listProducts(undefined, query({ categoryId: 4 }));
+
+      const call = nthArg(prisma.product.findMany) as {
+        where: { categories?: { some: { categoryId: number } } };
+      };
+      expect(call.where.categories).toEqual({ some: { categoryId: 4 } });
+    });
+
+    it('sends no category filter when the query names none', async () => {
+      await service.listProducts(undefined, query());
+
+      // The negative half. Without it a hard-coded category would satisfy the
+      // test above and quietly hide most of the catalog.
+      const call = nthArg(prisma.product.findMany) as {
+        where: { categories?: unknown };
+      };
+      expect(call.where.categories).toBeUndefined();
+    });
+
+    /**
+     * The count and the page have to agree.
+     *
+     * `meta.total` drives the client's pager. Filtering the rows and counting
+     * the whole catalog reads as a working filter on page one and hands the
+     * caller pages that come back empty, which is the shape of bug a status code
+     * assertion never sees.
+     */
+    it('counts the page with the same filter it lists it with', async () => {
+      await service.listProducts(undefined, query({ categoryId: 4 }));
+
+      const listed = nthArg(prisma.product.findMany) as { where: unknown };
+      const counted = nthArg(prisma.product.count) as { where: unknown };
+      expect(counted.where).toEqual(listed.where);
     });
   });
 

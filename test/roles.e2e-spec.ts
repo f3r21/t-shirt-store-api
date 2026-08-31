@@ -2,6 +2,7 @@ import request from 'supertest';
 import {
   createTestApp,
   ensureRoles,
+  signInAs,
   truncateAll,
   TestApp,
 } from './app-factory';
@@ -22,37 +23,6 @@ describe('Authorization (e2e)', () => {
   let ctx: TestApp;
 
   const http = () => request(ctx.app.getHttpServer());
-
-  const CLIENT = {
-    email: 'client@example.com',
-    password: 'correct horse battery',
-    firstName: 'Cli',
-    lastName: 'Ent',
-  };
-
-  /** Sign up, then sign in, and return the access token. */
-  async function signIn(email: string, role?: 'manager'): Promise<string> {
-    await http()
-      .post('/v1/users')
-      .send({ ...CLIENT, email })
-      .expect(201);
-
-    // A role cannot be requested at sign-up, and `auth.e2e-spec.ts` asserts the
-    // 400 that proves it. A real manager is promoted out of band, so the test
-    // does the same thing directly against the database.
-    if (role) {
-      await ctx.prisma.user.update({
-        where: { email },
-        data: { role: { connect: { name: role } } },
-      });
-    }
-
-    const res = await http()
-      .post('/v1/auth/sessions')
-      .send({ email, password: CLIENT.password })
-      .expect(201);
-    return res.body.accessToken as string;
-  }
 
   beforeAll(async () => {
     ctx = await createTestApp();
@@ -85,7 +55,7 @@ describe('Authorization (e2e)', () => {
    * every signed-in customer and no test noticed.
    */
   it('refuses a signed-in client a manager-only write', async () => {
-    const token = await signIn('client@example.com');
+    const token = await signInAs(ctx, 'client@example.com');
 
     const res = await http()
       .post('/v1/products')
@@ -102,7 +72,7 @@ describe('Authorization (e2e)', () => {
    * both tests above and look correct.
    */
   it('lets a manager through the same route', async () => {
-    const token = await signIn('manager@example.com', 'manager');
+    const token = await signInAs(ctx, 'manager@example.com', 'manager');
 
     const res = await http()
       .post('/v1/products')
