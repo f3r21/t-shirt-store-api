@@ -102,4 +102,70 @@ describe('Rate limiting (e2e)', () => {
 
     expect(codes).toEqual(Array(20).fill(200));
   });
+
+  /**
+   * The password tier, which is the one the challenge names by name.
+   *
+   * Five in fifteen minutes, so the sixth is refused. Six is the number that
+   * matters: it passes under both other tiers, since browsing allows a hundred
+   * and sign-in allows ten, so a 429 here can only come from a limit that is
+   * tighter than either. A `@Throttle` whose key were misspelled, or an operation
+   * that had silently fallen back to the global default, would answer 422 six
+   * times and this assertion is the only thing in the project that would notice.
+   *
+   * The first five are 422 rather than 204 because the token is not a real one:
+   * the body is well formed, so the pipe passes it, and the service rejects it on
+   * its content. That is the contract's answer at `openapi.yaml:346-359`, and it
+   * keeps the test free of any user row.
+   */
+  it('refuses the sixth reset-password from one address', async () => {
+    const body = { token: 'not-a-real-reset-token', password: 'Password123!' };
+    const ip = '203.0.113.13';
+
+    const codes: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      const res = await http()
+        .post('/v1/auth/reset-password')
+        .set('X-Forwarded-For', ip)
+        .send(body);
+      codes.push(res.status);
+    }
+
+    // The first five reach the handler and fail on the token, not on the limit.
+    expect(codes.slice(0, 5)).toEqual(Array(5).fill(422));
+    expect(codes[5]).toBe(429);
+  });
+
+  /**
+   * The password tier emits the same header shape as the sign-in tier.
+   *
+   * `PASSWORD_THROTTLE` overrides the entry named `default` for this reason
+   * alone, because `ThrottlerGuard` suffixes its headers with the throttler name
+   * and any other key would answer `Retry-After-<name>`. That key is a plain
+   * record with no compile-time check, so only a 429 read off this tier shows it.
+   */
+  it('answers the password-tier 429 with a plain Retry-After', async () => {
+    const body = { token: 'not-a-real-reset-token', password: 'Password123!' };
+    const ip = '203.0.113.14';
+
+    let res = await http()
+      .post('/v1/auth/reset-password')
+      .set('X-Forwarded-For', ip)
+      .send(body);
+    for (let i = 0; i < 5; i++) {
+      res = await http()
+        .post('/v1/auth/reset-password')
+        .set('X-Forwarded-For', ip)
+        .send(body);
+    }
+
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBeDefined();
+    expect(res.headers).not.toHaveProperty('retry-after-default');
+    expect(res.type).toBe('application/problem+json');
+    expect(res.body).toMatchObject({
+      status: 429,
+      title: 'Too many requests',
+    });
+  });
 });
