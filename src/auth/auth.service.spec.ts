@@ -37,11 +37,14 @@ import { AccessTokenPayload } from './access-token-payload';
 const PEPPER = 'test-pepper-at-least-32-characters-long';
 const SECRET = 'test-secret-at-least-32-characters-long';
 
+/** Named once, because a test does arithmetic with it. */
+const ABSOLUTE_CAP_DAYS = 30;
+
 const CONFIG: Record<string, string | number> = {
   REFRESH_TOKEN_PEPPER: PEPPER,
   JWT_ACCESS_TTL: 900,
   JWT_REFRESH_TTL: 604800,
-  REFRESH_ABSOLUTE_TTL_DAYS: 30,
+  REFRESH_ABSOLUTE_TTL_DAYS: ABSOLUTE_CAP_DAYS,
 };
 
 /** The password `aUser()` carries a real argon2id digest for. */
@@ -283,6 +286,36 @@ describe('AuthService', () => {
       expect(result.refreshToken).not.toBe(PRESENTED);
       expect(result.refreshToken).toHaveLength(64);
       expect(jwt.verify<AccessTokenPayload>(result.accessToken).sub).toBe(128);
+    });
+
+    /**
+     * The absolute cap, which is the only bound a rotating session cannot slip.
+     *
+     * `expiresAt` moves forward on every rotation, so a token refreshed every
+     * fourteen minutes never expires. `createdAt` does not move, and this is the
+     * clause that ends the session anyway. Delete it and a stolen refresh token
+     * rotates forever with nothing to notice.
+     *
+     * The bound is asserted against the clock for the same reason the
+     * `expiresAt` assertion is: `toBeInstanceOf(Date)` is satisfied by
+     * `new Date(0)`, which is a cap that never fires.
+     */
+    it('refuses to rotate a session older than the absolute cap', async () => {
+      rotates();
+      const before = Date.now();
+      const cap = ABSOLUTE_CAP_DAYS * 86400 * 1000;
+
+      await service.refreshSession({ refreshToken: PRESENTED });
+
+      const call = nthArg(prisma.refreshToken.updateManyAndReturn, 0, 0) as {
+        where: { createdAt: { gt: Date } };
+      };
+      expect(call.where.createdAt.gt.getTime()).toBeGreaterThanOrEqual(
+        before - cap,
+      );
+      expect(call.where.createdAt.gt.getTime()).toBeLessThanOrEqual(
+        Date.now() - cap,
+      );
     });
 
     it('keeps the session id, because rotation updates the row in place (openapi.yaml:241)', async () => {
