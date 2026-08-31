@@ -45,8 +45,8 @@ flowchart TB
     class casl,deploy,stripe,store,redis,worker planned
 ```
 
-Built is the API, Postgres, the roles guard, the password mail and the pipeline, under 142 unit and
-27 end-to-end tests on a real database.
+Built is the API, Postgres, the roles guard, the password mail and the pipeline, under 167 unit and
+58 end-to-end tests on a real database.
 
 The shared ceiling is Postgres. `src/prisma/prisma.service.ts:14` builds `PrismaPg` from a
 connection string and nothing else, so the pool is `pg`'s default of ten *per process* and the

@@ -94,9 +94,14 @@ evidence that the generated Prisma client matches the schema**: every file under
 | CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
-The unit suite is 142 tests over the authentication, user and catalog surfaces, and the
-end-to-end suite is 27 more against a real database. Neither has a placeholder entry left.
-What is untested is what is unwritten.
+The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
+against a real database. Neither has a placeholder entry left. What is untested is what is
+unwritten.
+
+Two counts are deliberately absent from that paragraph. They went stale twice, and the second time
+a reviewer found them before I did, so the numbers now live where they cannot rot: run
+`npm test` and `npm run test:e2e` and read the summary line. `ARCHITECTURE.md` still carries them,
+because there the size of the suite is part of an argument rather than a fact about the repository.
 
 ```bash
 npm test          # unit
