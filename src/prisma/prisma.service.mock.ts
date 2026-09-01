@@ -30,9 +30,11 @@ export interface PrismaMock {
   };
   consumedRefreshToken: {
     findUnique: jest.Mock;
+    findFirst: jest.Mock;
     create: jest.Mock;
     deleteMany: jest.Mock;
   };
+  $queryRaw: jest.Mock;
   role: {
     findUnique: jest.Mock;
   };
@@ -99,9 +101,14 @@ export function createPrismaMock(): PrismaMock {
     },
     consumedRefreshToken: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
       deleteMany: jest.fn(),
     },
+    // The grace window reads the database clock rather than the process one,
+    // because `consumed_at` is stamped by Postgres. Defaults to "now" so a
+    // spec that is not about the window reads as it always did.
+    $queryRaw: jest.fn().mockResolvedValue([{ now: new Date() }]),
     role: {
       findUnique: jest.fn(),
     },

@@ -473,7 +473,7 @@ describe('AuthService', () => {
       // answers to this hash, and the hash is on record as spent, long enough
       // ago that the grace window has closed.
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.consumedRefreshToken.findUnique.mockResolvedValue({
+      prisma.consumedRefreshToken.findFirst.mockResolvedValue({
         tokenHash: hashToken(PRESENTED, PEPPER),
         familyId: 42,
         userId: 128,
@@ -504,7 +504,7 @@ describe('AuthService', () => {
      */
     it('rejects an unknown token with the refresh-token-unknown problem type', async () => {
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.consumedRefreshToken.findUnique.mockResolvedValue(null);
+      prisma.consumedRefreshToken.findFirst.mockResolvedValue(null);
 
       await expectProblem(
         service.refreshSession({ refreshToken: PRESENTED }),
@@ -519,7 +519,7 @@ describe('AuthService', () => {
       // row matches nothing and takes the same path as an unknown token.
       const before = Date.now();
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.consumedRefreshToken.findUnique.mockResolvedValue(null);
+      prisma.consumedRefreshToken.findFirst.mockResolvedValue(null);
 
       const expired = await rejection(
         service.refreshSession({ refreshToken: PRESENTED }),

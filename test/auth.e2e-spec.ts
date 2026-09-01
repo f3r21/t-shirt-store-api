@@ -446,6 +446,38 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
+     * **A token spent longer ago than a session can live is not a replay.**
+     *
+     * Nothing prunes `consumed_refresh_tokens`, so a hash spent weeks ago used
+     * to sit there for ever while the reuse branch deleted every refresh row
+     * for its owner. One stolen token was a **permanent, anonymous lever**: end
+     * the account, wait for the victim to sign in, send it again, repeat. On a
+     * public route.
+     *
+     * A token spent past the absolute cap comes from a session that cannot be
+     * alive, so there is nothing left for it to be a replay of.
+     *
+     * The two rows are the whole test. The second is the control: the same
+     * token spent recently still ends every session, or this would pass on a
+     * server that had simply stopped detecting reuse.
+     */
+    it.each([
+      ['older than the absolute cap', 31 * 86400 * 1000, 1],
+      ['spent an hour ago, which is inside the cap', 3600_000, 0],
+    ])('a token spent %s', async (_l, ageMs, rowsLeft) => {
+      const { refreshToken } = await signUpAndIn();
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(200);
+
+      await ctx.prisma.consumedRefreshToken.updateMany({
+        data: { consumedAt: new Date(Date.now() - ageMs) },
+      });
+
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(401);
+
+      expect(await ctx.prisma.refreshToken.count()).toBe(rowsLeft);
+    });
+
+    /**
      * The third tab, which the first fix could not serve at all.
      *
      * With one row per device the grace path had exactly one row to rotate, so

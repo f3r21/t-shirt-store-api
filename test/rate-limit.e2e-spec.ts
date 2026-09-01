@@ -66,6 +66,35 @@ describe('Rate limiting (e2e)', () => {
   });
 
   /**
+   * **`POST /auth/refresh` was the only credential route with no tier.**
+   *
+   * Sign-in, sign-up, forgot-password and reset-password all carry one. This
+   * one carried `@Public()` alone, so it inherited the browse default of 100 a
+   * minute, on the route that both hands out credentials and, on a spent
+   * token, **deletes every refresh row for a user**.
+   *
+   * It is the multiplier behind the other two findings in its unit: a replay is
+   * only a weapon at the rate the route allows.
+   *
+   * Every request sends a token that was never issued, so the first ten are
+   * refused on the token and the eleventh on the limit. That is the
+   * distinction: without it this would pass on a route that had simply started
+   * refusing everything.
+   */
+  it('refuses the eleventh refresh from one address', async () => {
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const res = await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: `${i}`.padStart(64, 'f') });
+      codes.push(res.status);
+    }
+
+    expect(codes.slice(0, 10)).toEqual(Array(10).fill(401));
+    expect(codes[10]).toBe(429);
+  });
+
+  /**
    * Sign-up is an enumeration oracle and it carried no limit of its own.
    *
    * `POST /users` answers 409 for an address that has an account and 201 for

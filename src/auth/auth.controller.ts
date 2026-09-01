@@ -83,6 +83,17 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
   @ApiResponse({ status: 500, description: 'The server failed.' })
+  /**
+   * The sign-in tier, and this route was the only credential route without one.
+   *
+   * `createSession`, `POST /users`, `forgot-password` and `reset-password` all
+   * carry a tier. This carried `@Public()` alone, so it inherited the browse
+   * default of 100 a minute on the one route that both **hands out credentials**
+   * and **can delete every session for a user**. It is the multiplier behind
+   * both of the other findings in this unit: a replay loop is only a weapon at
+   * the rate the route allows.
+   */
+  @Throttle(SIGN_IN_THROTTLE)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refreshSession(@Body() dto: RefreshSessionDto): Promise<SessionTokensDto> {

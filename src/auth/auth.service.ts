@@ -354,16 +354,44 @@ export class AuthService {
     presented: string,
     nextHash: string,
   ): Promise<{ id: number; userId: number; familyId: number | null } | null> {
-    const spent = await this.prisma.consumedRefreshToken.findUnique({
-      where: { tokenHash: presented },
+    const capDays = this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS');
+    const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
+
+    // **Two windows, and this `where` is what stops an old token being a
+    // permanent weapon.** Nothing prunes `consumed_refresh_tokens`, so a hash
+    // spent weeks ago used to sit here for ever, and the branch below deletes
+    // every refresh row for its owner. An attacker holding one spent token
+    // could end the account, wait for the victim to sign in again, and repeat,
+    // on a public route, indefinitely.
+    //
+    // A token spent longer ago than the absolute session cap comes from a
+    // session that cannot be alive, so there is nothing left for it to be a
+    // replay of. It reads as never spent, which is 401 and nothing deleted.
+    // No migration and no sweep: the sweep is still owed, and this makes the
+    // table's growth a storage problem rather than a security one.
+    const spent = await this.prisma.consumedRefreshToken.findFirst({
+      where: {
+        tokenHash: presented,
+        consumedAt: { gt: new Date(Date.now() - capDays * 86400 * 1000) },
+      },
     });
     if (spent === null) {
       return null;
     }
 
-    const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
-    const opensAfter = new Date(Date.now() - seconds * 1000);
-    if (seconds <= 0 || spent.consumedAt <= opensAfter) {
+    // **The window is measured against the database clock, not this process's.**
+    // `consumed_at` is stamped by Postgres at the start of the transaction that
+    // spent the token, so comparing it to `Date.now()` compares two clocks. A
+    // container eleven seconds ahead pushes an honest second tab outside a ten
+    // second window, and a slow `rotateLiveToken` stamps `consumed_at` at its
+    // own start while the loser reads a value that is already older than the
+    // window. `NOW()` here is the same clock that wrote the column.
+    const [{ now }] = await this.prisma.$queryRaw<{ now: Date }[]>`
+      SELECT NOW() AS now
+    `;
+    const within = spent.consumedAt.getTime() > now.getTime() - seconds * 1000;
+
+    if (seconds <= 0 || !within) {
       await this.prisma.refreshToken.deleteMany({
         where: { userId: spent.userId },
       });
@@ -381,6 +409,24 @@ export class AuthService {
       return null;
     }
 
+    // **This create is deliberately unconditional, and the bound is elsewhere.**
+    //
+    // A review found that replaying one stolen token in a loop produces N live
+    // rows in the family, and the obvious fix is to allow one grace rotation
+    // per spent token. **That fix is wrong**, because three honest tabs present
+    // the same token and all three deserve a working one: nothing here can tell
+    // the third honest tab from the third replay, which is what a grace window
+    // is for.
+    //
+    // The bound is the window times the rate. The window is
+    // `REFRESH_GRACE_SECONDS`, ten by default, and the rate is now the sign-in
+    // tier on `POST /auth/refresh`, ten a minute, so one spent token buys at
+    // most a couple of rows before it ages out. Those rows expire on their own
+    // and the whole family dies at the absolute cap, so they are bounded and
+    // self-clearing rather than merely rare.
+    //
+    // `DECISIONS.md` priced the window as one accepted token. It is a handful,
+    // and that entry is corrected rather than the code bent to match it.
     return this.prisma.refreshToken.create({
       data: {
         userId: founder.userId,
