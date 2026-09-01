@@ -149,10 +149,32 @@ describe('AccessTokenGuard', () => {
       expect(request.user).toEqual(PAYLOAD);
     });
 
+    /**
+     * The scheme is case-insensitive, and this row used to say the opposite.
+     *
+     * `bearer good` sat in the 401 list below, pinning a refusal RFC 7235
+     * section 2.1 forbids: "the scheme name is case-insensitive". The contract
+     * selects that scheme by name at `openapi.yaml:1697-1699`. So the test was
+     * not protecting the behaviour, it was protecting the bug, which is the
+     * failure the block brief names at line 330: an assertion written for the
+     * code that exists rather than the behaviour that is owed.
+     */
+    it.each([
+      ['Bearer', 'Bearer good'],
+      ['bearer', 'bearer good'],
+      ['BEARER', 'BEARER good'],
+      ['BeArEr', 'BeArEr good'],
+    ])('accepts the %s spelling of the scheme', async (_label, header) => {
+      const { guard, context, request } = harness({}, header);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toEqual(PAYLOAD);
+    });
+
     it.each([
       ['no authorization header', undefined],
       ['a scheme that is not Bearer', 'Basic dXNlcjpwYXNz'],
-      ['a lower case bearer scheme', 'bearer good'],
+      ['a scheme that merely starts with bearer', 'bearerish good'],
       ['Bearer with an empty token', 'Bearer '],
     ])('answers 401 to %s', async (_label, authorization) => {
       const { guard, context, verify } = harness({}, authorization);

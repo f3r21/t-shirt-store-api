@@ -79,9 +79,27 @@ export class AccessTokenGuard implements CanActivate {
     return true;
   }
 
+  /**
+   * The token out of an `Authorization: Bearer <token>` header.
+   *
+   * **The scheme is matched without case, and that is the standard rather than a
+   * kindness.** RFC 7235 section 2.1 says "the scheme name is case-insensitive",
+   * and the contract picks that scheme by name at `openapi.yaml:1697-1699`,
+   * `type: http` with `scheme: bearer`. This compared `=== 'Bearer'`, so
+   * `Authorization: bearer <jwt>` answered 401 on every protected route, which
+   * is the server refusing a request the standard it cites says is valid. A
+   * client library that lower-cases its headers, or a developer typing the
+   * header by hand, met a 401 that said nothing about why.
+   *
+   * The token itself is not touched. Only the scheme is case-insensitive, and a
+   * scheme that is not bearer at all still returns undefined and still answers
+   * 401.
+   */
   private bearerToken(request: Request): string | undefined {
     const [scheme, token] = request.headers.authorization?.split(' ') ?? [];
-    return scheme === 'Bearer' && token !== '' ? token : undefined;
+    return scheme?.toLowerCase() === 'bearer' && token !== ''
+      ? token
+      : undefined;
   }
 
   /**

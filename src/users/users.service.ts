@@ -128,16 +128,24 @@ export class UsersService {
       );
     }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash: await argon2.hash(dto.newPassword),
-        resetTokenHash: null,
-        resetTokenExpiresAt: null,
-      },
-    });
+    // The new password and the revocation commit together, or neither does.
+    // They were two statements, so a failure between them left the account with
+    // a password the user did not choose to keep and every existing session
+    // still working. `auth.service.ts` records the same reasoning for the reset
+    // path, which had the identical shape.
+    const passwordHash = await argon2.hash(dto.newPassword);
 
-    await this.prisma.refreshToken.deleteMany({ where: { userId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash,
+          resetTokenHash: null,
+          resetTokenExpiresAt: null,
+        },
+      });
+      await tx.refreshToken.deleteMany({ where: { userId } });
+    });
 
     await this.mailer.sendPasswordChanged(user.email);
   }

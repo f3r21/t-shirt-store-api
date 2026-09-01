@@ -86,6 +86,34 @@ export class AuthService {
   }
 
   /**
+   * The two clauses that decide whether a refresh row is still a live session.
+   *
+   * `refreshSession` has always carried them, because a token that fails either
+   * one must not rotate. `listSessions` did not, so the device list answered
+   * with rows that no longer work: an expired one, and one whose session had run
+   * past the thirty day cap. The contract calls that list "each device that is
+   * signed in", and a row failing either clause is a device that is not.
+   *
+   * Nothing deletes a dead row. The window closes and the row stays, so without
+   * this the list grew for the life of the account and `meta.total` counted
+   * sessions the user could not use and could not remove, since deleting one
+   * needs an id the user would have no reason to trust. Sharing the predicate
+   * with the rotation is the point: two places that decide the same thing must
+   * not drift.
+   */
+  private liveSessionWhere(): {
+    expiresAt: { gt: Date };
+    createdAt: { gt: Date };
+  } {
+    const now = new Date();
+    const capDays = this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS');
+    return {
+      expiresAt: { gt: now },
+      createdAt: { gt: new Date(now.getTime() - capDays * 86400 * 1000) },
+    };
+  }
+
+  /**
    * Sign in. See `openapi.yaml:88`.
    *
    * A wrong address and a wrong password produce the identical rejection. The
@@ -154,16 +182,12 @@ export class AuthService {
    */
   async refreshSession(dto: RefreshSessionDto): Promise<SessionTokensDto> {
     const presented = hashToken(dto.refreshToken, this.pepper);
-    const now = new Date();
-    const capDays = this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS');
-    const oldestAllowed = new Date(now.getTime() - capDays * 86400 * 1000);
 
     const nextToken = generateToken();
     const rotated = await this.prisma.refreshToken.updateManyAndReturn({
       where: {
         tokenHash: presented,
-        expiresAt: { gt: now },
-        createdAt: { gt: oldestAllowed },
+        ...this.liveSessionWhere(),
       },
       data: {
         tokenHash: hashToken(nextToken, this.pepper),
@@ -235,7 +259,7 @@ export class AuthService {
     userId: number,
     query: PageQueryDto,
   ): Promise<{ data: SessionDto[]; meta: PageMetaDto }> {
-    const where = { userId };
+    const where = { userId, ...this.liveSessionWhere() };
 
     const [rows, total] = await Promise.all([
       this.prisma.refreshToken.findMany({
@@ -332,32 +356,52 @@ export class AuthService {
    * 404 where the contract requires 422.
    *
    * Clearing the token in the same statement is what makes it single use.
+   *
+   * **The password and the revocation commit together, or neither does.** They
+   * were two statements: the new hash was written, and then every refresh row
+   * was deleted. A failure between the two, and the connection dying is enough,
+   * left the account with a password the user did not choose to keep and every
+   * stolen session still working. That is the worst possible half of this
+   * operation to leave standing, because the whole reason a reset revokes
+   * sessions is that the old password may be in somebody else's hands.
+   *
+   * `argon2.hash` runs before the transaction opens on purpose. It is the
+   * slowest thing here by orders of magnitude, and hashing inside would hold a
+   * connection and a row lock for the whole of it.
+   *
+   * The mail is sent after the transaction commits, and not inside it. A mail
+   * provider that is slow must not hold a database transaction, and a message
+   * about a password change that was then rolled back cannot be unsent.
    */
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
     const presented = hashToken(dto.token, this.pepper);
+    const passwordHash = await argon2.hash(dto.password);
 
-    const updated = await this.prisma.user.updateManyAndReturn({
-      where: {
-        resetTokenHash: presented,
-        resetTokenExpiresAt: { gt: new Date() },
-      },
-      data: {
-        passwordHash: await argon2.hash(dto.password),
-        resetTokenHash: null,
-        resetTokenExpiresAt: null,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.updateManyAndReturn({
+        where: {
+          resetTokenHash: presented,
+          resetTokenExpiresAt: { gt: new Date() },
+        },
+        data: {
+          passwordHash,
+          resetTokenHash: null,
+          resetTokenExpiresAt: null,
+        },
+      });
+
+      if (updated.length !== 1) {
+        throw new UnprocessableEntityException({
+          title: 'Unprocessable content',
+          detail: 'The reset token is unknown or expired.',
+        });
+      }
+
+      const row = updated[0];
+      await tx.refreshToken.deleteMany({ where: { userId: row.id } });
+      return row;
     });
 
-    if (updated.length !== 1) {
-      throw new UnprocessableEntityException({
-        title: 'Unprocessable content',
-        detail: 'The reset token is unknown or expired.',
-      });
-    }
-
-    const user = updated[0];
-
-    await this.prisma.refreshToken.deleteMany({ where: { userId: user.id } });
     await this.mailer.sendPasswordChanged(user.email);
   }
 }

@@ -159,6 +159,36 @@ describe('Authentication (e2e)', () => {
       expect(res.body).not.toHaveProperty('type');
     });
 
+    /**
+     * The scheme name is case-insensitive, and the server used to disagree.
+     *
+     * RFC 7235 section 2.1 states it, and the contract selects that scheme by
+     * name at `openapi.yaml:1697-1699`. Before this, `bearer <jwt>` answered 401
+     * on every protected route with a body that said nothing about why, and the
+     * guard's own spec had a row pinning that 401 as correct.
+     */
+    it.each(['Bearer', 'bearer', 'BEARER', 'BeArEr'])(
+      'accepts the %s spelling of the scheme through a real request',
+      async (scheme) => {
+        const { accessToken } = await signUpAndIn();
+
+        await http()
+          .get('/v1/auth/sessions')
+          .set('authorization', `${scheme} ${accessToken}`)
+          .expect(200);
+      },
+    );
+
+    it('still refuses a scheme that merely starts with bearer', async () => {
+      // The control. Without it the fix could pass by accepting any scheme.
+      const { accessToken } = await signUpAndIn();
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `bearerish ${accessToken}`)
+        .expect(401);
+    });
+
     it('refuses a malformed token and a token signed with another key', async () => {
       await signUpAndIn();
 
@@ -217,6 +247,61 @@ describe('Authentication (e2e)', () => {
       // Both halves. Rejecting without revoking leaves the thief signed in.
       const rows = await ctx.prisma.refreshToken.count();
       expect(rows).toBe(0);
+    });
+  });
+
+  /**
+   * The device list, against rows that have actually died.
+   *
+   * The unit test asserts the `where` handed to a mocked Prisma client, which
+   * proves the service composed a filter and cannot prove the filter filters,
+   * because no row ever exists there. This puts an expired row in the table.
+   *
+   * Nothing deletes a refresh row when its window closes, so before the filter
+   * the list returned tokens that no longer work and `meta.total` counted them.
+   */
+  describe('the device list, with a dead row in the table', () => {
+    it('hides a session whose expiry has passed', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      const before = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(before.body.meta.total).toBe(1);
+
+      // The row stays, exactly as it would in production. Only its window moves.
+      await ctx.prisma.refreshToken.updateMany({
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      const after = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(after.body.data).toHaveLength(0);
+      // The count has to move with the page, or the envelope reports rows the
+      // caller cannot see.
+      expect(after.body.meta.total).toBe(0);
+      // And the row is still there, which is why the filter has to exist.
+      expect(await ctx.prisma.refreshToken.count()).toBe(1);
+    });
+
+    it('hides a session created before the absolute cap', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      await ctx.prisma.refreshToken.updateMany({
+        data: { createdAt: new Date(Date.now() - 31 * 86400 * 1000) },
+      });
+
+      const res = await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.meta.total).toBe(0);
     });
   });
 

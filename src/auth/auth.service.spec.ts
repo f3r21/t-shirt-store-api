@@ -510,7 +510,59 @@ describe('AuthService', () => {
       const call = nthArg(prisma.refreshToken.findMany, 0, 0) as {
         where: { userId: number };
       };
-      expect(call.where).toEqual({ userId: 128 });
+      expect(call.where.userId).toBe(128);
+    });
+
+    /**
+     * A dead row is not a device that is signed in.
+     *
+     * The contract calls this list "each device that is signed in", and the
+     * filter was `{ userId }` alone. Nothing deletes a refresh row when its
+     * window closes, so the list returned tokens that no longer work: expired
+     * ones, and ones whose session had run past the thirty day cap. The list
+     * grew for the life of the account, and `meta.total` counted sessions the
+     * user could neither use nor recognise.
+     *
+     * Asserted against the clock rather than with `toBeInstanceOf(Date)`, which
+     * `new Date(0)` satisfies while filtering nothing. Same reason the rotation
+     * assertions above do it.
+     */
+    it('excludes the rows that are expired or past the absolute cap', async () => {
+      prisma.refreshToken.findMany.mockResolvedValue([]);
+      prisma.refreshToken.count.mockResolvedValue(0);
+      const before = Date.now();
+      const cap = ABSOLUTE_CAP_DAYS * 86400 * 1000;
+
+      await service.listSessions(128, new PageQueryDto());
+
+      const call = nthArg(prisma.refreshToken.findMany, 0, 0) as {
+        where: { expiresAt: { gt: Date }; createdAt: { gt: Date } };
+      };
+      expect(call.where.expiresAt.gt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(call.where.expiresAt.gt.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(call.where.createdAt.gt.getTime()).toBeGreaterThanOrEqual(
+        before - cap,
+      );
+      expect(call.where.createdAt.gt.getTime()).toBeLessThanOrEqual(
+        Date.now() - cap,
+      );
+    });
+
+    it('counts with the same filter it lists with', async () => {
+      // Otherwise `meta.total` reports the dead rows the page just hid, which
+      // is the same class of bug the product list already carries a test for.
+      prisma.refreshToken.findMany.mockResolvedValue([]);
+      prisma.refreshToken.count.mockResolvedValue(0);
+
+      await service.listSessions(128, new PageQueryDto());
+
+      const list = nthArg(prisma.refreshToken.findMany, 0, 0) as {
+        where: unknown;
+      };
+      const count = nthArg(prisma.refreshToken.count, 0, 0) as {
+        where: unknown;
+      };
+      expect(count.where).toEqual(list.where);
     });
 
     it('leaves the deviceName key absent when the row holds none', async () => {
@@ -539,7 +591,10 @@ describe('AuthService', () => {
         string,
         unknown
       >;
-      expect(countCall).toEqual({ where: { userId: 128 } });
+      // The `where` itself is asserted by the two tests above, which compare it
+      // against the list query rather than restating it. This one is about the
+      // count carrying no page.
+      expect(Object.keys(countCall)).toEqual(['where']);
       expect(countCall).not.toHaveProperty('take');
       expect(countCall).not.toHaveProperty('skip');
     });
