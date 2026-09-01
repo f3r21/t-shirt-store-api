@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
 import { AppModule } from './app.module';
 import { AuthController } from './auth/auth.controller';
 import { UsersController } from './users/users.controller';
 import { MAILER } from './mail/mailer';
-import { validateEnv } from './config/env.validation';
+import { validateEnv, EnvironmentVariables } from './config/env.validation';
 
 /**
  * The application boots.
@@ -95,6 +97,74 @@ describe('AppModule', () => {
     expect(() => validateEnv({ ...REQUIRED, REDIS_URL: 'not-a-url' })).toThrow(
       /REDIS_URL/,
     );
+  });
+
+  /**
+   * **No numeric variable may accept a present but empty value, and the list of
+   * them is discovered rather than written down.**
+   *
+   * This is the gate, not the fix. The fix is one filter in `validateEnv`; this
+   * is what keeps it honest for variables nobody has added yet. It walks the
+   * schema with `design:type` metadata, keeps the properties TypeScript typed
+   * as `number`, and asserts each one reads the same whether it is omitted or
+   * supplied as `''`.
+   *
+   * A hand-written list would have been wrong the day it was written: the two
+   * variables that made this a security problem, `REFRESH_GRACE_SECONDS` and
+   * `TRUST_PROXY_HOPS`, were added by two different commits on the same
+   * afternoon, and `PORT` had been carrying the same hole since the first week.
+   *
+   * The `expect(numeric.length)` line is the control. Metadata discovery that
+   * silently finds nothing would satisfy every assertion in the loop.
+   */
+  it('treats an empty numeric variable as absent, for every numeric variable', () => {
+    const proto = EnvironmentVariables.prototype as object;
+    const numeric = Object.getOwnPropertyNames(
+      new EnvironmentVariables(),
+    ).filter(
+      (key) =>
+        (Reflect.getMetadata('design:type', proto, key) as unknown) === Number,
+    );
+
+    // Discovery found something. Without this the loop below proves nothing.
+    expect(numeric.length).toBeGreaterThan(5);
+
+    for (const key of numeric) {
+      const omitted = validateEnv({ ...REQUIRED }) as unknown as Record<
+        string,
+        unknown
+      >;
+      const empty = validateEnv({
+        ...REQUIRED,
+        [key]: '',
+      }) as unknown as Record<string, unknown>;
+      expect([key, empty[key]]).toEqual([key, omitted[key]]);
+    }
+  });
+
+  /**
+   * **Every variable the schema declares appears in `.env.example`.**
+   *
+   * Three commits added `REFRESH_GRACE_SECONDS`, `CORS_ORIGINS` and
+   * `TRUST_PROXY_HOPS` and none of them touched the example file, while
+   * `README.md` went on saying it fills in every value but two. A developer
+   * copying it got a working boot and three defaults they did not know existed,
+   * one of which decides whether a stolen refresh token raises an alarm.
+   *
+   * Discovered from the schema rather than listed, for the same reason as the
+   * check above: a list is a fourth place to forget.
+   */
+  it('documents every declared variable in .env.example', () => {
+    const example = readFileSync(join(__dirname, '..', '.env.example'), 'utf8');
+    const declared = Object.getOwnPropertyNames(new EnvironmentVariables());
+
+    // Discovery found something, or the filter below proves nothing.
+    expect(declared.length).toBeGreaterThan(10);
+
+    const missing = declared.filter(
+      (key) => !new RegExp(`^${key}=`, 'm').test(example),
+    );
+    expect(missing).toEqual([]);
   });
 
   it('reads a numeric variable that arrives as a string, as dotenv supplies it', () => {

@@ -42,8 +42,12 @@ when `NODE_ENV` is `production`, and seeds only the roles and categories there.
 
 ### The two secrets
 
-`.env.example` fills in every value except two, `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, which
-are blank because they are secrets.
+`.env.example` names every variable the schema declares, and
+`src/app.module.spec.ts` fails if one is missing rather than leaving that sentence to rot.
+
+Three are blank. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are blank because they are secrets and
+the boot refuses without them. `CORS_ORIGINS` is blank because empty is its real default and it
+means no cross-origin browser may call this service.
 Both need at least 32 characters:
 
 ```bash

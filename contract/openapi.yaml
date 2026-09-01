@@ -194,9 +194,12 @@ paths:
       tags: [auth]
       summary: Sign out this device
       description: |
-        The server deletes the refresh row for the device that sends this request. Other
-        devices stay signed in. The access token stays valid until it expires, so
-        revocation lags by up to 15 minutes.
+        The server ends the session of the device that sends this request, and deletes
+        every refresh token in it. Other devices stay signed in.
+
+        The access token stops working at once. The server checks on every request that
+        the session named by the token still exists, so a device that signs out cannot
+        keep acting until its token expires.
       operationId: deleteCurrentSession
       responses:
         '204':
@@ -210,8 +213,11 @@ paths:
       tags: [auth]
       summary: Sign out another device
       description: |
-        The server deletes one refresh row for this user. A session id that belongs to
-        another user returns 404. A 403 would confirm that the session exists.
+        The server ends one session of this user, and deletes every refresh token in it.
+        The access token of that device stops working at once.
+
+        A session id that belongs to another user returns 404. A 403 would confirm that
+        the session exists.
       operationId: deleteSession
       parameters:
         - name: id

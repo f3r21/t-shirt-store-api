@@ -204,7 +204,27 @@ export class EnvironmentVariables {
 }
 
 export function validateEnv(config: Record<string, unknown>) {
-  const validatedConfig = plainToInstance(EnvironmentVariables, config, {
+  // **A variable that is present and empty is a variable nobody set.**
+  //
+  // `enableImplicitConversion` turns `''` into `0` for every numeric property,
+  // and `0` passes `@IsInt` and `@Min(0)`, so the value arrives silently wrong
+  // rather than loudly absent. Measured: with the three set to `''`,
+  // `REFRESH_GRACE_SECONDS` became 0, which **turns the grace window off and
+  // reinstates the account-wide sign-out it was written to remove**, and `PORT`
+  // became 0. Positive control: `'abc'` was rejected, so the validator does
+  // fire; it just has nothing to fire at.
+  //
+  // The alphabet of production is strings read from a file, and it contains one
+  // value nobody types into a test literal. Dropping the key restores the
+  // default, or fails as missing when there is no default, which is what the
+  // author of a `.env` line with nothing after the `=` meant.
+  const present = Object.fromEntries(
+    Object.entries(config).filter(
+      ([, value]) => typeof value !== 'string' || value.trim() !== '',
+    ),
+  );
+
+  const validatedConfig = plainToInstance(EnvironmentVariables, present, {
     enableImplicitConversion: true,
   });
 
