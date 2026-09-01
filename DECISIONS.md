@@ -137,7 +137,7 @@ within seconds and a script does not stop at ten. The three password operations 
 **The contract was amended rather than the guard weakened.** It declared a 429 on
 `requestPasswordReset`, `resetPassword` and `changePassword`, and sign-in answered a status the
 document did not declare. `createSession` now declares it, and `info.description` states the
-tiers once instead of adding a 429 to all 37 paths.
+tiers once instead of adding a 429 to all 37 operations.
 
 **Only a test proves any of this.** `@Throttle` takes a plain record, so a misspelled key
 compiles and is ignored at run time. `test/rate-limit.e2e-spec.ts` runs against the real
@@ -247,9 +247,11 @@ through `assertProductExists`, which filters on `NOT_DELETED` alone, so a manage
 update a product they disabled. `NOT_DELETED` is the piece all of those paths share, and it is
 exported on its own for that reason.
 
-**Deleting a variant is hard**, because nothing points at one yet. That changes the day order
-items exist, and the contract already declares a 409 there for a variant that appears on an
-order. That branch is a named TODO rather than a faked check.
+**Deleting a variant is hard**, because nothing points at one yet. The contract already declares
+a 409 there for a variant that appears on an order, and `deleteVariant` implements it rather
+than deferring it: it counts `order_items` first, and catches the `P2003` foreign key violation
+behind that count in case a row lands between the two statements. The branch holds the day order
+items arrive instead of waiting for them.
 
 ## 16. `includeInactive` is a three-way answer, not a boolean
 
@@ -273,10 +275,15 @@ response, rather than carrying zero. Zero would read as free.
 
 ## 18. Roles are enforced by a guard today and by CASL tomorrow
 
-`RolesGuard` with a `@Roles('manager')` decorator, bound per controller rather than as a
-third global guard, so it runs after the token guard has populated the request. The brief
-requires CASL, and this is the seam it replaces: no service method takes a role, so the swap
-touches the controllers and nothing else.
+`RolesGuard` with a `@Roles('manager')` decorator, bound globally as an `APP_GUARD` beside the
+token guard since `30dd481`, and after it in the providers array, so it reads a request the token
+guard has already populated. It was bound per controller before that, which reached two of the six
+and left deny by default unable to cover the other four.
+
+The brief requires CASL, and this is the seam it replaces. **The swap is not confined to the
+controllers.** `products.service.ts:46` and `:126` take the viewer as a parameter, `:56` branches
+on `isManager`, and both hand the viewer to `visibleProductWhere`, so the catalog reads move with
+the guard.
 
 The 403 body is a bare `ForbiddenException` on purpose. Nest's default payload carries no
 title and no detail, so the problem mapper falls back to the table, which holds the
