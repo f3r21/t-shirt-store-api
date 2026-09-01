@@ -536,6 +536,48 @@ describe('Authentication (e2e)', () => {
         .send({ email: CLIENT.email, password: CLIENT.password })
         .expect(401);
     });
+
+    /**
+     * **The mail has to be true, and it was not.**
+     *
+     * `mailer.nodemailer.ts` tells the reader every device was signed out. The
+     * reset deleted the refresh rows, and nothing checked the access token
+     * against a session, so a token already in a thief's hand kept working for
+     * the rest of its fifteen minutes. That sentence is read by somebody who
+     * has just decided their account is compromised, which is the worst place
+     * in this repository for a false statement.
+     *
+     * The order is the whole test. The token is proven to work first, so a
+     * guard that had started refusing everything would fail here rather than
+     * pass the assertion below it.
+     */
+    it('stops an access token issued before the reset', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      // Alive before.
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      await http()
+        .post('/v1/auth/forgot-password')
+        .send({ email: CLIENT.email })
+        .expect(202);
+      await http()
+        .post('/v1/auth/reset-password')
+        .send({
+          token: ctx.mail.sent[0].token as string,
+          password: 'a different password',
+        })
+        .expect(204);
+
+      // And dead after, without waiting fifteen minutes for it to expire.
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(401);
+    });
   });
 
   describe('sign out', () => {

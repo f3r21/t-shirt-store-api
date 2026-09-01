@@ -140,16 +140,32 @@ rather than quietly enjoying. The trade was not re-evaluated. It was overtaken.
 
 ## 4. The access token carries a session id
 
-The payload is `{ sub, sid, role }`. `sid` is the id of the device's refresh row.
+The payload is `{ sub, sid, role }`. `sid` is the device's session, which since item 2 is a
+family of refresh rows named after its founding row rather than a single row.
 
-**Why it is not optional.** `DELETE /auth/sessions/current` deletes the row for the device
+**Why it is not optional.** `DELETE /auth/sessions/current` ends the session of the device
 that sent the request, and that request carries an access token and nothing else. Without
-the claim the server cannot name the row. The contract keeps the session id stable across
-rotation, so the claim stays true for the life of the session.
+the claim the server cannot name it. The contract keeps the session id stable across
+rotation, so the claim stays true for the life of the session, and naming a family by its
+founding row is what let families arrive without breaking that promise or the claim's type.
+
+**It is also what makes revocation work, and that came later.** `AccessTokenGuard` looks the
+`sid` up and refuses a token whose session no longer exists. Before that, a verified signature
+was treated as a live session: deleting refresh rows removed a device's ability to renew and
+left it able to act for the rest of the access token's fifteen minutes.
+`mailer.nodemailer.ts` told the reader "Every device was signed out", which was untrue of the
+token already in a thief's hand, and `DELETE /auth/sessions/{id}` had the same hole.
+
+**What that costs, said plainly:** one indexed lookup on every protected request, which is
+precisely the cost a stateless token exists to avoid. **It is paid because the alternative is
+that signing out does not sign out**, and because the sentence in that mail is read by
+somebody who has just decided their account is compromised. If the lookup ever becomes the
+bottleneck the answer is a short-lived cache of revoked session ids, not removing the check.
 
 **Why `role` is there.** The contract has no operation that reads the current user, so
 nothing else would tell a guard what the caller is. **Cost:** a role change lags by one
-access token lifetime, which is the same lag the contract already accepts for revocation.
+access token lifetime. That lag used to be shared with revocation and no longer is, so `role`
+is now the only claim in this payload that can be stale.
 
 ## 5. No Passport
 

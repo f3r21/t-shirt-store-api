@@ -60,7 +60,7 @@ export class NodemailerMailer implements Mailer {
       text: [
         'The password for this account changed.',
         '',
-        'Every device was signed out, so you must sign in again.',
+        'Every device was signed out. Sign in again on each of them.',
         'If this was not you, reset your password now.',
       ].join('\n'),
     });

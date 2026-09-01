@@ -1,5 +1,6 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
@@ -35,6 +36,7 @@ describe('AccessTokenGuard', () => {
     context: ExecutionContext;
     request: Partial<Request>;
     verify: jest.Mock;
+    session: jest.Mock;
   }
 
   /**
@@ -48,6 +50,10 @@ describe('AccessTokenGuard', () => {
     metadata: Record<string, unknown>,
     authorization?: string,
     verify: jest.Mock = jest.fn().mockResolvedValue(PAYLOAD),
+    // The session lookup. Defaults to a live session, so every test that is
+    // about the header or the signature reads as it did before. A test about
+    // revocation passes null.
+    session: jest.Mock = jest.fn().mockResolvedValue({ id: 1 }),
   ): Harness {
     const reflector = {
       getAllAndOverride: (key: string) => metadata[key],
@@ -65,13 +71,81 @@ describe('AccessTokenGuard', () => {
       switchToHttp: () => ({ getRequest: () => request }),
     } as unknown as ExecutionContext;
 
+    const prisma = {
+      refreshToken: { findFirst: session },
+    } as unknown as PrismaService;
+
     return {
-      guard: new AccessTokenGuard(jwt, reflector),
+      guard: new AccessTokenGuard(jwt, reflector, prisma),
       context,
       request,
       verify,
+      session,
     };
   }
+
+  describe('a session that no longer exists', () => {
+    /**
+     * A signature is not a session.
+     *
+     * Verifying the token proves this server issued it and that it has not
+     * expired. It says nothing about whether the session it names is still
+     * alive, so deleting refresh rows used to remove a device's ability to
+     * renew and leave it able to act for the rest of its fifteen minutes. The
+     * password-changed mail said "Every device was signed out", which was not
+     * true of the token in the thief's hand.
+     */
+    it('refuses a perfectly valid token whose session was revoked', async () => {
+      const { guard, context } = harness(
+        {},
+        'Bearer good',
+        jest.fn().mockResolvedValue(PAYLOAD),
+        jest.fn().mockResolvedValue(null),
+      );
+
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    /** The lookup names the family and the owner, never the token. */
+    it('looks the session up by family and by owner', async () => {
+      const { guard, context, session } = harness({}, 'Bearer good');
+
+      await guard.canActivate(context);
+
+      expect(session).toHaveBeenCalledWith({
+        where: {
+          userId: PAYLOAD.sub,
+          OR: [{ familyId: PAYLOAD.sid }, { id: PAYLOAD.sid, familyId: null }],
+        },
+        select: { id: true },
+      });
+    });
+
+    /**
+     * The control, and it is the one that matters. Four tests above assert a
+     * 401, and all four would pass on a guard that refused everything. This
+     * says the same token is admitted while its session is alive.
+     */
+    it('admits the same token while the session is alive', async () => {
+      const { guard, context, request } = harness({}, 'Bearer good');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toEqual(PAYLOAD);
+    });
+
+    /** A public route never reaches the database, the same as it never verifies. */
+    it('does not query the session on a public route', async () => {
+      const { guard, context, session } = harness(
+        { [IS_PUBLIC_KEY]: true },
+        'Bearer good',
+      );
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(session).not.toHaveBeenCalled();
+    });
+  });
 
   describe('a public route', () => {
     it('is admitted without a token', async () => {

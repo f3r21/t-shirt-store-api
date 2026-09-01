@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
@@ -34,6 +35,7 @@ export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly reflector: Reflector,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -92,6 +94,37 @@ export class AccessTokenGuard implements CanActivate {
           'Refresh the token and send the request again.',
         );
       }
+      throw this.unauthorized();
+    }
+
+    // **A signature is not a session.** Verifying the token proved this server
+    // issued it and that it has not expired, and said nothing about whether the
+    // session it names is still alive.
+    //
+    // Without this, deleting refresh rows did not sign anybody out. The
+    // password-changed mail told the reader "Every device was signed out, so
+    // you must sign in again", and a stolen access token kept working for the
+    // rest of its fifteen minutes. That is the sentence somebody reads *after*
+    // they suspect their account is compromised. `DELETE /auth/sessions/{id}`
+    // had the same hole: it removed the device's ability to refresh and left it
+    // able to act.
+    //
+    // **What it costs, said plainly:** one indexed lookup on every protected
+    // request, which is the cost a JWT exists to avoid. It is paid because the
+    // alternative is that signing out does not sign out. If it ever becomes the
+    // bottleneck, the answer is a short-lived cache of revoked session ids and
+    // not removing the check.
+    const live = await this.prisma.refreshToken.findFirst({
+      where: {
+        userId: request.user.sub,
+        OR: [
+          { familyId: request.user.sid },
+          { id: request.user.sid, familyId: null },
+        ],
+      },
+      select: { id: true },
+    });
+    if (live === null) {
       throw this.unauthorized();
     }
 
