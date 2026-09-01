@@ -41,7 +41,28 @@ export function configureApp(app: INestApplication): INestApplication {
     .split(',')
     .map((o) => o.trim())
     .filter((o) => o !== '');
-  app.enableCors({ origin: origins, credentials: true });
+  // **`exposedHeaders`, or the browser cannot read what the contract promises.**
+  //
+  // CORS hands a cross-origin script six headers and hides every other one, and
+  // the hiding happens in the browser, so the server sends them either way and
+  // supertest reads them either way. Nothing in this suite could see the
+  // difference: `rg -i exposedHeaders src test` exited 1 while the served
+  // document declared `WWW-Authenticate` on 15 responses, `Retry-After` on 4
+  // and `Location` on 4.
+  //
+  // The effect on a front end is exact. `POST /auth/sessions` answers 201 and
+  // `res.headers.get('Location')` is null, so a client cannot find the session
+  // it just created. A 401 arrives with no `WWW-Authenticate` and a 429 with no
+  // `Retry-After`, so a client cannot tell how long to wait.
+  //
+  // Listed rather than derived from the contract on purpose: this is the set the
+  // server actually sends, and `openapi-contract.e2e-spec.ts` is what keeps the
+  // two honest.
+  app.enableCors({
+    origin: origins,
+    credentials: true,
+    exposedHeaders: ['Location', 'WWW-Authenticate', 'Retry-After'],
+  });
 
   // **A hop count, never `true`.** The rate limit is keyed on `req.ip`, and with
   // `trust proxy` unset that address is the socket's, which behind a load

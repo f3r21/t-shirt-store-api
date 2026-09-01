@@ -1,5 +1,6 @@
 import {
   ArgumentsHost,
+  BadRequestException,
   ForbiddenException,
   Logger,
   UnauthorizedException,
@@ -34,15 +35,21 @@ describe('ProblemFilter', () => {
     debug: jest.SpyInstance;
   }
 
-  function harness(url = '/v1/products/7', method = 'GET'): Harness {
+  function harness(
+    url = '/v1/products/7',
+    method = 'GET',
+    headersSent = false,
+    type_ = 'http',
+  ): Harness {
     const json = jest.fn();
     const type = jest.fn(() => ({ json }));
     const status = jest.fn(() => ({ type }));
     const setHeader = jest.fn();
-    const res = { status, setHeader };
+    const res = { status, setHeader, headersSent };
     const req = { url, method };
 
     const host = {
+      getType: () => type_,
       switchToHttp: () => ({
         getResponse: () => res,
         getRequest: () => req,
@@ -147,6 +154,74 @@ describe('ProblemFilter', () => {
         'GET /v1/products/7 500',
         'a bare string',
       );
+    });
+  });
+
+  describe('what it refuses to carry, and where it refuses to run', () => {
+    /**
+     * **The query string reaches a log line and a response body, and it is the
+     * caller's to fill.**
+     *
+     * `req.url` is the path plus everything after the `?`. It went into the
+     * debug log, which is on by default, and into the `instance` member of the
+     * problem document. An anonymous caller can send eight kilobytes of
+     * anything in a query string, collect a 400 from `forbidNonWhitelisted`,
+     * and have it written down. A path names the operation, which is all either
+     * use needs.
+     *
+     * The second half is the control: the path still arrives, so this is not
+     * passing because the filter stopped logging anything.
+     */
+    it('logs the path and never the query string', () => {
+      const { filter, host, debug, json } = harness(
+        '/v1/products?secret=leaked&big=' + 'x'.repeat(200),
+      );
+
+      filter.catch(new BadRequestException('nope'), host);
+
+      const [where] = debug.mock.calls[0] as [string, string];
+      expect(where).toBe('GET /v1/products 400');
+      expect(where).not.toContain('secret');
+
+      const body = (json.mock.calls[0] as [{ instance: string }])[0];
+      expect(body.instance).toBe('/v1/products');
+    });
+
+    /**
+     * A failure after the response has started cannot be answered.
+     *
+     * `res.status()` throws `ERR_HTTP_HEADERS_SENT` once headers are gone, which
+     * replaces the original error with a second one and writes nothing at all.
+     * The log line is then the only record of what happened, so it still has to
+     * be written: that is the second assertion.
+     */
+    it('writes nothing when the headers have already gone, and still logs', () => {
+      const { filter, host, status, debug } = harness(
+        '/v1/products',
+        'GET',
+        true,
+      );
+
+      expect(() =>
+        filter.catch(new BadRequestException('too late'), host),
+      ).not.toThrow();
+
+      expect(status).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalled();
+    });
+
+    /**
+     * `@Catch()` with no argument is terminal in every context, and this filter
+     * reads a request in its first three lines. Outside HTTP there is none, so
+     * it hands the error back to Nest rather than throwing while handling a
+     * throw.
+     */
+    it('rethrows outside an HTTP context rather than reading a request', () => {
+      const boom = new Error('from a scheduled task');
+      const { filter, host, status } = harness('/v1', 'GET', false, 'rpc');
+
+      expect(() => filter.catch(boom, host)).toThrow(boom);
+      expect(status).not.toHaveBeenCalled();
     });
   });
 });

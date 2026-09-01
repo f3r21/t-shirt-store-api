@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import request from 'supertest';
+import { parse as parseYaml } from 'yaml';
 import { createTestApp, TestApp } from './app-factory';
 
 describe('AppController (e2e)', () => {
@@ -59,6 +62,80 @@ describe('AppController (e2e)', () => {
       .set('origin', 'https://evil.example')
       .expect(200);
     expect(refused.headers).not.toHaveProperty('access-control-allow-origin');
+  });
+
+  /**
+   * **Every header the contract promises has to be readable by a browser.**
+   *
+   * This is the gate, and it is here because supertest is not a browser.
+   * `Access-Control-Expose-Headers` is enforced on the client, so the server
+   * sends `Location`, `WWW-Authenticate` and `Retry-After` whether or not they
+   * are exposed, and every existing assertion in this suite reads them either
+   * way. The defect was invisible to the harness rather than untested in it.
+   *
+   * So the assertion changes shape: instead of reading a header, it reads the
+   * **set the server permits a browser to read** and requires the contract's
+   * declared headers to be inside it. Declaring a new header in the contract
+   * without exposing it turns this red, which is what makes it a gate rather
+   * than three hard-coded names.
+   *
+   * The contract's names are collected by following `$ref` into
+   * `components.responses`, the same hop `openapi-contract.e2e-spec.ts` needed
+   * and did not have for a while.
+   */
+  it('exposes every response header the contract declares', async () => {
+    // The set a browser is told it may read, taken off a real response from an
+    // allowed origin rather than out of the configuration object.
+    const res = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .set('origin', 'https://shop.example')
+      .expect(200);
+    const exposed = new Set(
+      (res.headers['access-control-expose-headers'] ?? '')
+        .split(',')
+        .map((h: string) => h.trim().toLowerCase())
+        .filter((h: string) => h !== ''),
+    );
+
+    const contract = parseYaml(
+      readFileSync(join(__dirname, '../contract/openapi.yaml'), 'utf8'),
+    ) as {
+      paths: Record<
+        string,
+        Record<string, { responses?: Record<string, unknown> }>
+      >;
+      components?: {
+        responses?: Record<string, { headers?: Record<string, unknown> }>;
+      };
+    };
+
+    const shared = contract.components?.responses ?? {};
+    const declared = new Set<string>();
+    for (const item of Object.values(contract.paths)) {
+      for (const op of Object.values(item)) {
+        for (const response of Object.values(op.responses ?? {})) {
+          const r = response as {
+            $ref?: string;
+            headers?: Record<string, unknown>;
+          };
+          const target =
+            typeof r.$ref === 'string'
+              ? (shared[r.$ref.split('/').pop() ?? ''] ?? {})
+              : r;
+          Object.keys(target.headers ?? {}).forEach((h) => declared.add(h));
+        }
+      }
+    }
+
+    // The contract declares some. Without this the subset check below is
+    // satisfied by an empty set, which is the failure mode of every
+    // discovery-driven assertion in this repository.
+    expect(declared.size).toBeGreaterThan(0);
+
+    const unreadable = [...declared].filter(
+      (h) => !exposed.has(h.toLowerCase()),
+    );
+    expect(unreadable).toEqual([]);
   });
 
   /**
