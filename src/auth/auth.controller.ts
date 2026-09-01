@@ -82,6 +82,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @ApiResponse({ status: 500, description: 'The server failed.' })
   /**
    * The sign-in tier, and this route was the only credential route without one.

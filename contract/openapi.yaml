@@ -269,6 +269,8 @@ paths:
 
         A refresh token that is unknown, expired or already used returns 401 with the
         `refresh-token-unknown` problem type.
+
+        The server limits the request rate. Too many requests return 429.
       operationId: refreshSession
       security: []
       requestBody:
@@ -296,6 +298,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -407,6 +411,8 @@ paths:
 
         An email address that is already registered returns 409 with the `email-taken`
         problem type.
+
+        The server limits the request rate. Too many requests return 429.
       operationId: createUser
       security: []
       requestBody:
@@ -457,6 +463,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '409':
           $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

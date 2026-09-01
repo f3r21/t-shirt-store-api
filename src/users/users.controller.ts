@@ -49,6 +49,7 @@ export class UsersController {
   })
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 409, description: 'The email address is taken.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @ApiResponse({ status: 500, description: 'Unexpected server error.' })
   /**
    * The sign-in tier, on sign-up.
