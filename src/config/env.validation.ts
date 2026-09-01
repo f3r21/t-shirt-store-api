@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsEmail,
   IsInt,
+  IsOptional,
   IsString,
   IsUrl,
   Max,
@@ -38,8 +39,37 @@ export class EnvironmentVariables {
   @IsString()
   DATABASE_URL!: string;
 
-  @IsUrl({ protocols: ['redis'], require_tld: false })
-  REDIS_URL!: string;
+  /**
+   * Optional, because nothing reads it yet.
+   *
+   * It was required, so `validateEnv` refused to boot without it, and
+   * `rg -n 'REDIS_URL' src test` finds it only here and in two test setups
+   * while `rg -n 'redis|bullmq|ioredis' package.json` finds no client at all.
+   * Every deployment and the CI job had to invent a value for a service the
+   * process never opens, which teaches a reader that this file's requirements
+   * are decorative.
+   *
+   * **It becomes required again the day something opens the connection**, which
+   * is either the throttler's Redis storage adapter or the stock notification
+   * queue, whichever lands first. The `@IsUrl` stays, so a value that is present
+   * and wrong still fails at boot rather than at the first job.
+   *
+   * **`require_protocol` is not decoration.** Without it `protocols: ['redis']`
+   * only constrains a protocol that is already there, so a bare word passed.
+   * Measured against `validator.isURL` directly, with the old options and the
+   * new ones:
+   *
+   *     'not-a-url'               accepted  ->  rejected
+   *     'nonsense'                accepted  ->  rejected
+   *     'redis://localhost:6379'  accepted  ->  accepted
+   *     'http://localhost:6379'   rejected  ->  rejected
+   *
+   * The first two are the reason this line changed. The last two are the
+   * control: the option tightens the check and does not replace it.
+   */
+  @IsOptional()
+  @IsUrl({ protocols: ['redis'], require_tld: false, require_protocol: true })
+  REDIS_URL?: string;
 
   @IsString()
   @MinLength(32)

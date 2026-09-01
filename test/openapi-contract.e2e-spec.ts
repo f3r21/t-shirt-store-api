@@ -153,6 +153,41 @@ describe('OpenAPI document against the contract (e2e)', () => {
     return (schemas[name] ?? {}) as Record<string, unknown>;
   }
 
+  /**
+   * The header names one response declares, with its `$ref` followed.
+   *
+   * **This hop is why the header check measured nothing.** The check read
+   * `.headers` off the raw response object. Every error response in the
+   * contract is a `$ref` into `components.responses`, so `.headers` was
+   * `undefined` on all 36 of them and the loop skipped every one. The seven
+   * inline `Location` headers were the only sites it ever compared, which is
+   * exactly why it looked like it worked.
+   *
+   * `queryParams` below follows the same hop, and its docstring already names
+   * it as the reason that check went unseen. The lesson was written down two
+   * functions above this one and not applied here.
+   */
+  function responseHeaders(
+    doc: OpenAPIObject,
+    op: string,
+    code: string,
+  ): string[] {
+    let response = ((operationAt(doc, op)?.responses ?? {})[code] ??
+      {}) as Record<string, unknown>;
+
+    if (typeof response.$ref === 'string') {
+      const name = response.$ref.split('/').pop() ?? '';
+      const components: Record<string, unknown> =
+        (doc.components as { responses?: Record<string, unknown> })
+          ?.responses ?? {};
+      response = (components[name] ?? {}) as Record<string, unknown>;
+    }
+
+    return Object.keys(
+      (response.headers as Record<string, unknown> | undefined) ?? {},
+    ).sort();
+  }
+
   /** Property names and required names, which is what actually drifts. */
   function requestShape(doc: OpenAPIObject, op: string): string {
     const content = operationAt(doc, op)?.requestBody?.content;
@@ -426,25 +461,29 @@ describe('OpenAPI document against the contract (e2e)', () => {
   /**
    * A header the contract promises and the code sends must be documented.
    *
-   * Four `Location` headers on four 201s, all of them set by
-   * `res.setHeader` in the controllers and none of them described. A client
-   * following the document has no reason to read the one header that tells it
-   * where the thing it just created now lives.
+   * Two kinds of header, and the second kind is the one this check could not
+   * see until `responseHeaders` learned to follow a `$ref`.
+   *
+   * **Inline, on four 201s.** `Location`, set by `res.setHeader` in the
+   * controllers. A client following the document has no reason to read the one
+   * header that tells it where the thing it just created now lives.
+   *
+   * **Behind a `$ref`, on every 401 and every 429.**
+   * `components/responses/Unauthorized` declares `WWW-Authenticate` as
+   * "Required on every 401" and `TooManyRequests` declares `Retry-After`. The
+   * runtime sends both, and `auth.e2e-spec.ts` and `rate-limit.e2e-spec.ts`
+   * assert them. The document promised neither, on 36 sites, and this check
+   * was green the whole time.
    */
   it('declares the response headers the contract declares', () => {
     const wrong: string[] = [];
     for (const op of implementedOperations()) {
-      const cResponses = operationAt(contract, op)?.responses ?? {};
-      const gResponses = operationAt(generated, op)?.responses ?? {};
-      for (const [code, response] of Object.entries(cResponses)) {
-        const expected = Object.keys(
-          (response as { headers?: Record<string, unknown> }).headers ?? {},
-        ).sort();
+      for (const code of Object.keys(
+        operationAt(contract, op)?.responses ?? {},
+      )) {
+        const expected = responseHeaders(contract, op, code);
         if (expected.length === 0) continue;
-        const gResponse = gResponses[code] as {
-          headers?: Record<string, unknown>;
-        };
-        const served = Object.keys(gResponse?.headers ?? {}).sort();
+        const served = responseHeaders(generated, op, code);
         if (served.join(' ') !== expected.join(' ')) {
           wrong.push(
             `${op} ${code}: contract [${expected.join(' ')}] served [${served.join(' ')}]`,

@@ -223,6 +223,31 @@ describe('Catalog reads (e2e)', () => {
     });
 
     /**
+     * A malformed id and an impossible id are different answers, at run time.
+     *
+     * `ParseIdPipe` draws that line and its docstring argues it: `abc` is a bad
+     * request, while an integer above the `int4` ceiling is a lookup that finds
+     * nothing, which is what a negative id and a zero id already answer. Both
+     * documents now declare the 400, and **a document is not a response**.
+     * `openapi-contract.e2e-spec.ts` compares two descriptions of this API and
+     * never calls it, so the two could agree with each other and disagree with
+     * the server. This is the test that calls it.
+     *
+     * The two 404 rows are the control. Without them a 400 on every input would
+     * pass the first two lines, and the distinction the pipe exists to draw
+     * would be untested.
+     */
+    it.each([
+      ['a segment that is not a number', 'abc', 400],
+      ['a segment that is not an integer', '1.5', 400],
+      ['an integer above the int4 ceiling', '2147483648', 404],
+      ['an integer below the int4 floor', '-2147483649', 404],
+      ['a well formed id that matches no row', '2147483647', 404],
+    ])('answers %s with %i', async (_label, segment, status) => {
+      await http().get(`/v1/products/${segment}`).expect(status);
+    });
+
+    /**
      * `NOT_DELETED` is never relaxed, for any caller. Order history points at
      * the variants of products that may since have been withdrawn, so the row
      * survives while the catalog stops showing it to everyone, the manager

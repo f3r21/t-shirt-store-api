@@ -222,6 +222,8 @@ paths:
       responses:
         '204':
           description: The server deleted the session.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -641,6 +643,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -724,6 +728,8 @@ paths:
       responses:
         '204':
           description: The server deleted the product.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -765,6 +771,8 @@ paths:
       responses:
         '204':
           description: The user likes this variant.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -791,6 +799,8 @@ paths:
       responses:
         '204':
           description: The user does not like this variant.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -946,6 +956,8 @@ paths:
       responses:
         '204':
           description: The server removed the image.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1090,6 +1102,8 @@ paths:
       responses:
         '204':
           description: The server removed the variant.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1319,6 +1333,8 @@ paths:
       responses:
         '204':
           description: The cart holds no line for this variant.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1472,6 +1488,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -1625,6 +1643,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaymentIntent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -2404,7 +2424,11 @@ components:
 
     # Every non-2xx response $refs one of these. DECISIONS.md item 7.
     BadRequest:
-      description: The request body failed validation. `errors` names each rejected field.
+      description: >-
+        The server cannot read the request. Either a body field failed validation, and
+        then `errors` names each rejected field, or a path segment that must be an
+        integer is not one. A path id that is a well formed integer but matches no row
+        returns 404, not 400.
       content:
         application/problem+json:
           schema:

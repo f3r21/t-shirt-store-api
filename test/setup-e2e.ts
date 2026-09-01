@@ -17,7 +17,9 @@ process.env.DATABASE_URL =
 process.env.JWT_SECRET = 'e2e-jwt-secret-at-least-32-characters-long';
 process.env.REFRESH_TOKEN_PEPPER = 'e2e-pepper-at-least-32-characters-long';
 process.env.MAIL_FROM = 'no-reply@tshirt.store';
-process.env.REDIS_URL = 'redis://localhost:6379';
+// `REDIS_URL` is deliberately absent. Nothing in `src` opens a Redis
+// connection, so the whole end-to-end suite booting without it is the proof
+// that the variable is optional, and it is a better proof than any assertion.
 
 // Short, so an expiry test does not have to wait fifteen minutes.
 process.env.JWT_ACCESS_TTL = '900';

@@ -47,11 +47,14 @@ jobs:
       # makes no commits.
       HUSKY: '0'
       # A clean checkout has no .env, and `validateEnv` stops the boot without
-      # these four, so `app.module.spec.ts` cannot compile the module. They are
+      # these three, so `app.module.spec.ts` cannot compile the module. They are
       # throwaway values that exist to satisfy the validator, never credentials:
-      # nothing here reaches Redis or a mail provider, and the tokens signed with
-      # this secret live only inside one job.
-      REDIS_URL: redis://localhost:6379
+      # nothing here reaches a mail provider, and the tokens signed with this
+      # secret live only inside one job.
+      #
+      # `REDIS_URL` used to be a fourth. It is optional now, because no file in
+      # `src` opens a Redis connection, and a runner should not have to invent a
+      # value for a service the process never dials.
       JWT_SECRET: ci-only-value-not-a-secret-000000
       REFRESH_TOKEN_PEPPER: ci-only-value-not-a-secret-000000
       MAIL_FROM: ci@example.com
