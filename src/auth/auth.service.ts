@@ -118,7 +118,15 @@ export class AuthService {
    *
    * A wrong address and a wrong password produce the identical rejection. The
    * contract is explicit that the server does not say which of the two was
-   * wrong, so the two paths must not differ in status, type, title or detail.
+   * wrong, so the two paths must not differ in status, type, title, detail
+   * **or time**.
+   *
+   * That last one used to be missing, and this list is where it hid: four
+   * dimensions were named and checked, and the clock was not one of them.
+   * Returning at the null user skipped the only expensive call on the route,
+   * so a wrong address answered in about 3 ms and a wrong password in about
+   * 35 ms, and the gap said which addresses have accounts. The rate limit slows
+   * that enumeration and does not close it.
    *
    * The refresh row is created before the access token is signed, because the
    * token carries the session id and the row is where that id comes from.
@@ -133,6 +141,18 @@ export class AuthService {
       include: { role: true },
     });
     if (user === null) {
+      // Run one KDF and throw the result away, so this path costs what the
+      // path below costs. `hash` rather than a `verify` against a stored dummy
+      // digest, because both run the same Argon2id work and this needs no
+      // module state to hold the dummy. `verify` reads its parameters out of
+      // the digest it is given while `hash` uses the library defaults, so if
+      // stored digests ever stop matching those defaults, this line is where to
+      // switch to a dummy.
+      //
+      // It looks like a call whose value is unused, because it is one. That is
+      // why it carries this comment: the next reader tidying dead code would
+      // reopen the leak and no test would name the reason.
+      await argon2.hash(dto.password);
       throw this.invalidCredentials();
     }
 

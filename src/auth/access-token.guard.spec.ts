@@ -136,6 +136,49 @@ describe('AccessTokenGuard', () => {
         UnauthorizedException,
       );
     });
+
+    /**
+     * The case the test above does not cover, and the one that was broken.
+     *
+     * `'Bearer broken'` is a well formed header whose token fails
+     * verification, so it never reaches the branch this is about. A header
+     * whose *scheme* is unusable never produces a token at all, and
+     * `bearerToken` answers `undefined` for that exactly as it does for a
+     * header that is absent. The optional route then read `undefined` as "no
+     * token" and admitted the request.
+     *
+     * The protected-route block below asserts three of these four already, so
+     * the guard has always known how to refuse them. Only this tier let them
+     * through, which is why nothing was red.
+     */
+    it.each([
+      ['a scheme that is not Bearer', 'Basic dXNlcjpwYXNz'],
+      ['a scheme that merely starts with bearer', 'bearerish good'],
+      ['Bearer with an empty token', 'Bearer '],
+      ['a bare scheme with no token at all', 'Bearer'],
+    ])('refuses %s instead of serving it as anonymous', async (_l, header) => {
+      const { guard, context } = harness(
+        { [IS_OPTIONAL_AUTH_KEY]: true },
+        header,
+      );
+
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    /**
+     * The control. Without it the four cases above would pass on a guard that
+     * refused every optional request, which is the opposite bug.
+     */
+    it('still admits a request that sends no header at all', async () => {
+      const { guard, context, request } = harness({
+        [IS_OPTIONAL_AUTH_KEY]: true,
+      });
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
+    });
   });
 
   describe('a protected route', () => {

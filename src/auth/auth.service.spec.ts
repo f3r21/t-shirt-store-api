@@ -57,6 +57,17 @@ describe('AuthService', () => {
   let jwt: JwtService;
   let digest: string;
 
+  /**
+   * Counters, not stubs.
+   *
+   * The real Argon2id still runs, because a sign-in test that stubbed it would
+   * stop proving that a correct password verifies. These only let a test ask
+   * how many times the KDF ran, which is how the wrong-address and
+   * wrong-password paths are compared for cost.
+   */
+  let hashSpy: jest.SpyInstance;
+  let verifySpy: jest.SpyInstance;
+
   beforeAll(async () => {
     digest = await argon2.hash(PASSWORD);
   });
@@ -64,6 +75,8 @@ describe('AuthService', () => {
   beforeEach(async () => {
     prisma = createPrismaMock();
     mailer = createMailerMock();
+    hashSpy = jest.spyOn(argon2, 'hash');
+    verifySpy = jest.spyOn(argon2, 'verify');
 
     const module = await Test.createTestingModule({
       imports: [
@@ -243,24 +256,41 @@ describe('AuthService', () => {
     });
 
     it('returns the same invalid-credentials problem for a wrong address and for a wrong password (openapi.yaml:100)', async () => {
+      // The fifth dimension, and the one this test used to be blind to: the two
+      // paths must also cost the same. Counting Argon2id calls rather than
+      // milliseconds, because a clock assertion in CI is flaky by construction
+      // and the cost is the KDF. Deleting the `argon2.hash` on the null-user
+      // path turns this red; nothing else here notices.
+      const kdfCalls = (): number =>
+        hashSpy.mock.calls.length + verifySpy.mock.calls.length;
+
       prisma.user.findUnique.mockResolvedValue(null);
+      const before = kdfCalls();
       const wrongAddress = await rejection(
         service.createSession({
           email: 'nobody@example.com',
           password: PASSWORD,
         }),
       );
+      const addressCost = kdfCalls() - before;
 
       prisma.user.findUnique.mockResolvedValue({
         ...signedInUser(),
         role: { id: 2, name: 'client' },
       });
+      const beforePassword = kdfCalls();
       const wrongPassword = await rejection(
         service.createSession({
           email: 'ana@example.com',
           password: 'not the one',
         }),
       );
+      const passwordCost = kdfCalls() - beforePassword;
+
+      expect(addressCost).toBe(passwordCost);
+      // Non-zero, or two paths that both do nothing would satisfy the line
+      // above and prove nothing.
+      expect(addressCost).toBe(1);
 
       // The two must be indistinguishable, so they are compared to each other
       // rather than each being checked for a 401 on its own.

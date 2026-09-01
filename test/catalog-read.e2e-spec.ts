@@ -161,6 +161,38 @@ describe('Catalog reads (e2e)', () => {
      * composed a filter and not that a disabled row stays hidden from a real
      * request against a real database.
      */
+    /**
+     * A header that is present and unusable is not the same as no header.
+     *
+     * `GET /products` is the optional-auth route, so an anonymous call is a
+     * 200. That made a broken `Authorization` header a 200 as well, because
+     * the guard could not tell "sent nothing" from "sent something I cannot
+     * read": both arrived as an undefined token.
+     *
+     * The reader this hurt is a manager whose client mangles the header. They
+     * asked for the catalog as themselves, got the anonymous one, and nothing
+     * in the response said so.
+     *
+     * The last row is the control. Without it four 401s would also pass on a
+     * guard that had started refusing every anonymous read, which is the
+     * opposite failure and a worse one.
+     */
+    it.each([
+      ['a scheme that is not Bearer', 'Basic abc', 401],
+      ['a bare scheme', 'Bearer', 401],
+      ['a scheme with an empty token', 'Bearer ', 401],
+      ['a scheme nobody defines', 'Token xyz', 401],
+      ['a scheme that merely starts with bearer', 'bearerish abc', 401],
+      ['no header at all', undefined, 200],
+    ])(
+      'answers %s with %i on an optional-auth route',
+      async (_l, h, status) => {
+        const call = http().get('/v1/products');
+        if (h !== undefined) call.set('authorization', h);
+        await call.expect(status);
+      },
+    );
+
     it('hides a disabled product from an anonymous caller', async () => {
       await seedProductWithVariant(ctx.prisma, { name: 'Live' });
       await seedProductWithVariant(ctx.prisma, {

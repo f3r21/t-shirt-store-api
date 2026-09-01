@@ -51,14 +51,33 @@ export class AccessTokenGuard implements CanActivate {
     );
 
     const request = context.switchToHttp().getRequest<Request>();
+    const header = request.headers.authorization;
     const token = this.bearerToken(request);
 
-    if (token === undefined) {
-      // An optional route tolerates no token. It does not tolerate a broken
-      // one: a caller who sent a token meant to be recognised.
+    // An optional route tolerates no token. It does not tolerate a broken one:
+    // a caller who sent a token meant to be recognised.
+    //
+    // **That comment sat one line above code that did the opposite.** The check
+    // was `if (token === undefined)`, and `bearerToken` returns `undefined`
+    // both for a header that is absent and for one that is present and
+    // unusable, so the two cases had already been flattened into one before
+    // this branch could tell them apart. `Basic abc`, `Bearer`, `Token xyz` and
+    // a bare `Bearer ` all answered 200 on an optional route, as the anonymous
+    // view.
+    //
+    // The cost was not cosmetic. A manager whose client mangles the header got
+    // the catalog without their disabled products, with a 200 and nothing
+    // saying why, which is the exact failure `@OptionalAuth` exists to prevent.
+    if (header === undefined) {
       if (optional) {
         return true;
       }
+      throw this.unauthorized();
+    }
+
+    // The header is there and `bearerToken` could not use it. Refused on both
+    // tiers, because a caller who sent credentials asked to be recognised.
+    if (token === undefined) {
       throw this.unauthorized();
     }
 

@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { JwtService } from '@nestjs/jwt';
 import {
   createTestApp,
   ensureRoles,
@@ -189,7 +190,7 @@ describe('Authentication (e2e)', () => {
         .expect(401);
     });
 
-    it('refuses a malformed token and a token signed with another key', async () => {
+    it('refuses a malformed token', async () => {
       await signUpAndIn();
 
       await http()
@@ -201,6 +202,45 @@ describe('Authentication (e2e)', () => {
         .get('/v1/auth/sessions')
         .set('authorization', 'Basic dXNlcjpwYXNz')
         .expect(401);
+    });
+
+    /**
+     * A token that is structurally perfect and signed with the wrong key.
+     *
+     * The test above used to claim this in its own name and never do it: it
+     * sent `Bearer not.a.token` and a `Basic` header, neither of which reaches
+     * the signature check, and no test in this repository minted a foreign
+     * token. **Verifying the signature is the guard's entire purpose**, and it
+     * was covered only by a unit spec whose `verifyAsync` was a mock
+     * programmed to reject, which asserts that the guard handles a rejection
+     * rather than that a real forged token produces one.
+     *
+     * `JwtService` mints it rather than `jsonwebtoken` directly, because
+     * `@nestjs/jwt` is a declared dependency of this project and its signing
+     * library is not.
+     *
+     * The second call is the control. The same payload signed with the real
+     * secret has to be accepted, or a guard that refused every token would pass
+     * the first line.
+     */
+    it('refuses a token signed with another key, and accepts the same payload signed with the real one', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      const payload = { sub: 1, sid: 1, role: 'client' };
+      const foreign = new JwtService({
+        secret: 'a-different-secret-of-at-least-32-chars',
+        signOptions: { expiresIn: 900 },
+      });
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${await foreign.signAsync(payload)}`)
+        .expect(401);
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
     });
   });
 

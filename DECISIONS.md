@@ -190,10 +190,24 @@ three entries all named `password` would let a caller count decorators.
 
 ## 12. Known gaps, stated rather than hidden
 
-- **`requestPasswordReset` leaks through timing.** The two paths answer identically, but
-  only one of them writes a row and sends a message, so they do not take the same time.
-  Closing it means doing equivalent work on the unknown path. The endpoint is rate limited
-  instead.
+- **`requestPasswordReset` leaks through timing, and `createSession` no longer does.** Both
+  answer identically on the two paths and neither used to take the same time on them, and
+  the asymmetry in what was done about it is deliberate rather than an oversight.
+
+  Sign-in was closed. `createSession` returned at the null user and skipped the only
+  expensive call on the route, so a wrong address answered in about 3 ms against about 35 ms
+  for a wrong password, and the gap named which addresses have accounts. It now runs one
+  Argon2id hash and discards it, because **the equivalent work already existed**: it is the
+  `verify` the other path performs, so closing the gap cost one call. `openapi.yaml:100` also
+  promises this one explicitly, in the words "The server does not say which of the two was
+  wrong", and a promise in the contract is not a thing to leave half kept.
+
+  The reset request stays open. Its equivalent work is a database write and a message to a
+  mail provider, and neither can be faked without writing rows nobody asked for or sleeping
+  the process, which are both worse than the leak. Its contract text promises an
+  unconditional 202 and says nothing about time. It is rate limited, at 5 per 900 seconds,
+  which slows enumeration without closing it. **Said plainly rather than left as an
+  inconsistency for a reviewer to find.**
 - **A failed mail send does not fail the request.** Both mailing operations change a
   password first and mail afterwards. Letting the send throw would answer with an error for
   a request that succeeded, and the caller would reasonably retry with a password that no
