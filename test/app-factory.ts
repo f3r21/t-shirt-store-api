@@ -133,13 +133,40 @@ export async function createTestApp(
  */
 export function resetThrottleCounter(ctx: TestApp): void {
   const storage = ctx.app.get<ThrottlerStorage>(ThrottlerStorage);
-  const map = (storage as { storage?: Map<string, unknown> }).storage;
-  if (map === undefined) {
+  const service = storage as {
+    storage?: Map<string, unknown>;
+    onApplicationShutdown?: () => void;
+  };
+
+  if (service.storage === undefined) {
     throw new Error(
       'the throttler storage carries no counter to reset, so this app was built without { throttle: true }',
     );
   }
-  map.clear();
+
+  // **The timers go before the map, and that order is the whole fix.**
+  //
+  // `increment` schedules a `setTimeout` per record that decrements the entry
+  // when its window closes. Clearing the map on its own leaves those timers
+  // alive holding a key that is no longer there, and the callback destructures
+  // the missing record. Reproduced against the installed package:
+  //
+  //     new ThrottlerStorageService()
+  //       .increment('k', 50, 5, 0, 'default')
+  //       .then(() => s.storage.clear())
+  //     -> Cannot destructure property 'totalHits' of 'this.storage.get(...)'
+  //        as it is undefined
+  //
+  // It threw inside a timer, so it is an uncaught exception in the worker
+  // rather than a failed assertion. This suite survived on timing alone: every
+  // window is 60 seconds or more and the run finished first. A slower machine
+  // turns a green suite into a dead worker with nothing explaining why.
+  //
+  // `onApplicationShutdown` is the package's own teardown and clears both the
+  // timeouts and the records, so this stops reaching past its API into a field
+  // whose invariants it does not know.
+  service.onApplicationShutdown?.();
+  service.storage.clear();
 }
 
 /**

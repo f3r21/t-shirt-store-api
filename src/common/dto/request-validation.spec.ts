@@ -140,6 +140,42 @@ describe('request validation', () => {
         expect(field.message.length).toBeGreaterThan(0);
       }
     });
+
+    /**
+     * **The one message a caller receives has to be the one that explains the
+     * failure.**
+     *
+     * The three assertions above are the shape this test had, and they pass on
+     * any string. `POST /users` with `{"password": 12345}` answered "must be at
+     * most 128 characters" about a five digit number, because class-validator
+     * keys `constraints` in reverse declaration order and the factory read the
+     * first entry, which is the constraint declared last.
+     *
+     * A caller reads that and shortens a password that was never too long.
+     *
+     * The second row is the control. Without it this would pass on a factory
+     * that had started returning the type message for everything, including
+     * fields where the type is right and the length is genuinely wrong.
+     */
+    it.each([
+      [
+        'the wrong type on a field with length bounds',
+        12345,
+        /must be a string/,
+      ],
+      ['a real length violation', 'x'.repeat(200), /at most 128/],
+    ])(
+      'reports %s with the message that explains it',
+      async (_l, password, expected) => {
+        const [field] = await rejectedFields(CreateUserDto, {
+          ...valid,
+          password,
+        });
+
+        expect(field.field).toBe('password');
+        expect(field.message).toMatch(expected);
+      },
+    );
   });
 
   describe('CreateSessionDto', () => {
