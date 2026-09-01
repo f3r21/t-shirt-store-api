@@ -8,6 +8,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { INT4_MAX } from '../../common/int4';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
@@ -39,6 +40,11 @@ export class CreateProductDto {
   description?: string;
 
   /** The categories of this product. */
+  // `type: [Number]` is not decoration. The plugin cannot read the element
+  // type of `number[]` here and served `items: { type: 'string' }`, so a
+  // generated client would have sent an array of strings to a column of
+  // integers.
+  @ApiPropertyOptional({ type: [Number] })
   @IsOptionalNotNull()
   @IsArray({ message: 'must be an array' })
   @ArrayUnique({ message: 'must not repeat a category' })

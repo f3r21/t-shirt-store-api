@@ -85,6 +85,23 @@ describe('AppController (e2e)', () => {
     expect(res.body.title).toBe('Validation failed');
   });
 
+  /**
+   * Where the documentation actually is.
+   *
+   * `configure-app.ts` carried a comment saying /v1/docs for as long as the line
+   * existed, and that path answers 404. `SwaggerModule.setup` mounts on the
+   * Express instance and ignores `setGlobalPrefix` unless told otherwise, so the
+   * prefix never applied. The comment was the repository's only pointer to its
+   * own documentation, which is the worst thing for it to be wrong about.
+   */
+  it.each([
+    ['/docs', 200],
+    ['/docs-json', 200],
+    ['/v1/docs', 404],
+  ])('serves %s with %i', async (path, status) => {
+    await request(ctx.app.getHttpServer()).get(path).expect(status);
+  });
+
   it('still answers 400 with errors[] for a readable body, which is the control', async () => {
     // Without this the fix could pass by answering 400 to everything, and it
     // pins the difference: a body the parser read names its rejected fields.

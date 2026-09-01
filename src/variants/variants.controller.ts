@@ -38,6 +38,12 @@ export class ProductVariantsController {
     status: 201,
     description: 'The variant is created.',
     type: ProductVariantDto,
+    headers: {
+      Location: {
+        description: 'The URL of the new variant.',
+        schema: { type: 'string' },
+      },
+    },
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
   @ApiResponse({ status: 401, description: 'The request has no valid token.' })

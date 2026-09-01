@@ -3,6 +3,8 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { ApiPageResponse } from '../common/dto/api-page-response';
+import { CategoryDto } from './dto/category.dto';
 
 @ApiTags('catalog')
 @Controller('categories')
@@ -19,7 +21,7 @@ export class CategoriesController {
    */
   @Public()
   @ApiOperation({ summary: 'List categories' })
-  @ApiResponse({ status: 200, description: 'The page of categories.' })
+  @ApiPageResponse(CategoryDto, 'The page of categories.')
   @ApiResponse({ status: 400, description: 'The query is not valid.' })
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()

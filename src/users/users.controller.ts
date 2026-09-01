@@ -35,7 +35,17 @@ export class UsersController {
    */
   @Public()
   @ApiOperation({ summary: 'Create an account' })
-  @ApiResponse({ status: 201, description: 'Account created.', type: UserDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Account created.',
+    type: UserDto,
+    headers: {
+      Location: {
+        description: 'The URL of the new account.',
+        schema: { type: 'string' },
+      },
+    },
+  })
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 409, description: 'The email address is taken.' })
   @ApiResponse({ status: 500, description: 'Unexpected server error.' })

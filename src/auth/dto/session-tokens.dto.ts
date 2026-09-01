@@ -1,3 +1,4 @@
+import { ApiSchema } from '@nestjs/swagger';
 /**
  * Response shape of POST /auth/sessions and POST /auth/refresh.
  *
@@ -6,6 +7,7 @@
  */
 import { UserDto } from '../../users/dto/user.dto';
 
+@ApiSchema({ name: 'SessionTokens' })
 export class SessionTokensDto {
   /**
    * The account that just signed in.

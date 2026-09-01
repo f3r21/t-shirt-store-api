@@ -23,6 +23,8 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AccessTokenPayload } from './access-token-payload';
 import { PageQueryDto } from '../common/dto/page-query.dto';
+import { ApiPageResponse } from '../common/dto/api-page-response';
+import { SessionDto } from './dto/session.dto';
 import { PASSWORD_THROTTLE } from './password-throttle';
 import { Roles } from './decorators/roles.decorator';
 import { ROLE_NAMES } from '../users/dto/user.dto';
@@ -47,6 +49,13 @@ export class AuthController {
     status: 201,
     description: 'The server created the session.',
     type: SessionTokensDto,
+    headers: {
+      Location: {
+        description:
+          'The URL of the new session. Send a DELETE to that URL to sign this device out.',
+        schema: { type: 'string' },
+      },
+    },
   })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The credentials are wrong.' })
@@ -82,7 +91,7 @@ export class AuthController {
 
   @Roles(...ROLE_NAMES)
   @ApiOperation({ summary: 'List the devices signed in to this account' })
-  @ApiResponse({ status: 200, description: 'The server sent the list.' })
+  @ApiPageResponse(SessionDto, 'The server sent the list.')
   @ApiResponse({ status: 400, description: 'The query is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
   @ApiResponse({ status: 500, description: 'The server failed.' })

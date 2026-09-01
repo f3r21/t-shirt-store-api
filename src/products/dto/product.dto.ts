@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { CategoryDto } from '../../categories/dto/category.dto';
 import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
 
@@ -9,6 +9,7 @@ import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
  * so `ProductDto.images` is an empty array until then. The contract makes the
  * array required, so the key is always present.
  */
+@ApiSchema({ name: 'ProductImage' })
 export class ProductImageDto {
   id!: number;
 
@@ -28,6 +29,7 @@ export class ProductImageDto {
  * The `products` row also holds `deleted_at`. It does not reach a response. The
  * contract answers 404 for a deleted product instead.
  */
+@ApiSchema({ name: 'Product' })
 export class ProductDto {
   id!: number;
 

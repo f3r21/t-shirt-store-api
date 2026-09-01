@@ -24,8 +24,15 @@ export function configureApp(app: INestApplication): INestApplication {
 
   app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
 
-  // Served under the global prefix at /v1/docs. The document itself is built
-  // with the prefix stripped, so it matches the contract's bare path keys.
+  // Served at /docs, outside the global prefix, with the JSON at /docs-json.
+  // `SwaggerModule.setup` mounts on the Express instance and takes no notice of
+  // `setGlobalPrefix` unless it is told to, so the prefix does not apply here.
+  // The comment above this line used to say /v1/docs, which answers 404. It is
+  // pinned by a test now, in `test/app.e2e-spec.ts`, because a comment is the
+  // one kind of documentation nothing checks.
+  //
+  // The document itself is built with the prefix stripped, so its path keys
+  // match the contract's.
   SwaggerModule.setup('docs', app, buildOpenApiDocument(app));
 
   return app;

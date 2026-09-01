@@ -1,3 +1,4 @@
+import { ApiSchema } from '@nestjs/swagger';
 /**
  * One entry of GET /products. See `openapi.yaml:1789-1819`.
  *
@@ -5,6 +6,7 @@
  * product to get them, so the server runs a fixed number of queries as the page
  * grows.
  */
+@ApiSchema({ name: 'ProductSummary' })
 export class ProductSummaryDto {
   id!: number;
 

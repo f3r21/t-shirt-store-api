@@ -14,19 +14,36 @@ import { createTestApp, TestApp } from './app-factory';
  *
  * **What it compares:** the set of operations, the name each one is served
  * under, who may call it, the status codes it declares, whether every failure
- * describes its body, and the property and required names of each request body.
+ * and every documented success describes its body, the property and required
+ * names of each request body, which query parameters are required, which
+ * response headers are declared, and every bound on a body property or query
+ * parameter.
  *
- * **What it does not:** types, formats, lengths, examples and descriptions. The
- * contract expresses bounds the generated document spells differently, and
- * asserting on those would fail on spelling rather than on substance. That limit
- * is stated here rather than left for a reader to find out.
+ * **What it does not:** types, formats, examples and descriptions. Every integer
+ * in the contract is served as `number` rather than `integer`, which is
+ * imprecise and not wrong, and comparing descriptions would fail on wording.
+ * That limit is stated here rather than left for a reader to find out.
  *
- * The first four of those six were added on 2026-08-31, after an audit found
+ * The first four of those checks were added on 2026-08-31, after an audit found
  * that the served document renamed all 19 operations, showed seven of them with
  * the wrong authentication, described 75 failures with no body at all, and
  * pointed readers at a file in another repository. Every one of those was green
  * here, because comparing status code keys says nothing about what sits under
- * them. A drift test is only worth what it compares.
+ * them.
+ *
+ * The last four were added on 2026-09-01, after a second pass found fourteen
+ * more differences that the first four were green on: three list operations
+ * served a 200 with no body schema, which kept `ProductSummary`, `Session` and
+ * `PageMeta` out of the document entirely; seven query parameters said
+ * `required: true` against a contract that marks them optional; and four
+ * `Location` headers the code sends were undocumented.
+ *
+ * That pass also retired a limit this file used to declare. It said bounds would
+ * not be compared because "the contract expresses bounds the generated document
+ * spells differently". Measured rather than inherited: fourteen bounds appear
+ * only in the served document and zero appear only in the contract, so there was
+ * no spelling noise, and the fourteen are one signed decision. A drift test is
+ * only worth what it compares, and a stated limit is worth re-measuring.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
@@ -44,6 +61,46 @@ describe('OpenAPI document against the contract (e2e)', () => {
   const DECLARED_DIFFERENCES = {
     /** Not an API operation. A liveness route the contract has no reason to describe. */
     operationsNotInContract: ['GET /'],
+
+    /**
+     * Bounds the server enforces that the contract does not state.
+     *
+     * One decision, fourteen entries, and the decision is that the server is
+     * deliberately stricter than the contract wherever the storage layer or
+     * the domain already refuses a value the contract admits. Refusing at the
+     * edge turns a 500 into a 400.
+     *
+     * The seven `maximum` entries are the `int4` ceiling of the column behind
+     * the field. Measured: a value above it made Postgres answer `P2020`, which
+     * nothing mapped, which left a 500 on two routes reachable with no token.
+     * `src/common/int4.ts` carries the measurement.
+     *
+     * The `minimum` entries refuse an id or a price no row could carry, and
+     * `uniqueItems` refuses a `categoryIds` that names the same category twice,
+     * which would otherwise be two identical join rows and a unique violation.
+     *
+     * **The comparison runs in both directions and only this side is allowed to
+     * be non-empty.** A bound the contract states and the server does not is
+     * never signed off here, because that is the server being looser than its
+     * own promise. Measured when this list was written: fourteen served-only and
+     * zero contract-only.
+     */
+    boundsNotInContract: [
+      'GET /products q.categoryId.maximum=2147483647',
+      'GET /products q.categoryId.minimum=1',
+      'PATCH /products/{id} body.categoryIds.items.maximum=2147483647',
+      'PATCH /products/{id} body.categoryIds.items.minimum=1',
+      'PATCH /products/{id} body.categoryIds.uniqueItems=true',
+      'PATCH /variants/{id} body.price.maximum=2147483647',
+      'PATCH /variants/{id} body.price.minimum=0',
+      'PATCH /variants/{id}/stock body.stock.maximum=2147483647',
+      'POST /products body.categoryIds.items.maximum=2147483647',
+      'POST /products body.categoryIds.items.minimum=1',
+      'POST /products body.categoryIds.uniqueItems=true',
+      'POST /products/{id}/variants body.price.maximum=2147483647',
+      'POST /products/{id}/variants body.price.minimum=0',
+      'POST /products/{id}/variants body.stock.maximum=2147483647',
+    ],
   };
 
   type Operation = {
@@ -271,5 +328,216 @@ describe('OpenAPI document against the contract (e2e)', () => {
       );
 
     expect(wrong).toEqual([]);
+  });
+
+  /**
+   * The three checks below were added on 2026-09-01, after a second pass found
+   * fourteen more differences that everything above was green on.
+   *
+   * The pattern is the same one this file already records: comparing the keys of
+   * a thing says nothing about what sits under them. The status codes matched
+   * and the bodies were absent; the parameter names matched and their
+   * requiredness was inverted; the operations matched and four declared headers
+   * were missing.
+   */
+
+  /** Every success response the contract gives a body must carry one here. */
+  function successWithoutBody(op: string): string[] {
+    const cop = operationAt(contract, op);
+    const gop = operationAt(generated, op);
+    return ['200', '201']
+      .filter((code) => {
+        const c = (cop?.responses ?? {})[code] as { content?: unknown };
+        const g = (gop?.responses ?? {})[code] as { content?: unknown };
+        return c?.content !== undefined && g?.content === undefined;
+      })
+      .map((code) => `${op} ${code}`);
+  }
+
+  /**
+   * The three list operations served a 200 with a description and nothing else.
+   *
+   * That is not a cosmetic gap. A schema reaches `components.schemas` only when
+   * something references it, so the three missing payloads took `ProductSummary`,
+   * `Session` and `PageMeta` with them and a client generated from the document
+   * could not type any collection in the API.
+   */
+  it('gives every documented success a body schema', () => {
+    const missing = implementedOperations().flatMap(successWithoutBody);
+
+    expect(missing).toEqual([]);
+  });
+
+  /** A query parameter, with its `$ref` followed, from either document. */
+  function queryParams(
+    doc: OpenAPIObject,
+    op: string,
+  ): Map<string, { required: boolean }> {
+    const raw = (operationAt(doc, op) as { parameters?: unknown[] } | undefined)
+      ?.parameters;
+    const out = new Map<string, { required: boolean }>();
+    for (const entry of raw ?? []) {
+      let p = entry as Record<string, unknown>;
+      if (typeof p.$ref === 'string') {
+        const name = p.$ref.split('/').pop() ?? '';
+        const params: Record<string, unknown> =
+          (doc.components as { parameters?: Record<string, unknown> })
+            ?.parameters ?? {};
+        p = (params[name] ?? {}) as Record<string, unknown>;
+      }
+      if (p.in !== 'query') continue;
+      out.set(String(p.name), { required: p.required === true });
+    }
+    return out;
+  }
+
+  /**
+   * A required parameter is a different API from an optional one.
+   *
+   * Seven entries across the three collections said `required: true` against a
+   * contract that marks all seven optional and a server that defaults them. A
+   * client generated from that document refuses to call `GET /products` without
+   * a `limit`, for an API that has always accepted the call.
+   *
+   * The `$ref` hop is why this went unseen for so long: the contract declares
+   * `limit` and `offset` once and references them, so a comparison that does not
+   * follow the reference sees no parameters at all and passes.
+   */
+  it('agrees with the contract on which query parameters are required', () => {
+    const wrong: string[] = [];
+    for (const op of implementedOperations()) {
+      const c = queryParams(contract, op);
+      const g = queryParams(generated, op);
+      for (const [name, spec] of c) {
+        const mine = g.get(name);
+        if (mine === undefined) {
+          wrong.push(`${op} ${name}: served does not declare it`);
+        } else if (mine.required !== spec.required) {
+          wrong.push(
+            `${op} ${name}: contract required=${spec.required} served required=${mine.required}`,
+          );
+        }
+      }
+    }
+
+    expect(wrong).toEqual([]);
+  });
+
+  /**
+   * A header the contract promises and the code sends must be documented.
+   *
+   * Four `Location` headers on four 201s, all of them set by
+   * `res.setHeader` in the controllers and none of them described. A client
+   * following the document has no reason to read the one header that tells it
+   * where the thing it just created now lives.
+   */
+  it('declares the response headers the contract declares', () => {
+    const wrong: string[] = [];
+    for (const op of implementedOperations()) {
+      const cResponses = operationAt(contract, op)?.responses ?? {};
+      const gResponses = operationAt(generated, op)?.responses ?? {};
+      for (const [code, response] of Object.entries(cResponses)) {
+        const expected = Object.keys(
+          (response as { headers?: Record<string, unknown> }).headers ?? {},
+        ).sort();
+        if (expected.length === 0) continue;
+        const gResponse = gResponses[code] as {
+          headers?: Record<string, unknown>;
+        };
+        const served = Object.keys(gResponse?.headers ?? {}).sort();
+        if (served.join(' ') !== expected.join(' ')) {
+          wrong.push(
+            `${op} ${code}: contract [${expected.join(' ')}] served [${served.join(' ')}]`,
+          );
+        }
+      }
+    }
+
+    expect(wrong).toEqual([]);
+  });
+
+  const BOUND_KEYS = [
+    'maximum',
+    'minimum',
+    'maxLength',
+    'minLength',
+    'uniqueItems',
+  ];
+
+  /** Every bound under a schema, flattened to `path.key=value` strings. */
+  function boundsUnder(schema: unknown, prefix: string): string[] {
+    const s = (schema ?? {}) as Record<string, unknown>;
+    const out = BOUND_KEYS.filter((k) => s[k] !== undefined).map(
+      (k) => `${prefix}.${k}=${String(s[k])}`,
+    );
+    if (s.items !== undefined) {
+      out.push(...boundsUnder(s.items, `${prefix}.items`));
+    }
+    for (const [name, sub] of Object.entries(
+      (s.properties ?? {}) as Record<string, unknown>,
+    )) {
+      out.push(...boundsUnder(sub, `${prefix}.${name}`));
+    }
+    return out;
+  }
+
+  /** Body and query bounds of one operation, in one document. */
+  function boundsOf(doc: OpenAPIObject, op: string): string[] {
+    const operation = operationAt(doc, op) as Operation & {
+      parameters?: unknown[];
+    };
+    const body = deref(
+      doc,
+      operation?.requestBody?.content?.['application/json']?.schema,
+    );
+    const out = boundsUnder(body, 'body');
+
+    for (const entry of operation?.parameters ?? []) {
+      let p = entry as Record<string, unknown>;
+      if (typeof p.$ref === 'string') {
+        const name = p.$ref.split('/').pop() ?? '';
+        const params: Record<string, unknown> =
+          (doc.components as { parameters?: Record<string, unknown> })
+            ?.parameters ?? {};
+        p = (params[name] ?? {}) as Record<string, unknown>;
+      }
+      if (p.in !== 'query') continue;
+      out.push(...boundsUnder(p.schema, `q.${String(p.name)}`));
+    }
+    return out;
+  }
+
+  /**
+   * The bounds, in both directions, which this file used to say it would not do.
+   *
+   * The reason it gave was that "the contract expresses bounds the generated
+   * document spells differently, and asserting on those would fail on spelling
+   * rather than on substance". That was worth checking rather than inheriting.
+   * Measured: fourteen bounds appear only in the served document and **zero**
+   * appear only in the contract, so there is no spelling noise to drown the
+   * signal. The fourteen are a single deliberate decision, listed and reasoned
+   * in `DECLARED_DIFFERENCES.boundsNotInContract`.
+   *
+   * The two directions are not symmetric and the test treats them differently.
+   * Serving a bound the contract does not state is the server being stricter
+   * than its promise, which is a decision somebody can sign. Failing to serve a
+   * bound the contract does state is the server being looser than its promise,
+   * which is never signed off and always fails.
+   */
+  it('serves every bound the contract states, and no unsigned extras', () => {
+    const servedOnly: string[] = [];
+    const contractOnly: string[] = [];
+
+    for (const op of implementedOperations()) {
+      const c = new Set(boundsOf(contract, op));
+      const g = new Set(boundsOf(generated, op));
+      for (const b of g) if (!c.has(b)) servedOnly.push(`${op} ${b}`);
+      for (const b of c) if (!g.has(b)) contractOnly.push(`${op} ${b}`);
+    }
+
+    expect(contractOnly).toEqual([]);
+    expect(servedOnly.sort()).toEqual(
+      [...DECLARED_DIFFERENCES.boundsNotInContract].sort(),
+    );
   });
 });

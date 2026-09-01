@@ -12,6 +12,8 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiPageResponse } from '../common/dto/api-page-response';
+import { ProductSummaryDto } from './dto/product-summary.dto';
 import type { Response } from 'express';
 import { ProductsService } from './products.service';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -41,7 +43,7 @@ export class ProductsController {
    */
   @OptionalAuth()
   @ApiOperation({ summary: 'List products' })
-  @ApiResponse({ status: 200, description: 'A page of products.' })
+  @ApiPageResponse(ProductSummaryDto, 'A page of products.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
@@ -78,6 +80,12 @@ export class ProductsController {
     status: 201,
     description: 'The product is created.',
     type: ProductDto,
+    headers: {
+      Location: {
+        description: 'The URL of the new product.',
+        schema: { type: 'string' },
+      },
+    },
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })

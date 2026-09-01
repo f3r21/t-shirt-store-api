@@ -1,3 +1,4 @@
+import { ApiSchema } from '@nestjs/swagger';
 /**
  * One variant, as `POST /products/{id}/variants`, `PATCH /variants/{id}` and
  * `PATCH /variants/{id}/stock` all return it. See `openapi.yaml:1855-1876`.
@@ -6,6 +7,7 @@
  * no null value, so the mapper omits the key. This is the same rule
  * `SessionDto.deviceName` follows.
  */
+@ApiSchema({ name: 'ProductVariant' })
 export class ProductVariantDto {
   id!: number;
 

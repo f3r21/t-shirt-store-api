@@ -1,4 +1,5 @@
 import { Transform, Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, Max, Min } from 'class-validator';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 import { INT4_MAX } from '../../common/int4';
@@ -27,6 +28,7 @@ import { IsOptionalNotNull } from '../../common/is-optional-not-null';
  */
 export class ListProductsQueryDto extends PageQueryDto {
   /** Return only the products in this category. */
+  @ApiPropertyOptional()
   @IsOptionalNotNull()
   @Type(() => Number)
   @IsInt({ message: 'must be an integer' })
@@ -41,6 +43,7 @@ export class ListProductsQueryDto extends PageQueryDto {
    * 401 and a caller who is not a manager receives 403. The guard applies both
    * rules, because this class cannot read the caller.
    */
+  @ApiPropertyOptional()
   @IsOptionalNotNull()
   @Transform(({ value }: { value: unknown }) => {
     if (value === 'true') return true;

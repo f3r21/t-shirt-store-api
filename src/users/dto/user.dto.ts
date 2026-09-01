@@ -1,3 +1,4 @@
+import { ApiSchema } from '@nestjs/swagger';
 /**
  * The role names the contract declares, at
  * `contract/openapi.yaml:2179-2181`. The `roles`
@@ -16,6 +17,7 @@ export type RoleName = (typeof ROLE_NAMES)[number];
  * fields and no others, at `openapi.yaml:1760-1782`. A serializer that returned
  * the row whole would put a live reset token in a 200.
  */
+@ApiSchema({ name: 'User' })
 export class UserDto {
   id!: number;
 
