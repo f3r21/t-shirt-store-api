@@ -209,26 +209,12 @@ export class AuthService {
 
     const nextToken = generateToken();
     const nextHash = hashToken(nextToken, this.pepper);
-    const rotated = await this.prisma.refreshToken.updateManyAndReturn({
-      where: {
-        tokenHash: presented,
-        ...this.liveSessionWhere(),
-      },
-      data: {
-        tokenHash: nextHash,
-        previousTokenHash: presented,
-        rotatedAt: new Date(),
-        expiresAt: this.refreshExpiry(),
-      },
-    });
 
     const row =
-      rotated.length === 1
-        ? rotated[0]
-        : await this.rotateWithinGrace(presented, nextHash);
+      (await this.rotateLiveToken(presented, nextHash)) ??
+      (await this.rotateSpentToken(presented, nextHash));
 
     if (row === null) {
-      await this.detectReuse(presented);
       throw this.refreshTokenUnknown();
     }
     const user = await this.prisma.user.findUnique({
@@ -247,103 +233,144 @@ export class AuthService {
   }
 
   /**
-   * Accept the immediately previous token, once more, for a few seconds.
+   * The rows that make up one device session.
    *
-   * Reached only when the main rotation matched nothing. It looks for the row
-   * this token rotated into, and rotates that row again if the first rotation
-   * was recent enough. Both tabs then hold a working token and neither triggers
-   * a breach response.
-   *
-   * **`rotated_at` is not touched here, and that is the bound on the whole
-   * episode.** Refreshing it would extend the window on every use, so one old
-   * token would stay replayable for as long as anyone kept using it. Left
-   * alone, the window closes `REFRESH_GRACE_SECONDS` after the original
-   * rotation no matter how many tabs race.
-   *
-   * **`previous_token_hash` becomes the row's current hash, not the presented
-   * one, and that is the part that is easy to get wrong.** Leaving it as
-   * presented would orphan the token the winner is holding: it would be neither
-   * `token_hash` nor `previous_token_hash`, so the winner's next refresh would
-   * answer 401. That stops the account-wide sign-out and still throws one tab
-   * out, which is most of the bug wearing a smaller coat.
-   *
-   * **What it costs.** After this runs, the token that was presented is no
-   * longer anybody's previous hash, so replaying it inside the same window
-   * answers 401 without raising the alarm rather than ending every session. One
-   * generation of reuse detection is given up for the length of the window, in
-   * exchange for not ending every session of every user who opens two tabs.
-   * That trade is written up in `DECISIONS.md` item 2.
-   *
-   * A read then a conditional write, rather than one statement, because the new
-   * `previous_token_hash` has to be a value read from the row and Prisma cannot
-   * name a column on the right of an update. **The read does not weaken it**:
-   * the write's `where` carries the `token_hash` that was read, so a concurrent
-   * writer that already moved the row matches nothing and this returns null.
+   * A device is a family and not a row, because one row holds one
+   * `token_hash` and two browser tabs refreshing in the same moment need two
+   * live tokens. The founder carries `family_id` null, so this reads it two
+   * ways in one predicate.
    */
-  private async rotateWithinGrace(
-    presented: string,
-    nextHash: string,
-  ): Promise<{ id: number; userId: number } | null> {
-    const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
-    if (seconds <= 0) {
-      return null;
-    }
+  private familyWhere(familyId: number): {
+    OR: [{ familyId: number }, { id: number; familyId: null }];
+  } {
+    return { OR: [{ familyId }, { id: familyId, familyId: null }] };
+  }
 
-    const opensAfter = new Date(Date.now() - seconds * 1000);
-    const candidate = await this.prisma.refreshToken.findFirst({
-      where: {
-        previousTokenHash: presented,
-        rotatedAt: { gt: opensAfter },
-        ...this.liveSessionWhere(),
-      },
-    });
-    if (candidate === null) {
-      return null;
-    }
-
-    const graced = await this.prisma.refreshToken.updateManyAndReturn({
-      where: {
-        id: candidate.id,
-        tokenHash: candidate.tokenHash,
-        previousTokenHash: presented,
-        rotatedAt: { gt: opensAfter },
-        ...this.liveSessionWhere(),
-      },
-      data: {
-        tokenHash: nextHash,
-        previousTokenHash: candidate.tokenHash,
-        expiresAt: this.refreshExpiry(),
-      },
-    });
-
-    return graced.length === 1 ? graced[0] : null;
+  /** The family a row belongs to. Null means the row founded its own. */
+  private familyOf(row: { id: number; familyId: number | null }): number {
+    return row.familyId ?? row.id;
   }
 
   /**
-   * A token presented twice means the server is holding a stolen one.
+   * The ordinary rotation: spend a token that is still the live one.
    *
-   * The contract's response is to end every session for that user rather than
-   * only the one that was replayed, because the server cannot tell which of the
-   * two holders is the owner.
+   * One conditional write, never a read followed by a write. PostgreSQL
+   * re-evaluates a WHERE clause after waiting on a concurrent writer, so
+   * exactly one of two racing requests can match a given hash. The loser gets
+   * zero rows and goes to `rotateSpentToken`.
    *
-   * Known gap, and the contract does not grant it. `previous_token_hash` is one
-   * column that every rotation overwrites, so only the immediately preceding
-   * token is recognised. Replay a token from two or more rotations ago and it
-   * matches neither `token_hash` nor `previous_token_hash`, so nothing is
-   * revoked and every session survives. The contract says the server deletes
-   * every refresh row when it receives an already-used token, with no carve-out
-   * for how old that token is. Closing it needs a row per consumed hash, or a
-   * family id on the session. See DECISIONS.md item 3.
+   * **The consumed row and the rotation commit together, and that is not
+   * tidiness.** As two statements there is a window between the update
+   * committing and the insert committing, and a losing racer lands in it: its
+   * own update returns zero rows because the winner already moved the hash,
+   * and its lookup in `consumed_refresh_tokens` finds nothing because the
+   * winner has not written it yet. It answers 401 to an honest tab. Three
+   * concurrent refreshes reproduced it as `200 401 200`, and this docstring
+   * claimed the transaction before the code had one.
+   *
+   * Inside one transaction the loser's update blocks on the row lock and can
+   * only return zero rows after the winner has committed both statements, so
+   * the record it then looks for is always there.
    */
-  private async detectReuse(presentedHash: string): Promise<void> {
-    const previous = await this.prisma.refreshToken.findFirst({
-      where: { previousTokenHash: presentedHash },
+  private async rotateLiveToken(
+    presented: string,
+    nextHash: string,
+  ): Promise<{ id: number; userId: number } | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const rotated = await tx.refreshToken.updateManyAndReturn({
+        where: {
+          tokenHash: presented,
+          ...this.liveSessionWhere(),
+        },
+        data: {
+          tokenHash: nextHash,
+          rotatedAt: new Date(),
+          expiresAt: this.refreshExpiry(),
+        },
+      });
+      if (rotated.length !== 1) {
+        return null;
+      }
+
+      const row = rotated[0];
+      await tx.consumedRefreshToken.create({
+        data: {
+          tokenHash: presented,
+          familyId: this.familyOf(row),
+          userId: row.userId,
+        },
+      });
+      return row;
     });
-    if (previous === null) {
-      return;
+  }
+
+  /**
+   * A token that has already been spent. Three answers, and only one is theft.
+   *
+   * **Never spent.** Nothing is deleted. A token the server has no record of is
+   * not a replay, it is a string, and the previous version deleted every
+   * session for the user on the strength of one unbounded lookup by
+   * `previous_token_hash` that carried no liveness filter at all.
+   *
+   * **Spent inside the window.** An honest second tab. It gets **a new row in
+   * the same family**, and the row the winner is holding is not touched.
+   *
+   * That last clause is the correction. The first version of this rotated the
+   * winner's row and wrote the winner's live token into
+   * `previous_token_hash`, so fifteen minutes later, when that tab refreshed on
+   * its own schedule and the window had long closed, reuse detection found its
+   * hash and deleted every session for the user. The two-tab bug did not go
+   * away, it moved and got quieter. A review in a session with none of this
+   * context found it; the two tests written here did not, because both of them
+   * refreshed inside the window.
+   *
+   * **Spent outside the window.** Theft, and the contract's answer is to delete
+   * every refresh row for that user.
+   *
+   * The new row inherits `created_at` from the founder so the thirty day
+   * absolute cap belongs to the family rather than restarting with each tab.
+   */
+  private async rotateSpentToken(
+    presented: string,
+    nextHash: string,
+  ): Promise<{ id: number; userId: number } | null> {
+    const spent = await this.prisma.consumedRefreshToken.findUnique({
+      where: { tokenHash: presented },
+    });
+    if (spent === null) {
+      return null;
     }
-    await this.prisma.refreshToken.deleteMany({
-      where: { userId: previous.userId },
+
+    const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
+    const opensAfter = new Date(Date.now() - seconds * 1000);
+    if (seconds <= 0 || spent.consumedAt <= opensAfter) {
+      await this.prisma.refreshToken.deleteMany({
+        where: { userId: spent.userId },
+      });
+      return null;
+    }
+
+    const founder = await this.prisma.refreshToken.findFirst({
+      where: {
+        ...this.familyWhere(spent.familyId),
+        ...this.liveSessionWhere(),
+      },
+      orderBy: { id: 'asc' },
+    });
+    if (founder === null) {
+      return null;
+    }
+
+    return this.prisma.refreshToken.create({
+      data: {
+        userId: founder.userId,
+        tokenHash: nextHash,
+        deviceName: founder.deviceName,
+        familyId: spent.familyId,
+        createdAt: founder.createdAt,
+        expiresAt: this.refreshExpiry(),
+        rotatedAt: new Date(),
+      },
     });
   }
 
@@ -361,21 +388,34 @@ export class AuthService {
     userId: number,
     query: PageQueryDto,
   ): Promise<{ data: SessionDto[]; meta: PageMetaDto }> {
-    const where = { userId, ...this.liveSessionWhere() };
+    const rows = await this.prisma.refreshToken.findMany({
+      where: { userId, ...this.liveSessionWhere() },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
 
-    const [rows, total] = await Promise.all([
-      this.prisma.refreshToken.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: query.limit,
-        skip: query.offset,
-      }),
-      this.prisma.refreshToken.count({ where }),
-    ]);
+    // One entry per family, because a device is a family. The grace path adds a
+    // row to an existing one, so counting rows would report a user with two
+    // tabs open as a user with two devices.
+    const newest = new Map<number, (typeof rows)[number]>();
+    for (const row of rows) {
+      const family = row.familyId ?? row.id;
+      if (!newest.has(family)) {
+        newest.set(family, row);
+      }
+    }
+    const devices = [...newest.values()];
 
+    // Grouped and paged here rather than in SQL, because the group is not a
+    // column: a founder carries `family_id` null and names its family by its
+    // own id, so no `GROUP BY` can see it. The set is every live row for one
+    // user, bounded by devices times grace events, and small. The day that
+    // stops being true the fix is a `family_id` that is never null, which needs
+    // the backfill this migration deliberately avoided.
     return {
-      data: rows.map(toSessionDto),
-      meta: { total, limit: query.limit, offset: query.offset },
+      data: devices
+        .slice(query.offset, query.offset + query.limit)
+        .map(toSessionDto),
+      meta: { total: devices.length, limit: query.limit, offset: query.offset },
     };
   }
 
@@ -387,8 +427,11 @@ export class AuthService {
    * in. The access token itself stays valid until it expires.
    */
   async deleteCurrentSession(userId: number, sessionId: number): Promise<void> {
+    // By family. Deleting the one row whose id matches would leave every other
+    // live row of the same device signed in, and a second tab is exactly the
+    // thing that creates one.
     await this.prisma.refreshToken.deleteMany({
-      where: { id: sessionId, userId },
+      where: { userId, ...this.familyWhere(sessionId) },
     });
   }
 
@@ -401,8 +444,11 @@ export class AuthService {
    * and an id that belongs to somebody else take the same path.
    */
   async deleteSession(userId: number, id: number): Promise<void> {
+    // By family, for the same reason as `deleteCurrentSession`. The 404 still
+    // comes from the count, so an id that names nothing and an id that names
+    // somebody else's family take the same path.
     const { count } = await this.prisma.refreshToken.deleteMany({
-      where: { id, userId },
+      where: { userId, ...this.familyWhere(id) },
     });
     if (count === 0) {
       throw new NotFoundException();

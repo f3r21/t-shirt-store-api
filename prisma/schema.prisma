@@ -34,8 +34,9 @@ model User {
 
   role Role @relation(fields: [roleId], references: [id])
 
-  refreshTokens RefreshToken[]
-  likes         ProductLike[]
+  refreshTokens  RefreshToken[]
+  consumedTokens ConsumedRefreshToken[]
+  likes          ProductLike[]
   stockAlerts   StockNotification[]
   orders        Order[]
   cartItems     CartItem[]
@@ -65,14 +66,80 @@ model RefreshToken {
   // rather than as "eligible forever".
   rotatedAt         DateTime? @map("rotated_at") @db.Timestamptz(6)
 
+  // The device session this row belongs to, named by the id of the row that
+  // started it.
+  //
+  // **A device is a family, not a row.** One row per device could not hold two
+  // live tokens, and two live tokens are exactly what two browser tabs
+  // refreshing in the same moment need. The grace path now adds a row to the
+  // family instead of overwriting the one the winner is holding.
+  //
+  // **An `Int` rather than a uuid, and that is not cosmetic.** `sid` in the
+  // access token is typed `number` (`access-token-payload.ts:20`) and
+  // `auth.controller.ts` hands it to `deleteCurrentSession`. Naming the family
+  // by its founding row keeps `sid` the same type and the same value, so the
+  // contract's promise that "the session id does not change" survives.
+  //
+  // **Null means "I am the founder", and that is the whole reason it is
+  // nullable.** A row cannot reference its own id on insert, so a sign-in would
+  // otherwise need a second write to name its own family. It also makes the
+  // migration purely additive with no backfill: every row written before
+  // families reads as its own family under the same rule, and a rollback to the
+  // previous image still inserts, which the forward-only rule in
+  // `ARCHITECTURE.md` requires. `AuthService.familyOf` and `familyWhere` are the
+  // two places that encode it.
+  familyId          Int?      @map("family_id")
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Every rotation looks a presented token up by previous_token_hash, and
-  // listSessions filters by user_id. Prisma indexes no foreign key on its own,
-  // and the auth migration created neither.
+  // `listSessions` filters by user_id and groups by family_id, and every delete
+  // of a session names a family. Prisma indexes no foreign key on its own, and
+  // the auth migration created neither.
+  //
+  // `previous_token_hash` keeps its index because the column is still here. It
+  // is dead: `consumed_refresh_tokens` replaced it as the memory of which
+  // tokens have been spent, because one column can only remember one
+  // generation and cannot remember when. Both come out together in a later
+  // release, with expand and contract, which is why neither is dropped now.
   @@index([userId])
+  @@index([familyId])
   @@index([previousTokenHash])
   @@map("refresh_tokens")
+}
+
+/**
+ * Every refresh token this server has already spent.
+ *
+ * Rotation used to remember one generation, in `refresh_tokens.previous_token_hash`,
+ * and that column had to answer two questions it cannot answer at once: which
+ * token is still acceptable during the grace window, and which tokens have been
+ * used and must raise an alarm. Holding both in one slot is what made an honest
+ * second tab look like a thief.
+ *
+ * A row here is written when a token is spent and is never updated. `consumed_at`
+ * is what the grace window is measured against, so the window belongs to the
+ * token rather than to the row it came from, and no amount of racing extends it.
+ *
+ * `user_id` is stored rather than resolved through the family, because the reuse
+ * response deletes every row for the user and the family's rows may already be
+ * gone by the time that runs.
+ *
+ * **It grows with traffic and nothing prunes it yet.** One row per rotation per
+ * device. A sweep of rows older than the absolute session cap is safe by
+ * construction, since a token past that cap cannot rotate anything, and it is
+ * the first thing to add when this ships anywhere real.
+ */
+model ConsumedRefreshToken {
+  tokenHash  String   @id @map("token_hash")
+  familyId   Int      @map("family_id")
+  userId     Int      @map("user_id")
+  consumedAt DateTime @default(now()) @map("consumed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("consumed_refresh_tokens")
 }
 
 model Product {

@@ -155,8 +155,12 @@ export function resetThrottleCounter(ctx: TestApp): void {
 export async function truncateAll(prisma: PrismaService): Promise<void> {
   // Products join the list because the authorization suite creates one to prove
   // a manager is allowed through. CASCADE reaches variants and the join rows.
+  // `consumed_refresh_tokens` is named rather than left to CASCADE. It would be
+  // reached anyway through its user foreign key, and a table that is emptied
+  // only as a side effect of another one is a table nobody remembers when the
+  // foreign key changes.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "users", "products" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products" RESTART IDENTITY CASCADE',
   );
 }
 

@@ -45,6 +45,7 @@ const CONFIG: Record<string, string | number> = {
   JWT_ACCESS_TTL: 900,
   JWT_REFRESH_TTL: 604800,
   REFRESH_ABSOLUTE_TTL_DAYS: ABSOLUTE_CAP_DAYS,
+  REFRESH_GRACE_SECONDS: 10,
 };
 
 /** The password `aUser()` carries a real argon2id digest for. */
@@ -444,24 +445,40 @@ describe('AuthService', () => {
       expect(call.data.tokenHash).not.toBe(call.where.tokenHash);
     });
 
-    it('moves the presented hash into previous_token_hash', async () => {
+    /**
+     * The spent token is written down, and that is what makes a replay
+     * detectable later.
+     *
+     * It used to go into `previous_token_hash`, one column that had to answer
+     * two questions at once: which token is still acceptable during the grace
+     * window, and which tokens have been spent. Holding both in one slot is
+     * what made an honest second tab look like a thief.
+     */
+    it('records the presented hash as consumed, with its family and owner', async () => {
       rotates();
 
       await service.refreshSession({ refreshToken: PRESENTED });
 
-      const call = nthArg(prisma.refreshToken.updateManyAndReturn, 0, 0) as {
-        data: { previousTokenHash: string };
+      const call = nthArg(prisma.consumedRefreshToken.create, 0, 0) as {
+        data: { tokenHash: string; familyId: number; userId: number };
       };
-      expect(call.data.previousTokenHash).toBe(hashToken(PRESENTED, PEPPER));
+      expect(call.data.tokenHash).toBe(hashToken(PRESENTED, PEPPER));
+      expect(call.data.userId).toBe(128);
+      // The fixture row founds its own family, so the family is its own id.
+      expect(call.data.familyId).toBe(42);
     });
 
     it('deletes every refresh row for the user when a token is presented twice (openapi.yaml:245)', async () => {
       // The conditional update matches nothing, because the row no longer
-      // answers to this hash, and the hash is found in previous_token_hash.
+      // answers to this hash, and the hash is on record as spent, long enough
+      // ago that the grace window has closed.
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.refreshToken.findFirst.mockResolvedValue(
-        aRefreshToken({ previousTokenHash: hashToken(PRESENTED, PEPPER) }),
-      );
+      prisma.consumedRefreshToken.findUnique.mockResolvedValue({
+        tokenHash: hashToken(PRESENTED, PEPPER),
+        familyId: 42,
+        userId: 128,
+        consumedAt: new Date(Date.now() - 3600_000),
+      });
 
       const err = await rejection(
         service.refreshSession({ refreshToken: PRESENTED }),
@@ -477,9 +494,17 @@ describe('AuthService', () => {
       expect(err.getStatus()).toBe(401);
     });
 
+    /**
+     * A token the server has no record of is a string, not a replay.
+     *
+     * The `not.toHaveBeenCalled` is the whole test. The previous version looked
+     * the presented hash up in `previous_token_hash` with no liveness filter
+     * and no time bound, so a hash left behind by a session that expired weeks
+     * ago deleted every live row the user had.
+     */
     it('rejects an unknown token with the refresh-token-unknown problem type', async () => {
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.refreshToken.findFirst.mockResolvedValue(null);
+      prisma.consumedRefreshToken.findUnique.mockResolvedValue(null);
 
       await expectProblem(
         service.refreshSession({ refreshToken: PRESENTED }),
@@ -494,7 +519,7 @@ describe('AuthService', () => {
       // row matches nothing and takes the same path as an unknown token.
       const before = Date.now();
       prisma.refreshToken.updateManyAndReturn.mockResolvedValue([]);
-      prisma.refreshToken.findFirst.mockResolvedValue(null);
+      prisma.consumedRefreshToken.findUnique.mockResolvedValue(null);
 
       const expired = await rejection(
         service.refreshSession({ refreshToken: PRESENTED }),
@@ -578,21 +603,49 @@ describe('AuthService', () => {
       );
     });
 
-    it('counts with the same filter it lists with', async () => {
-      // Otherwise `meta.total` reports the dead rows the page just hid, which
-      // is the same class of bug the product list already carries a test for.
-      prisma.refreshToken.findMany.mockResolvedValue([]);
-      prisma.refreshToken.count.mockResolvedValue(0);
+    /**
+     * A device is a family, so two rows of one family are one entry.
+     *
+     * This is the assertion the whole family design exists for. The grace path
+     * adds a row to an existing family, so counting rows would tell a user with
+     * two tabs open that they are signed in on two devices, and offer them two
+     * things to sign out of that are the same thing.
+     *
+     * `meta.total` counting the same way is no longer a separate risk: there is
+     * one query and one grouped list, so the count and the page cannot drift.
+     * The previous version issued a `findMany` and a `count` and needed a test
+     * to hold their two `where` clauses together.
+     */
+    it('reports one entry per family, not one per row', async () => {
+      const founder = aRefreshToken({ id: 42, familyId: null });
+      prisma.refreshToken.findMany.mockResolvedValue([
+        founder,
+        aRefreshToken({ id: 77, familyId: 42 }),
+        aRefreshToken({ id: 91, familyId: null }),
+      ]);
 
-      await service.listSessions(128, new PageQueryDto());
+      const result = await service.listSessions(128, new PageQueryDto());
 
-      const list = nthArg(prisma.refreshToken.findMany, 0, 0) as {
-        where: unknown;
-      };
-      const count = nthArg(prisma.refreshToken.count, 0, 0) as {
-        where: unknown;
-      };
-      expect(count.where).toEqual(list.where);
+      expect(result.meta.total).toBe(2);
+      expect(result.data.map((s) => s.id).sort()).toEqual([42, 91]);
+    });
+
+    /**
+     * The id a caller reads is the family, and the contract promises it is
+     * stable: `openapi.yaml:244`, "The session id does not change, so an id
+     * from `GET /auth/sessions` stays valid for the life of the device
+     * session." A second tab must not rename the device.
+     */
+    it('names a family by its founder, whichever row is newest', async () => {
+      prisma.refreshToken.findMany.mockResolvedValue([
+        aRefreshToken({ id: 77, familyId: 42 }),
+        aRefreshToken({ id: 42, familyId: null }),
+      ]);
+
+      const result = await service.listSessions(128, new PageQueryDto());
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe(42);
     });
 
     it('leaves the deviceName key absent when the row holds none', async () => {
@@ -609,41 +662,44 @@ describe('AuthService', () => {
     });
 
     it('reports the total before limit and offset apply', async () => {
-      prisma.refreshToken.findMany.mockResolvedValue([aRefreshToken()]);
-      prisma.refreshToken.count.mockResolvedValue(347);
+      // Three families, a page of one. `total` answers "how many devices",
+      // never "how many fitted on this page".
+      prisma.refreshToken.findMany.mockResolvedValue([
+        aRefreshToken({ id: 1, familyId: null }),
+        aRefreshToken({ id: 2, familyId: null }),
+        aRefreshToken({ id: 3, familyId: null }),
+      ]);
+      const query = new PageQueryDto();
+      query.limit = 1;
 
-      const result = await service.listSessions(128, new PageQueryDto());
+      const result = await service.listSessions(128, query);
 
-      expect(result.meta.total).toBe(347);
+      expect(result.meta.total).toBe(3);
       expect(result.data).toHaveLength(1);
-
-      const countCall = nthArg(prisma.refreshToken.count, 0, 0) as Record<
-        string,
-        unknown
-      >;
-      // The `where` itself is asserted by the two tests above, which compare it
-      // against the list query rather than restating it. This one is about the
-      // count carrying no page.
-      expect(Object.keys(countCall)).toEqual(['where']);
-      expect(countCall).not.toHaveProperty('take');
-      expect(countCall).not.toHaveProperty('skip');
     });
 
     it('applies limit 20 and offset 0 when the query carries neither', async () => {
-      prisma.refreshToken.findMany.mockResolvedValue([]);
-      prisma.refreshToken.count.mockResolvedValue(0);
+      // 25 families and a default query, so the page is the first 20 of them.
+      // The query itself no longer carries `take` or `skip`: the group is not a
+      // column, so the whole live set comes back and the page is cut after the
+      // grouping. This asserts the page a caller receives rather than the SQL
+      // that produced it, which is the only thing the contract promises.
+      prisma.refreshToken.findMany.mockResolvedValue(
+        Array.from({ length: 25 }, (_v, i) =>
+          aRefreshToken({ id: i + 1, familyId: null }),
+        ),
+      );
 
       // Built from the DTO, so the assertion is about the contract's default
       // rather than about a literal written twice.
       const result = await service.listSessions(128, new PageQueryDto());
 
       const call = nthArg(prisma.refreshToken.findMany, 0, 0) as {
-        take: number;
-        skip: number;
         orderBy: { createdAt?: string; id?: string }[];
       };
-      expect(call.take).toBe(20);
-      expect(call.skip).toBe(0);
+      expect(result.data).toHaveLength(20);
+      expect(result.data[0].id).toBe(1);
+      expect(result.meta.total).toBe(25);
       expect(result.meta.limit).toBe(20);
       expect(result.meta.offset).toBe(0);
 
@@ -654,13 +710,16 @@ describe('AuthService', () => {
   });
 
   describe('deleteCurrentSession, DELETE /auth/sessions/current', () => {
-    it('deletes the refresh row of the calling device only', async () => {
+    it('deletes every row of the calling device, and no other device', async () => {
       prisma.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.deleteCurrentSession(128, 42);
 
       expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
-        where: { id: 42, userId: 128 },
+        where: {
+          userId: 128,
+          OR: [{ familyId: 42 }, { id: 42, familyId: null }],
+        },
       });
     });
 
@@ -670,12 +729,19 @@ describe('AuthService', () => {
       await service.deleteCurrentSession(128, 42);
 
       const call = nthArg(prisma.refreshToken.deleteMany, 0, 0) as {
-        where: Record<string, unknown>;
+        where: { userId: number; OR: { familyId: number | null }[] };
       };
-      // The filter names one id. A filter that named only the user would sign
-      // every device out, which is what changePassword does and this does not.
-      expect(call.where.id).toBe(42);
-      expect(Object.keys(call.where).sort()).toEqual(['id', 'userId']);
+      // The filter names one family and the owner. A filter that named only the
+      // user would sign every device out, which is what changePassword does and
+      // this does not. It names the family rather than the row because a device
+      // with two tabs open has two live rows, and deleting one of them would
+      // leave the device signed in.
+      expect(call.where.userId).toBe(128);
+      expect(call.where.OR).toEqual([
+        { familyId: 42 },
+        { id: 42, familyId: null },
+      ]);
+      expect(Object.keys(call.where).sort()).toEqual(['OR', 'userId']);
     });
   });
 
@@ -686,7 +752,10 @@ describe('AuthService', () => {
       await service.deleteSession(128, 42);
 
       expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
-        where: { id: 42, userId: 128 },
+        where: {
+          userId: 128,
+          OR: [{ familyId: 42 }, { id: 42, familyId: null }],
+        },
       });
     });
 

@@ -14,7 +14,14 @@ import { SessionDto } from './dto/session.dto';
  */
 export function toSessionDto(row: RefreshTokenRow): SessionDto {
   const dto: SessionDto = {
-    id: row.id,
+    // The family, not the row. A device is a family and a family can hold more
+    // than one live row, so the row id would change under a caller the first
+    // time two of their tabs refreshed at once. The contract promises the
+    // opposite at `openapi.yaml:244`: "The session id does not change, so an id
+    // from `GET /auth/sessions` stays valid for the life of the device
+    // session." The founder carries `family_id` null and names the family with
+    // its own id, so this is the same number it has always been.
+    id: row.familyId ?? row.id,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
   };

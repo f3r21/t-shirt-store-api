@@ -269,26 +269,25 @@ describe('Authentication (e2e)', () => {
       expect(after.body.data[0].id).toBe(before.body.data[0].id);
       expect(after.body.meta.total).toBe(1);
     });
-
     /**
-     * **This is the control for the grace window, and the reason it is worth
-     * more than the test below it.** A window that accepted the previous token
-     * for ever would satisfy the two-tab test and would have silently deleted
-     * reuse detection, which is the failure this change could introduce without
-     * anything saying so.
+     * **The control for the grace window, and it is worth more than the happy
+     * path below it.** A window that never closed would satisfy every two-tab
+     * test on this page and would have silently deleted reuse detection, which
+     * is the failure this whole design could introduce with nothing saying so.
      *
      * The replay is aged past the window rather than sent immediately, because
-     * an immediate replay is now the honest-tab case. `rotated_at` is moved
-     * back an hour, which is the only way to reach the far side of the window
-     * without sleeping the suite for `REFRESH_GRACE_SECONDS`.
+     * an immediate replay is now the honest-tab case. `consumed_at` is what the
+     * window is measured from, so that is the column moved back, and it is the
+     * only way to reach the far side without sleeping the suite for
+     * `REFRESH_GRACE_SECONDS`.
      */
     it('ends every session when a token is presented again after the grace window', async () => {
       const { refreshToken } = await signUpAndIn();
 
       await http().post('/v1/auth/refresh').send({ refreshToken }).expect(200);
 
-      await ctx.prisma.refreshToken.updateMany({
-        data: { rotatedAt: new Date(Date.now() - 3600_000) },
+      await ctx.prisma.consumedRefreshToken.updateMany({
+        data: { consumedAt: new Date(Date.now() - 3600_000) },
       });
 
       const replay = await http()
@@ -301,8 +300,32 @@ describe('Authentication (e2e)', () => {
       );
 
       // Both halves. Rejecting without revoking leaves the thief signed in.
-      const rows = await ctx.prisma.refreshToken.count();
-      expect(rows).toBe(0);
+      expect(await ctx.prisma.refreshToken.count()).toBe(0);
+    });
+
+    /**
+     * A token this server never issued is a string, not a replay.
+     *
+     * The previous version looked the presented hash up in
+     * `previous_token_hash` with no liveness filter and no time bound, so
+     * anything that happened to sit in that column ended every live session the
+     * user had. Nothing may be deleted on the strength of a value the server
+     * has no record of ever issuing.
+     *
+     * The second half is the control: the live session is still usable
+     * afterwards, so this is not passing because the account was already empty.
+     */
+    it('deletes nothing when a token it never issued is presented', async () => {
+      const { refreshToken } = await signUpAndIn();
+      const before = await ctx.prisma.refreshToken.count();
+
+      await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: 'f'.repeat(64) })
+        .expect(401);
+
+      expect(await ctx.prisma.refreshToken.count()).toBe(before);
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(200);
     });
 
     /**
@@ -310,18 +333,17 @@ describe('Authentication (e2e)', () => {
      *
      * Rotation is one conditional write, so exactly one of two concurrent
      * refreshes of the same token can match. That is correct and it was only
-     * half the story: the loser was then handed to reuse detection, which found
-     * its hash sitting in `previous_token_hash` and did what the contract says
-     * to do with a stolen token, which is delete every refresh row for that
-     * user. **One person with two tabs signed themselves out of every device.**
+     * half the story: the loser went to reuse detection, which found its hash
+     * and did what the contract says to do with a stolen token, which is delete
+     * every refresh row for that user. **One person with two tabs signed
+     * themselves out of every device.** It reproduced on the first attempt, as
+     * `200 401` with zero rows left.
      *
-     * It reproduced on the first attempt, as `200 401` with zero rows left.
-     *
-     * Both calls must now succeed and the session must survive. The row count
-     * is the half that matters: a version that answered 200 twice while
-     * deleting the session would pass a status assertion and fail the user.
+     * Two rows and one family is the shape that matters. The first fix kept one
+     * row and rotated it for the loser, which passed a test exactly like this
+     * one and left the winner holding a token that was about to look stolen.
      */
-    it('lets two tabs refresh the same token at once without ending the session', async () => {
+    it('lets two tabs refresh the same token at once, as one device', async () => {
       const { refreshToken } = await signUpAndIn();
 
       const [first, second] = await Promise.all([
@@ -330,15 +352,83 @@ describe('Authentication (e2e)', () => {
       ]);
 
       expect([first.status, second.status]).toEqual([200, 200]);
-      expect(await ctx.prisma.refreshToken.count()).toBe(1);
 
-      // And the newest token still works, so the row the two tabs fought over
-      // is a live session rather than a survivor nobody holds a key to.
-      const latest = second.body.refreshToken as string;
+      const rows = await ctx.prisma.refreshToken.findMany();
+      expect(rows).toHaveLength(2);
+      // Two rows, one device. `GET /auth/sessions` must say one, or the user is
+      // offered two things to sign out of that are the same thing.
+      expect(new Set(rows.map((r) => r.familyId ?? r.id)).size).toBe(1);
+    });
+
+    /**
+     * **The test that would have caught the first fix, and did not exist.**
+     *
+     * Both tests written for the grace window refreshed again immediately, so
+     * both ran inside the window. The winner of a real race does not: it
+     * refreshes when its access token expires, fifteen minutes later, long
+     * after the window has closed.
+     *
+     * The first fix rotated the winner's row for the loser and wrote the
+     * winner's live token into `previous_token_hash`. At that point the
+     * two-tab bug had not gone away, it had moved: instead of ending every
+     * session immediately, it ended every session a quarter of an hour later,
+     * where it was much harder to attribute to two tabs.
+     *
+     * A review in a session with none of this context found it. The tests
+     * written by the author of the fix could not, because they were written
+     * from the same picture of how it worked.
+     */
+    it('still serves the race winner after the window has closed', async () => {
+      const { refreshToken } = await signUpAndIn();
+
+      const [first, second] = await Promise.all([
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+      ]);
+      expect([first.status, second.status]).toEqual([200, 200]);
+
+      // The window closes. Everything spent so far is now old enough to be a
+      // replay, which is exactly the state the winner refreshes in.
+      await ctx.prisma.consumedRefreshToken.updateMany({
+        data: { consumedAt: new Date(Date.now() - 3600_000) },
+      });
+
+      // Both tabs hold a token that was issued to them and never used. Both
+      // must still work, and neither may end the other's session.
       await http()
         .post('/v1/auth/refresh')
-        .send({ refreshToken: latest })
+        .send({ refreshToken: first.body.refreshToken as string })
         .expect(200);
+
+      await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: second.body.refreshToken as string })
+        .expect(200);
+    });
+
+    /**
+     * The third tab, which the first fix could not serve at all.
+     *
+     * With one row per device the grace path had exactly one row to rotate, so
+     * a third concurrent refresh matched neither the live token, nor the one
+     * the grace path had just overwritten, nor anything reuse detection knew
+     * about. It got a 401 for being the third honest tab.
+     *
+     * A family holds as many rows as there are racers.
+     */
+    it('serves a third tab racing on the same token', async () => {
+      const { refreshToken } = await signUpAndIn();
+
+      const results = await Promise.all([
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+      ]);
+
+      expect(results.map((r) => r.status)).toEqual([200, 200, 200]);
+
+      const rows = await ctx.prisma.refreshToken.findMany();
+      expect(new Set(rows.map((r) => r.familyId ?? r.id)).size).toBe(1);
     });
   });
 

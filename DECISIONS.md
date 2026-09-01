@@ -33,7 +33,7 @@ for a low-entropy secret, so this is a small margin bought with real operational
 `JWT_SECRET` is deliberately not reused, because rotating the signing key would otherwise
 invalidate every stored hash at the same moment.
 
-## 2. Rotation is one conditional write, with a grace window over it
+## 2. A device is a family of refresh tokens, with a grace window over rotation
 
 `refreshSession` rotates with a single `updateManyAndReturn` whose `where` carries the
 token hash, the expiry and the absolute cap. PostgreSQL re-evaluates a `WHERE` clause after
@@ -41,63 +41,102 @@ waiting on a concurrent writer, so exactly one of two racing requests can match 
 hash. A read followed by a write would let both pass.
 
 **That is correct and it was only half the story.** The loser of the race held a token whose
-hash was now in `previous_token_hash`, so it went to reuse detection, and the contract's
-answer to reuse is to delete every refresh row for that user. Two honest browser tabs
-refreshing in the same moment signed the account out of every device, with no attacker
-anywhere. It reproduced on the first attempt with two concurrent refreshes of one token,
-as `200 401` and zero rows left.
+hash was now on record as spent, so it went to reuse detection, and the contract's answer to
+reuse is to delete every refresh row for that user. Two honest browser tabs refreshing in the
+same moment signed the account out of every device, with no attacker anywhere. It reproduced
+on the first attempt with two concurrent refreshes of one token, as `200 401` and zero rows
+left.
 
-**This entry used to defend keeping it, and the defence does not survive its own
-repository.** The argument was that the contract states the behaviour literally, at
-`openapi.yaml:247`. Item 7 of this file amended the contract when the code and the document
-disagreed about a 429, under the heading "The contract was amended rather than the guard
-weakened". A rule applied in one entry and not the other is not a rule, and shipping a
-self-inflicted account-wide sign-out to preserve one sentence is the wrong side of that
-trade. The position was also at one end of the industry range rather than in the middle:
-Okta ships a 30 second grace period configurable from 0 to 60, Supabase ships 10 seconds
-and does not recommend changing it, and where Auth0 revokes a token family and Supabase and
-Keycloak revoke a session, this revoked the account.
+**This entry once defended keeping it, and the defence did not survive its own repository.**
+The argument was that the contract states the behaviour literally. Item 7 of this file amended
+the contract when the code and the document disagreed about a 429, under the heading "The
+contract was amended rather than the guard weakened". A rule applied in one entry and not the
+other is not a rule. The position was also at one end of the industry range: Okta ships a 30
+second grace period configurable from 0 to 60, Supabase ships 10 seconds, and where Auth0
+revokes a token family and Supabase and Keycloak revoke a session, this revoked the account.
 
-**What it does now.** When the main rotation matches nothing, `rotateWithinGrace` looks for
-the row the presented token rotated into and rotates that row again, if the first rotation
-was inside `REFRESH_GRACE_SECONDS`, which defaults to 10. Both tabs end up holding a working
-token and neither raises an alarm. Two details carry the design:
+**The first fix was wrong, and a review found it an hour after it shipped.** It kept one row
+per device and, on the grace path, rotated that row for the loser and wrote the winner's
+**live, never used** token into `previous_token_hash`. The winner refreshes when its access
+token expires, fifteen minutes later, long after a ten second window has closed: its token
+matches no live hash, the grace branch declines, and reuse detection finds it and deletes
+every session for the user. The two-tab bug had not gone away. It had moved a quarter of an
+hour into the future, where nobody would connect it to two tabs.
 
-- **`rotated_at` is not refreshed on the grace path.** Refreshing it would extend the window
-  on every use, so one old token would stay replayable for as long as anyone kept using it.
-  Left alone, the episode is bounded by the original rotation however many tabs race.
-- **`previous_token_hash` becomes the row's current hash, not the presented one.** Leaving it
-  as presented orphans the token the winner holds, so the winner's next refresh answers 401.
-  That would stop the account-wide sign-out and still throw one tab out, which is most of the
-  bug in a smaller coat.
+**Both tests written for that fix refreshed again immediately, so both ran inside the
+window.** A test written by the author of a fix inherits the author's picture of it. That is
+the failure the block brief names at line 330, and it is the second time this repository has
+produced it, after a test that derived its boundary from the constant it was checking.
 
-**Given up, and it is a real cost.** Inside the window, a stolen previous-generation token is
-accepted and no alarm fires, and after a grace rotation the presented token is no longer
-anybody's previous hash, so replaying it answers 401 without ending sessions. One generation
-of reuse detection is traded for the length of the window. `REFRESH_GRACE_SECONDS` is an
-environment variable rather than a constant precisely because that is the dial, and setting
-it to 0 restores the previous behaviour. `test/auth.e2e-spec.ts` asserts both sides: two
-concurrent refreshes both answer 200 with the session intact, and a replay aged past the
-window still deletes every row. **The second of those is the one that matters**, because
-without it a window that never closed would look identical to a working one.
+**What it does now: a device is a family of rows, not a row.** One row could not hold two live
+tokens, and two live tokens are exactly what two tabs need. `refresh_tokens.family_id` names
+the session by the id of the row that founded it, and the founder carries null, so no insert
+has to reference its own id and the migration needed no backfill.
+`consumed_refresh_tokens` records every hash the server has spent, with the moment it was
+spent.
 
-## 3. Reuse detection retains one generation, not a chain
+Rotation asks three questions, in order:
 
-`previous_token_hash` holds the immediately preceding hash and nothing older. **Given up:**
-an attacker who waits through two or more legitimate rotations before replaying a stolen
-token is not caught.
+1. **Is this the live token?** One conditional write, and the spent hash is recorded in the
+   same transaction. Not tidiness: as two statements a losing racer lands between them, finds
+   no live row and no record yet, and gets a 401. Three concurrent refreshes reproduced that
+   as `200 401 200`.
+2. **Was it ever spent?** If not, 401 and **nothing is deleted**. The previous version looked
+   the hash up in `previous_token_hash` with no liveness filter and no time bound, so a value
+   left behind by a session that expired weeks ago ended every live session the user had.
+3. **Was it spent inside the window?** If so, an honest racing tab: it gets **a new row in the
+   same family**, and the row the winner holds is not touched. If not, theft, and the
+   contract's answer is to delete every refresh row for that user.
 
-**This diverges from the contract, and the divergence is the point of this entry.**
-`openapi.yaml:247-249` says the server deletes every refresh row for that user when it
-receives an already-used token. It now states one carve-out, the grace window of item 2,
-and that carve-out is measured in seconds while this gap is measured in rotations. This
-implementation recognises one generation, so a token replayed after two rotations revokes
-nothing. The contract outranks the code, which makes this a known defect
-rather than a design choice, and it is recorded here so it is declared rather than
-discovered. The alternative is a used-token table with an expiry sweep, which
-catches every generation at the cost of a table that grows with traffic. For one Postgres
-and one store, one generation is the better trade. This extends the same decision already
-recorded at `4-database/3-erd/DECISIONS.md` row 16.
+`consumed_at` is never updated, so the window belongs to the spent token and no amount of
+racing extends it. A new row inherits `created_at` from the founder, so the thirty day
+absolute cap belongs to the family rather than restarting with every tab.
+
+**What changed outside the rotation.** `listSessions` groups by family, or two tabs would read
+as two devices and the user would be offered two things to sign out of that are one thing.
+Both session deletes name the family, or ending a session would leave the other tab signed in.
+`sid` is the family, which is why the family is an integer named after its founding row: the
+contract's promise that the session id does not change survives without touching the type.
+
+**Given up, and it is a real cost.** Inside the window a stolen token is accepted and no alarm
+fires. `REFRESH_GRACE_SECONDS` is an environment variable rather than a constant precisely
+because that is the dial, and 0 turns it off. `consumed_refresh_tokens` grows with traffic and
+nothing prunes it yet; a sweep of rows older than the absolute cap is safe by construction,
+since a token past that cap can rotate nothing, and it is the first thing to add before this
+runs anywhere real.
+
+**How the tests avoid proving nothing.** Two sabotages, and they have to be complementary.
+Making the window never close turns the reuse test red and leaves the three grace tests green.
+Setting the grace to zero turns the three grace tests red and leaves the reuse test green.
+**Each measures its own half and neither covers the other**, which is the only way to tell a
+working window from one that never closes.
+
+## 3. Reuse detection now recognises every generation, and this entry says why it used to not
+
+**Closed, and closed as a side effect rather than on purpose.** This entry used to record a
+declared defect: `previous_token_hash` held the immediately preceding hash and nothing older,
+so an attacker who waited through two legitimate rotations before replaying a stolen token
+was not caught. The contract at `openapi.yaml:247` grants no carve-out for how old a spent
+token is, so the code was knowingly weaker than the document it was written against.
+
+The alternative named here was **"a used-token table with an expiry sweep, which catches every
+generation at the cost of a table that grows with traffic"**, and it was rejected as the worse
+trade for one Postgres and one store.
+
+**Item 2 built that table for a different reason and this fell out of it.**
+`consumed_refresh_tokens` exists because one column cannot say both "still acceptable for a
+few seconds" and "spent, raise the alarm", and a table that answers the second question
+answers it for every generation, not just the last. A token replayed ten rotations later is
+found and ends every session, which is what the contract always said.
+
+**The cost that was rejected is now real and is accepted with its name on it.** The table grows
+with traffic, one row per rotation per device, and nothing prunes it yet. The sweep this entry
+once used as the reason not to build it is now the work this entry owes: rows older than the
+absolute session cap are dead by construction, since a token past that cap can rotate nothing.
+
+**What is worth keeping from the old entry:** rejecting a design for its cost, and then
+building the same design later because a different problem forced it, is worth writing down
+rather than quietly enjoying. The trade was not re-evaluated. It was overtaken.
 
 ## 4. The access token carries a session id
 

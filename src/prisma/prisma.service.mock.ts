@@ -28,6 +28,11 @@ export interface PrismaMock {
     delete: jest.Mock;
     deleteMany: jest.Mock;
   };
+  consumedRefreshToken: {
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   role: {
     findUnique: jest.Mock;
   };
@@ -90,6 +95,11 @@ export function createPrismaMock(): PrismaMock {
       updateMany: jest.fn(),
       updateManyAndReturn: jest.fn(),
       delete: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    consumedRefreshToken: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
       deleteMany: jest.fn(),
     },
     role: {

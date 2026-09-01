@@ -21,6 +21,9 @@ export function aRefreshToken(
     // A row that has never rotated, which is what a fresh sign-in produces.
     // A spec that needs the grace window sets this itself.
     rotatedAt: null,
+    // Null is the founder of its own family, which is what a sign-in writes.
+    // A spec that needs a second tab's row sets this to the founder's id.
+    familyId: null,
     ...overrides,
   };
 }
