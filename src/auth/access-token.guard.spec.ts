@@ -412,6 +412,11 @@ describe('AccessTokenGuard', () => {
 
     it.each([
       ['no authorization header', undefined],
+      // Empty and blank read as absent, which the optional tier admits and
+      // this tier refuses. Without these two rows the `.trim()` at
+      // `access-token.guard.ts:87` was tested on one tier only.
+      ['an empty authorization header', ''],
+      ['an authorization header of spaces', '   '],
       ['a scheme that is not Bearer', 'Basic dXNlcjpwYXNz'],
       ['a scheme that merely starts with bearer', 'bearerish good'],
       ['Bearer with an empty token', 'Bearer '],
