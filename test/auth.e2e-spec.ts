@@ -761,6 +761,42 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
+     * **The signed-out device's own access token stops working at once.**
+     *
+     * The contract's Tokens paragraph said revocation lags by up to 15 minutes,
+     * and the guard has checked the session on every request since `be3ad52`.
+     * The two operation descriptions were corrected; the paragraph and this
+     * assertion were not, so nothing pinned the sentence the contract now
+     * makes. The phone is the control: the same request with a live session
+     * still answers 200.
+     */
+    it("refuses the signed-out device's own access token at once", async () => {
+      const first = await signUpAndIn();
+      const second = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
+
+      await http()
+        .delete('/v1/auth/sessions/current')
+        .set('authorization', `Bearer ${first.accessToken}`)
+        .expect(204);
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${first.accessToken}`)
+        .expect(401);
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${second.body.accessToken as string}`)
+        .expect(200);
+    });
+
+    /**
      * **A token from a device that signed out is not a replay.**
      *
      * Signing out deleted the family's refresh rows and left its consumed

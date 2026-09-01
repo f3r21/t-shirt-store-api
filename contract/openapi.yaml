@@ -50,10 +50,11 @@ info:
     is single-currency and prices are in USD. No response carries a currency field.
 
     **Tokens.** An access token is valid for 15 minutes. A refresh token is valid for
-    7 days and rotates on every use. Sign-out deletes the presented device's refresh
-    row. It does not revoke an access token the server already issued, so revocation
-    lags by up to 15 minutes. Changing or resetting a password deletes every refresh row for
-    that user.
+    7 days and rotates on every use. Sign-out ends the presented device's session and
+    deletes every refresh token in it. The server checks on every request that the
+    session named by an access token still exists, so a signed-out device's access token
+    stops working at once. Changing or resetting a password ends every session for that
+    user the same way.
 
     **Rate limits.** The server limits every operation by source address, in three tiers.
     Browsing carries the loosest limit. Sign-in carries a tighter limit. The three password
