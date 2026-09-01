@@ -18,6 +18,71 @@ describe('AppController (e2e)', () => {
     await request(ctx.app.getHttpServer()).get('/v1').expect(200);
   });
 
+  /**
+   * `helmet()` and `enableCors()` sat side by side in `configure-app.ts` and
+   * neither was asserted anywhere: `rg -in 'helmet|cors' test` exited 1.
+   *
+   * That is how CORS stayed on Nest's default for as long as it did. The
+   * default is `Access-Control-Allow-Origin: *`, on every route including the
+   * six manager-only catalog mutations, one line below the middleware whose
+   * whole purpose is the opposite. Both reviews of this branch named it.
+   */
+  it('sends the helmet headers on an ordinary response', async () => {
+    const res = await request(ctx.app.getHttpServer()).get('/v1').expect(200);
+
+    // One header from each of the two things helmet is usually kept for.
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-frame-options']).toBeDefined();
+    // And the one it removes, which is a header Express adds on its own.
+    expect(res.headers).not.toHaveProperty('x-powered-by');
+  });
+
+  /**
+   * Both halves, and the second is the one that used to fail.
+   *
+   * A test that only asserted the echo for an allowed origin would pass just as
+   * happily against the wildcard this replaced, because a wildcard allows the
+   * allowed origin too. The refusal is what distinguishes a configured list
+   * from no configuration at all.
+   */
+  it('echoes an allowed origin and stays silent for any other', async () => {
+    const allowed = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .set('origin', 'https://shop.example')
+      .expect(200);
+    expect(allowed.headers['access-control-allow-origin']).toBe(
+      'https://shop.example',
+    );
+
+    const refused = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .set('origin', 'https://evil.example')
+      .expect(200);
+    expect(refused.headers).not.toHaveProperty('access-control-allow-origin');
+  });
+
+  /**
+   * The preflight, which is the request a browser actually sends first.
+   *
+   * A wildcard answers this one too, so the disallowed origin below is again
+   * the half that carries the assertion.
+   */
+  it('answers a preflight for an allowed origin and not for another', async () => {
+    const allowed = await request(ctx.app.getHttpServer())
+      .options('/v1/products')
+      .set('origin', 'https://shop.example')
+      .set('access-control-request-method', 'GET');
+    expect(allowed.headers['access-control-allow-origin']).toBe(
+      'https://shop.example',
+    );
+
+    const refused = await request(ctx.app.getHttpServer())
+      .options('/v1/products')
+      .set('origin', 'https://evil.example')
+      .set('access-control-request-method', 'GET');
+    expect(refused.headers).not.toHaveProperty('access-control-allow-origin');
+  });
+
   it('answers an unknown route with a problem document, not an echo of the path', async () => {
     const res = await request(ctx.app.getHttpServer())
       .get('/v1/no-such-thing')

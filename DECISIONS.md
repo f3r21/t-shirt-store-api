@@ -386,3 +386,30 @@ the guard.
 The 403 body is a bare `ForbiddenException` on purpose. Nest's default payload carries no
 title and no detail, so the problem mapper falls back to the table, which holds the
 contract's own wording. Supplying them at the throw site would risk drifting from it.
+
+## 19. CORS is a list from the environment, and the proxy is a count
+
+`configure-app.ts` called `app.enableCors()` with no argument, which is Nest's fully permissive
+default. Measured against the package rather than read from its documentation:
+`require('cors')(undefined)` answers `Access-Control-Allow-Origin: *` to an origin of
+`https://evil.example`. That was on every route including the six manager-only catalog
+mutations, one line below `helmet()`, whose entire purpose is the opposite. **Two independent
+reviews of this branch named it, and neither `helmet` nor CORS had a single assertion anywhere:
+`rg -in 'helmet|cors' test` exited 1.**
+
+**The default is an empty list, which refuses every cross-origin browser call.** A service with
+no configured front end should refuse rather than admit everyone, and a deployment that has one
+names it. The wildcard was the convenient default; this is the safe one.
+
+**`TRUST_PROXY_HOPS` is a count and never a boolean**, and the distinction is the entry.
+`ThrottlerGuard` keys the rate limit on `req.ip`, and with `trust proxy` unset that is the
+socket's address, so behind a load balancer every caller shares one counter and one abusive
+client answers 429 to the whole store. `trust proxy: true` fixes the sharing and opens a worse
+hole, because any client can then forge `X-Forwarded-For` and evade the limit outright. Express
+reads the nth address from the right, so the number has to match the deployment.
+
+**Given up:** the default of 0 keeps today's behaviour, which is correct with nothing in front
+and wrong the moment something is. No test can catch that, because the end-to-end suite talks to
+the process directly and `req.ip` there is the real client. It is a setting somebody has to know
+to set, and saying so is the most this repository can do about it without an environment to
+deploy to.

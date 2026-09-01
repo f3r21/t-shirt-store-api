@@ -126,6 +126,49 @@ export class EnvironmentVariables {
   @Min(0)
   REFRESH_GRACE_SECONDS: number = 10;
 
+  /**
+   * The browser origins allowed to call this API, comma separated.
+   *
+   * `configure-app.ts` called `app.enableCors()` with no argument, which is
+   * Nest's fully permissive default: `Access-Control-Allow-Origin: *` on every
+   * route, one line below `helmet()`, whose entire purpose is the opposite.
+   * Measured rather than read from the documentation:
+   *
+   *     node -e "require('cors')(undefined)({method:'GET',headers:{origin:
+   *       'https://evil.example'}}, ...)"
+   *     -> {"Access-Control-Allow-Origin":"*"}
+   *
+   * **Empty is the default and it means no cross-origin browser may call this.**
+   * Not a wildcard: a service with no configured front end should refuse, and a
+   * deployment that wants a front end says so. Both reviews of this branch
+   * named the wildcard, which is the argument for the safe default rather than
+   * the convenient one.
+   */
+  @IsString()
+  CORS_ORIGINS: string = '';
+
+  /**
+   * How many reverse proxies sit in front of this process.
+   *
+   * **The rate limit is keyed on `req.ip` and `trust proxy` was never set**, so
+   * behind a load balancer every caller shares the balancer's address and one
+   * abusive client answers 429 to the whole store. `ARCHITECTURE.md` names this
+   * as the one regression that would reach production with nothing to catch it,
+   * because the end-to-end suite talks to the process directly and sees the
+   * real client there.
+   *
+   * A count and not a boolean, and that is the whole point. `trust proxy: true`
+   * would let any client forge `X-Forwarded-For` and evade the limit entirely,
+   * turning a shared-counter bug into an open door. Express reads the nth
+   * address from the right, so the number has to match the deployment.
+   *
+   * 0 means no proxy, which is correct for local development and for the
+   * end-to-end suite, and it is why the default keeps today's behaviour.
+   */
+  @IsInt()
+  @Min(0)
+  TRUST_PROXY_HOPS: number = 0;
+
   @IsInt()
   @Min(1)
   THROTTLE_TTL: number = 60;

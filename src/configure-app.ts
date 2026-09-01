@@ -1,8 +1,11 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import type { Express } from 'express';
 import { SwaggerModule } from '@nestjs/swagger';
 import { VALIDATION_PIPE_OPTIONS } from './common/validation-pipe-options';
 import { buildOpenApiDocument } from './openapi/document';
+import { EnvironmentVariables } from './config/env.validation';
 
 /**
  * Everything the application needs beyond its modules.
@@ -20,7 +23,40 @@ export function configureApp(app: INestApplication): INestApplication {
   app.setGlobalPrefix('v1');
 
   app.use(helmet());
-  app.enableCors();
+
+  // **Read from the environment, and empty by default.** This was
+  // `app.enableCors()` with no argument, which is Nest's fully permissive
+  // default, `Access-Control-Allow-Origin: *` on every route including the six
+  // manager-only catalog mutations, one line below `helmet()`. Measured against
+  // the `cors` package directly rather than read from its documentation:
+  // `require('cors')(undefined)` answers `*` to an origin of
+  // `https://evil.example`.
+  //
+  // An empty list refuses every cross-origin browser call, which is the right
+  // answer for a service with no configured front end. A deployment that has
+  // one names it.
+  const config = app.get(ConfigService<EnvironmentVariables, true>);
+  const origins = config
+    .get<string>('CORS_ORIGINS')
+    .split(',')
+    .map((o) => o.trim())
+    .filter((o) => o !== '');
+  app.enableCors({ origin: origins, credentials: true });
+
+  // **A hop count, never `true`.** The rate limit is keyed on `req.ip`, and with
+  // `trust proxy` unset that address is the socket's, which behind a load
+  // balancer is the balancer: every caller shares one counter and one abusive
+  // client answers 429 to the whole store. `trust proxy: true` would fix the
+  // sharing and open a worse hole, because any client could then forge
+  // `X-Forwarded-For` and evade the limit entirely. Express reads the nth
+  // address from the right, so the number has to match the deployment.
+  //
+  // 0 keeps today's behaviour, which is correct with no proxy in front.
+  const hops = config.get<number>('TRUST_PROXY_HOPS');
+  if (hops > 0) {
+    const express = app.getHttpAdapter().getInstance() as Express;
+    express.set('trust proxy', hops);
+  }
 
   app.useGlobalPipes(new ValidationPipe(VALIDATION_PIPE_OPTIONS));
 

@@ -106,11 +106,18 @@ lag. Then what no infrastructure metric shows: checkout conversion, webhook lag,
 size, and stock going negative, which pages. Logs would carry one correlation id from the request
 into the job, and never a token. None of that exists yet.
 
-**One regression would reach production unnoticed, and no test can see it.** `ThrottlerGuard` is
-bound globally (`app.module.ts:70`) with no `getTracker` override, so the limit keys on `req.ip`,
-and `trust proxy` is set nowhere. With it off, `req.ip` behind a load balancer is the balancer, so
-every caller shares one counter and one abusive client answers 429 to the whole store, while the
-per-process counter lets the fleet serve N times the limit. The end-to-end suite talks to the
-process directly, so `req.ip` there is the real client and the suite stays green while production is
-wrong. The fix is not `trust proxy: true`, which lets anyone forge `X-Forwarded-For`, but a hop
-count read from the environment.
+**One regression would reach production unnoticed, and it is now a setting rather than a bug.**
+`ThrottlerGuard` keys the limit on `req.ip` (`app.module.ts:70`, no `getTracker` override). With
+`trust proxy` unset, `req.ip` behind a load balancer is the balancer, so every caller shares one
+counter and one abusive client answers 429 to the whole store. `TRUST_PROXY_HOPS` now carries the
+answer, and it is a count rather than a boolean on purpose: `trust proxy: true` would fix the
+sharing and open a worse hole, because any client could then forge `X-Forwarded-For` and evade the
+limit outright.
+
+**The default is 0, so the deployment has to know its own shape.** That is the honest position and
+not a fix: a service put behind a proxy by someone who does not set this is back where it started.
+No test can catch that either, because the end-to-end suite talks to the process directly and
+`req.ip` there is the real client. **What a test can catch is the other half**, and it now does:
+`app.e2e-spec.ts` asserts helmet's headers and asserts that an origin outside `CORS_ORIGINS` gets
+no `Access-Control-Allow-Origin`, which was a wildcard on every route until both reviews of this
+branch named it.

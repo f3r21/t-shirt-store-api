@@ -17,6 +17,10 @@ process.env.DATABASE_URL =
 process.env.JWT_SECRET = 'e2e-jwt-secret-at-least-32-characters-long';
 process.env.REFRESH_TOKEN_PEPPER = 'e2e-pepper-at-least-32-characters-long';
 process.env.MAIL_FROM = 'no-reply@tshirt.store';
+// One allowed origin, so the suite can assert both halves: the echo for this
+// one and the silence for any other. An empty list would only prove the
+// refusal, and a permissive default is what this suite exists to catch.
+process.env.CORS_ORIGINS = 'https://shop.example';
 // `REDIS_URL` is deliberately absent. Nothing in `src` opens a Redis
 // connection, so the whole end-to-end suite booting without it is the proof
 // that the variable is optional, and it is a better proof than any assertion.
