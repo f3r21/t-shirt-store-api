@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AppModule } from './app.module';
+import { CONFIG_MODULE_OPTIONS } from './config/config-module-options';
 import { AuthController } from './auth/auth.controller';
 import { UsersController } from './users/users.controller';
 import { MAILER } from './mail/mailer';
@@ -209,6 +211,69 @@ describe('AppModule', () => {
       expect(() => validateEnv({ ...REQUIRED, [key]: 'nonsense' })).toThrow(
         new RegExp(key),
       );
+    }
+  });
+
+  /**
+   * **A variable the shell exported empty stays absent through the module.**
+   *
+   * The gate above proves `validateEnv` reads `''` as absent. This is the
+   * other half. `ConfigService.get` used to fall through to `process.env` when
+   * the validated value was undefined, and a container that exports
+   * `SMTP_USER=` leaves `''` there. So the validator said absent, the service
+   * said `''`, and the mailer authenticated with empty credentials. A `.env`
+   * line never showed it, because the file is parsed and not exported.
+   * `mailer.nodemailer.spec.ts` proves the mailer sends no `auth` for an
+   * undefined pair, so undefined here is what closes it.
+   *
+   * `PORT` is the same hole one type over. It has a default, so the validated
+   * value has to win over the shell's `''`, and `main.ts` reads that value
+   * rather than the shell. The set pair is the control: the option that closes
+   * this must not hide a real value.
+   *
+   * Built from `CONFIG_MODULE_OPTIONS` and not from `AppModule`, because
+   * `forRoot` reads the environment when `app.module.ts` is imported, and a
+   * test that sets `process.env` afterwards is testing the environment the
+   * import saw. The first version of this test compiled `AppModule` and three
+   * of its assertions passed for exactly that reason.
+   */
+  it('reads a variable the shell exported empty as absent, through the module', async () => {
+    const before = { ...process.env };
+    const configWith = async (shell: Record<string, string>) => {
+      process.env = { ...before, ...REQUIRED, ...shell };
+      const module = await Test.createTestingModule({
+        imports: [
+          ConfigModule.forRoot({
+            ...CONFIG_MODULE_OPTIONS,
+            ignoreEnvFile: true,
+          }),
+        ],
+      }).compile();
+      return module.get(ConfigService);
+    };
+
+    try {
+      const empty = await configWith({
+        SMTP_HOST: 'relay.example',
+        SMTP_USER: '',
+        SMTP_PASS: '',
+        PORT: '',
+      });
+      expect(empty.get('SMTP_USER')).toBeUndefined();
+      expect(empty.get('SMTP_PASS')).toBeUndefined();
+      expect(empty.get('PORT')).toBe(3000);
+      expect(empty.get('SMTP_HOST')).toBe('relay.example');
+
+      const set = await configWith({
+        SMTP_USER: 'bob',
+        SMTP_PASS: 'hunter22',
+        PORT: '4000',
+      });
+      expect(set.get('SMTP_USER')).toBe('bob');
+      expect(set.get('SMTP_PASS')).toBe('hunter22');
+      expect(set.get('PORT')).toBe(4000);
+    } finally {
+      process.env = before;
     }
   });
 

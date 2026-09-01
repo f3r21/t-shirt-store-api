@@ -4,7 +4,8 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { validateEnv, EnvironmentVariables } from './config/env.validation';
+import { EnvironmentVariables } from './config/env.validation';
+import { CONFIG_MODULE_OPTIONS } from './config/config-module-options';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
@@ -16,10 +17,10 @@ import { ProblemFilter } from './common/problem/problem.filter';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      validate: validateEnv,
-    }),
+    // The options live in `config-module-options.ts`, where `skipProcessEnv`
+    // is explained, so that `app.module.spec.ts` can build the same module
+    // against an environment it controls.
+    ConfigModule.forRoot(CONFIG_MODULE_OPTIONS),
     /**
      * `ttl` is milliseconds in this major version, and `THROTTLE_TTL` is a
      * number of seconds, so the value is wrapped rather than passed through. A
