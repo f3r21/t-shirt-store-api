@@ -760,6 +760,56 @@ describe('Authentication (e2e)', () => {
       expect(left.body.data[0].deviceName).toBe('Ana phone');
     });
 
+    /**
+     * **A token from a device that signed out is not a replay.**
+     *
+     * Signing out deleted the family's refresh rows and left its consumed
+     * rows, so the token that device spent last stayed a trigger: sent again
+     * after the grace window, by the device itself or by anyone who had it,
+     * reuse detection wiped every other device of the user. A backgrounded
+     * tab that wakes up and retries its old refresh did this to the phone.
+     *
+     * The phone is the assertion. The 401 alone passes on the old code too.
+     */
+    it('a token spent by a device that signed out ends nothing else', async () => {
+      const laptop = await signUpAndIn();
+      const phone = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
+
+      // The laptop rotates once, so the token it signed in with is on record
+      // as spent, and then signs out.
+      const rotated = await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: laptop.refreshToken })
+        .expect(200);
+      await http()
+        .delete('/v1/auth/sessions/current')
+        .set('authorization', `Bearer ${rotated.body.accessToken as string}`)
+        .expect(204);
+
+      // Past the grace window, so a record that survived would read as theft.
+      await ctx.prisma.consumedRefreshToken.updateMany({
+        data: { consumedAt: new Date(Date.now() - 3600_000) },
+      });
+
+      await http()
+        .post('/v1/auth/refresh')
+        .send({ refreshToken: laptop.refreshToken })
+        .expect(401);
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${phone.body.accessToken as string}`)
+        .expect(200);
+      expect(await ctx.prisma.refreshToken.count()).toBe(1);
+    });
+
     it('answers 404 for a session id that belongs to another user', async () => {
       const ana = await signUpAndIn();
 

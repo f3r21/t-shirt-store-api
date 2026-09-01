@@ -218,6 +218,11 @@ describe('UsersService', () => {
       expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: 128 },
       });
+      // Every family ended, so every consumed row of the user goes with them,
+      // or the next sign-in can be wiped by a token spent before the change.
+      expect(prisma.consumedRefreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128 },
+      });
     });
 
     it('sends mail to the account address (openapi.yaml:457)', async () => {

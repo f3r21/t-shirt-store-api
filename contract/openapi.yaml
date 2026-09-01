@@ -265,7 +265,9 @@ paths:
         again.
 
         A token the server never issued is not a replay. The server answers 401 and deletes
-        nothing.
+        nothing. A token from a session that ended reads the same way, whether the user
+        signed that device out, a password change ended every session, or the server
+        ended them after a replay.
 
         A refresh token that is unknown, expired or already used returns 401 with the
         `refresh-token-unknown` problem type.

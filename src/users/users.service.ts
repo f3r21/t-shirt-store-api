@@ -145,6 +145,11 @@ export class UsersService {
         },
       });
       await tx.refreshToken.deleteMany({ where: { userId } });
+      // Every family of this user has just ended, so every consumed row of
+      // this user is a trigger with nothing left behind it: sent again after
+      // the grace window, it would wipe the sessions this user creates next.
+      // `auth.service.ts` explains the shape at `deleteCurrentSession`.
+      await tx.consumedRefreshToken.deleteMany({ where: { userId } });
     });
 
     await this.mailer.sendPasswordChanged(user.email);

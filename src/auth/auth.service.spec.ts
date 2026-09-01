@@ -726,6 +726,12 @@ describe('AuthService', () => {
           OR: [{ familyId: 42 }, { id: 42, familyId: null }],
         },
       });
+      // And the family's consumed rows, or a token this device once spent
+      // stays a trigger that wipes the user's other devices when it is sent
+      // again after the grace window.
+      expect(prisma.consumedRefreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128, familyId: 42 },
+      });
     });
 
     it('leaves the other devices signed in', async () => {
@@ -761,6 +767,12 @@ describe('AuthService', () => {
           userId: 128,
           OR: [{ familyId: 42 }, { id: 42, familyId: null }],
         },
+      });
+      // The family's consumed rows go too, for the reason `deleteCurrentSession`
+      // gives, and scoped to the family: the other devices are still alive and
+      // keep their own records.
+      expect(prisma.consumedRefreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128, familyId: 42 },
       });
     });
 
@@ -957,6 +969,11 @@ describe('AuthService', () => {
       await service.resetPassword({ token: TOKEN, password: 'a new password' });
 
       expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128 },
+      });
+      // Every family ended, so every consumed row of the user goes with them,
+      // or the next sign-in can be wiped by a token spent before the reset.
+      expect(prisma.consumedRefreshToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: 128 },
       });
     });

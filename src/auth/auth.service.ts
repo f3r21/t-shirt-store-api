@@ -519,9 +519,22 @@ export class AuthService {
     // By family. Deleting the one row whose id matches would leave every other
     // live row of the same device signed in, and a second tab is exactly the
     // thing that creates one.
-    await this.prisma.refreshToken.deleteMany({
-      where: { userId, ...this.familyWhere(sessionId) },
-    });
+    //
+    // **The family's consumed rows go too.** A family that has ended has
+    // nothing left to protect, and a consumed row that outlives it is only a
+    // trigger: the device that signed out, or anyone holding a token it once
+    // spent, sends it again after the grace window and reuse detection wipes
+    // every other device of this user. Removing the records makes that token
+    // one the server never issued, which is 401 and nothing deleted. One
+    // transaction, so the family cannot end with its triggers left behind.
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.deleteMany({
+        where: { userId, ...this.familyWhere(sessionId) },
+      }),
+      this.prisma.consumedRefreshToken.deleteMany({
+        where: { userId, familyId: sessionId },
+      }),
+    ]);
   }
 
   /**
@@ -533,12 +546,18 @@ export class AuthService {
    * and an id that belongs to somebody else take the same path.
    */
   async deleteSession(userId: number, id: number): Promise<void> {
-    // By family, for the same reason as `deleteCurrentSession`. The 404 still
-    // comes from the count, so an id that names nothing and an id that names
-    // somebody else's family take the same path.
-    const { count } = await this.prisma.refreshToken.deleteMany({
-      where: { userId, ...this.familyWhere(id) },
-    });
+    // By family, for the same reason as `deleteCurrentSession`, and the
+    // family's consumed rows go with it for the reason given there. The 404
+    // still comes from the count of refresh rows, so an id that names nothing
+    // and an id that names somebody else's family take the same path.
+    const [{ count }] = await this.prisma.$transaction([
+      this.prisma.refreshToken.deleteMany({
+        where: { userId, ...this.familyWhere(id) },
+      }),
+      this.prisma.consumedRefreshToken.deleteMany({
+        where: { userId, familyId: id },
+      }),
+    ]);
     if (count === 0) {
       throw new NotFoundException();
     }
@@ -636,6 +655,10 @@ export class AuthService {
 
       const row = updated[0];
       await tx.refreshToken.deleteMany({ where: { userId: row.id } });
+      // Every family of this user has just ended, so every consumed row of
+      // this user is a trigger with nothing left behind it. See
+      // `deleteCurrentSession` for what a trigger left behind does.
+      await tx.consumedRefreshToken.deleteMany({ where: { userId: row.id } });
       return row;
     });
 
