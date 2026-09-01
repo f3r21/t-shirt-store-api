@@ -330,6 +330,24 @@ describe('Catalog reads (e2e)', () => {
       await seedProductWithVariant(ctx.prisma, { name: 'In stock' });
     });
 
+    /**
+     * `limit` has carried a ceiling since it was written and `offset` did not,
+     * so a value the contract admits reached Prisma's `skip`, which refuses it
+     * with a validation error nothing maps, and this public route answered 500.
+     *
+     * The last row is the control. Without it a 400 on every offset would pass
+     * the first two lines, and the bound would be indistinguishable from a
+     * parameter that stopped working.
+     */
+    it.each([
+      ['above the int4 ceiling', '2147483648', 400],
+      ['far above it', '99999999999999999999', 400],
+      ['at the ceiling', '2147483647', 200],
+      ['a page nobody asked for but the column can hold', '5000', 200],
+    ])('answers an offset %s with %i', async (_label, offset, status) => {
+      await http().get('/v1/products').query({ offset }).expect(status);
+    });
+
     it('answers 400 for a categoryId above the ceiling', async () => {
       await http()
         .get('/v1/products')

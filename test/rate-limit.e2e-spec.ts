@@ -66,6 +66,42 @@ describe('Rate limiting (e2e)', () => {
   });
 
   /**
+   * Sign-up is an enumeration oracle and it carried no limit of its own.
+   *
+   * `POST /users` answers 409 for an address that has an account and 201 for
+   * one that does not. With no `@Throttle` it inherited the browse default of
+   * 100 a minute, which makes it **faster and more exact than sign-in**, the
+   * route this service deliberately hardened by paying an Argon2id hash on the
+   * unknown-address path. Hardening one door and leaving the wider one open is
+   * worse than not hardening either, because it reads as though the question
+   * was settled.
+   *
+   * The 409 stays: the contract declares it and a caller has to be told. The
+   * limit is the answer.
+   *
+   * Every request here uses a fresh address, so the eleventh is refused by the
+   * limit and not by the conflict, which is the distinction that makes this an
+   * enumeration test rather than a duplicate-account test.
+   */
+  it('refuses the eleventh sign-up from one address', async () => {
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const res = await http()
+        .post('/v1/users')
+        .send({
+          email: `probe-${i}@example.com`,
+          password: 'correct horse battery',
+          firstName: 'Probe',
+          lastName: 'Account',
+        });
+      codes.push(res.status);
+    }
+
+    expect(codes.slice(0, 10)).toEqual(Array(10).fill(201));
+    expect(codes[10]).toBe(429);
+  });
+
+  /**
    * The 429 has to be a problem document with a plain `Retry-After`. The header
    * name is the part worth asserting: `ThrottlerGuard` appends the throttler's
    * name to it, so a throttler keyed anything but `default` would answer

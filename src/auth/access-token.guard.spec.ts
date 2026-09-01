@@ -230,6 +230,7 @@ describe('AccessTokenGuard', () => {
       ['a scheme that merely starts with bearer', 'bearerish good'],
       ['Bearer with an empty token', 'Bearer '],
       ['a bare scheme with no token at all', 'Bearer'],
+      ['a scheme followed by only spaces', 'Bearer    '],
     ])('refuses %s instead of serving it as anonymous', async (_l, header) => {
       const { guard, context } = harness(
         { [IS_OPTIONAL_AUTH_KEY]: true },
@@ -256,6 +257,28 @@ describe('AccessTokenGuard', () => {
   });
 
   describe('a protected route', () => {
+    /**
+     * RFC 7235 section 2.1 spells the gap between the scheme and the
+     * credentials as `1*SP`, one space or more. `split(' ')` on two spaces gave
+     * `['Bearer', '', 'abc']`, an empty token, and a 401 to a caller who did
+     * nothing wrong. This is the second time this method has refused something
+     * the standard it cites calls valid: the first was comparing the scheme
+     * with `===` against `'Bearer'`.
+     *
+     * The single-space row is the control, so a split that stopped working
+     * altogether could not pass this.
+     */
+    it.each([
+      ['one space', 'Bearer good'],
+      ['two spaces', 'Bearer  good'],
+      ['several spaces', 'Bearer     good'],
+    ])('accepts %s between the scheme and the token', async (_l, header) => {
+      const { guard, context, request } = harness({}, header);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toEqual(PAYLOAD);
+    });
+
     it('attaches the payload the roles guard reads', async () => {
       const { guard, context, request } = harness({}, 'Bearer good');
 

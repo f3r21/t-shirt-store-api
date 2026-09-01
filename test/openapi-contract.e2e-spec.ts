@@ -86,6 +86,14 @@ describe('OpenAPI document against the contract (e2e)', () => {
      * zero contract-only.
      */
     boundsNotInContract: [
+      // The three `offset` ceilings are the newest entries and they arrived the
+      // same way the seven before them did. `limit` has carried a `@Max` since
+      // it was written and `offset` did not, so an integer the contract admits
+      // reached Prisma's `skip`, which refuses it with a validation error that
+      // nothing maps, and `GET /products` answered 500 with no token.
+      'GET /auth/sessions q.offset.maximum=2147483647',
+      'GET /categories q.offset.maximum=2147483647',
+      'GET /products q.offset.maximum=2147483647',
       'GET /products q.categoryId.maximum=2147483647',
       'GET /products q.categoryId.minimum=1',
       'PATCH /products/{id} body.categoryIds.items.maximum=2147483647',

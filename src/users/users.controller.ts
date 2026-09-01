@@ -18,6 +18,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { PASSWORD_THROTTLE } from '../auth/password-throttle';
+import { SIGN_IN_THROTTLE } from '../auth/sign-in-throttle';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ROLE_NAMES } from './dto/user.dto';
 
@@ -49,6 +50,21 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 409, description: 'The email address is taken.' })
   @ApiResponse({ status: 500, description: 'Unexpected server error.' })
+  /**
+   * The sign-in tier, on sign-up.
+   *
+   * This route carried no `@Throttle` at all, so it inherited the browse
+   * default of 100 a minute. It answers 409 for an address that has an account
+   * and 201 for one that does not, which is **a faster and more exact account
+   * enumeration oracle than sign-in**, the route this service deliberately
+   * hardened by paying an Argon2id hash on the unknown-address path.
+   *
+   * The 409 cannot be removed: the contract declares it and a caller has to be
+   * told the address is taken. So the answer is the limit, and the sign-in tier
+   * is the right one, because a person signing up retries within seconds and a
+   * script enumerating addresses does not stop at ten.
+   */
+  @Throttle(SIGN_IN_THROTTLE)
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createUser(

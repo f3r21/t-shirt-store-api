@@ -148,7 +148,12 @@ export class AccessTokenGuard implements CanActivate {
    * 401.
    */
   private bearerToken(request: Request): string | undefined {
-    const [scheme, token] = request.headers.authorization?.split(' ') ?? [];
+    // Split on a run of spaces, not on one. RFC 7235 section 2.1 spells the gap
+    // between the scheme and the credentials as `1*SP`, so two spaces is a
+    // header the standard this service cites calls valid. Splitting on a single
+    // space gave `['Bearer', '', 'abc']`, an empty token, and a 401 on every
+    // protected route for a caller who did nothing wrong.
+    const [scheme, token] = request.headers.authorization?.split(/ +/) ?? [];
     return scheme?.toLowerCase() === 'bearer' && token !== ''
       ? token
       : undefined;
