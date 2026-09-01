@@ -407,6 +407,45 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
+     * **The test that was missing, and the reason it was missing.**
+     *
+     * Three tests race two tabs and assert statuses, row counts and families.
+     * **Not one of them sends the `accessToken` anywhere.** `rg -n accessToken
+     * test/auth.e2e-spec.ts` jumps straight over the whole race region, so the
+     * token those 200s hand back was never once used.
+     *
+     * It was worthless: `refreshSession` signed it with `row.id`, and on the
+     * grace path that row is a child in an existing family, so the guard's
+     * lookup found neither a family with that id nor a founder with it. The
+     * loser of an honest race got 200 and a token that answered 401 on every
+     * protected route until it expired, and never recovered.
+     *
+     * The defect needed two commits that were each correct alone: one made a
+     * session a family, the other made the guard read the session on every
+     * request. **No test crossed that seam**, because each commit's tests
+     * covered its own change.
+     *
+     * Both tokens, because Promise.all preserves position and not completion
+     * order, so which one is the grace child is decided by the database.
+     */
+    it('gives both racing tabs an access token that works', async () => {
+      const { refreshToken } = await signUpAndIn();
+
+      const [first, second] = await Promise.all([
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+        http().post('/v1/auth/refresh').send({ refreshToken }),
+      ]);
+      expect([first.status, second.status]).toEqual([200, 200]);
+
+      for (const res of [first, second]) {
+        await http()
+          .get('/v1/auth/sessions')
+          .set('authorization', `Bearer ${res.body.accessToken as string}`)
+          .expect(200);
+      }
+    });
+
+    /**
      * The third tab, which the first fix could not serve at all.
      *
      * With one row per device the grace path had exactly one row to rotate, so
@@ -443,47 +482,96 @@ describe('Authentication (e2e)', () => {
    * the list returned tokens that no longer work and `meta.total` counted them.
    */
   describe('the device list, with a dead row in the table', () => {
+    /**
+     * **Two devices, and the dead one is not the one asking.**
+     *
+     * This used to kill the only session and then list with that session's own
+     * token, which stopped working the moment the guard started checking that a
+     * session is alive. That is the guard being right: a device whose window
+     * closed cannot call a protected route. The behaviour this test is about is
+     * a different one, that `listSessions` filters dead rows, and it needs a
+     * live caller to ask.
+     *
+     * The old shape conflated the two. This one separates them, and it is
+     * closer to production, where a user with a dead session still has a live
+     * one somewhere or they would be signing in again.
+     */
     it('hides a session whose expiry has passed', async () => {
-      const { accessToken } = await signUpAndIn();
+      const dead = await signUpAndIn();
+      const alive = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
 
       const before = await http()
         .get('/v1/auth/sessions')
-        .set('authorization', `Bearer ${accessToken}`)
+        .set('authorization', `Bearer ${alive.body.accessToken as string}`)
         .expect(200);
-      expect(before.body.meta.total).toBe(1);
+      expect(before.body.meta.total).toBe(2);
 
       // The row stays, exactly as it would in production. Only its window moves.
       await ctx.prisma.refreshToken.updateMany({
+        where: { deviceName: 'Ana laptop' },
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
 
       const after = await http()
         .get('/v1/auth/sessions')
-        .set('authorization', `Bearer ${accessToken}`)
+        .set('authorization', `Bearer ${alive.body.accessToken as string}`)
         .expect(200);
 
-      expect(after.body.data).toHaveLength(0);
+      expect(after.body.data).toHaveLength(1);
       // The count has to move with the page, or the envelope reports rows the
       // caller cannot see.
-      expect(after.body.meta.total).toBe(0);
+      expect(after.body.meta.total).toBe(1);
+      expect(after.body.data[0].deviceName).toBe('Ana phone');
       // And the row is still there, which is why the filter has to exist.
-      expect(await ctx.prisma.refreshToken.count()).toBe(1);
+      expect(await ctx.prisma.refreshToken.count()).toBe(2);
+
+      // The other half, now that the guard reads liveness too: the dead
+      // device's own token stops working, which is the point of the window.
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${dead.accessToken}`)
+        .expect(401);
     });
 
+    /** Same two-device shape as above, and for the same reason. */
     it('hides a session created before the absolute cap', async () => {
-      const { accessToken } = await signUpAndIn();
+      const dead = await signUpAndIn();
+      const alive = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
 
       await ctx.prisma.refreshToken.updateMany({
+        where: { deviceName: 'Ana laptop' },
         data: { createdAt: new Date(Date.now() - 31 * 86400 * 1000) },
       });
 
       const res = await http()
         .get('/v1/auth/sessions')
-        .set('authorization', `Bearer ${accessToken}`)
+        .set('authorization', `Bearer ${alive.body.accessToken as string}`)
         .expect(200);
 
-      expect(res.body.data).toHaveLength(0);
-      expect(res.body.meta.total).toBe(0);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.meta.total).toBe(1);
+      expect(res.body.data[0].deviceName).toBe('Ana phone');
+
+      // A session past the absolute cap cannot act either, which is what the
+      // cap is for. Rotation already refused it; now every route does.
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${dead.accessToken}`)
+        .expect(401);
     });
   });
 

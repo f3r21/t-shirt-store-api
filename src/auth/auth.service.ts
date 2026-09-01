@@ -25,6 +25,7 @@ import { toUserDto } from '../users/user.mapper';
 import { generateToken, hashToken } from './token-hash';
 import { EnvironmentVariables } from '../config/env.validation';
 import { AccessTokenPayload } from './access-token-payload';
+import { liveSessionWhere } from './live-session';
 
 /**
  * A reset link is short-lived. The contract sets no window, so this is ours to
@@ -105,12 +106,11 @@ export class AuthService {
     expiresAt: { gt: Date };
     createdAt: { gt: Date };
   } {
-    const now = new Date();
-    const capDays = this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS');
-    return {
-      expiresAt: { gt: now },
-      createdAt: { gt: new Date(now.getTime() - capDays * 86400 * 1000) },
-    };
+    // Delegates to `live-session.ts`, which is where it moved once the guard
+    // became a third caller and got it wrong by not having it at all.
+    return liveSessionWhere(
+      this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS'),
+    );
   }
 
   /**
@@ -226,7 +226,27 @@ export class AuthService {
     }
 
     return {
-      accessToken: await this.issueAccessToken(user.id, row.id, user.role.name),
+      // **The family, not the row, and this line is the whole defect.**
+      //
+      // When a device became a family, every reader of the session id moved
+      // with it: `session.mapper.ts`, `listSessions`, both deletes. This is the
+      // one line that WRITES an identity, and it was not in that list, because
+      // it does not mention a family and does not match a search for one. It
+      // reads `row.id`, which was correct while a session was a row.
+      //
+      // On the grace path `row` is a child created in an existing family, so
+      // `row.id` names nothing the guard can find: it is not a `familyId` on
+      // any row, and its own `familyId` is not null. The loser of a tab race
+      // received 200 and a token that answered 401 on every protected route for
+      // the life of the access token, and did not recover on its own.
+      //
+      // It survived because it was harmless until the guard started reading
+      // `sid` on every request. Two commits, each correct alone.
+      accessToken: await this.issueAccessToken(
+        user.id,
+        this.familyOf(row),
+        user.role.name,
+      ),
       refreshToken: nextToken,
       user: toUserDto(user),
     };
@@ -275,7 +295,7 @@ export class AuthService {
   private async rotateLiveToken(
     presented: string,
     nextHash: string,
-  ): Promise<{ id: number; userId: number } | null> {
+  ): Promise<{ id: number; userId: number; familyId: number | null } | null> {
     return this.prisma.$transaction(async (tx) => {
       const rotated = await tx.refreshToken.updateManyAndReturn({
         where: {
@@ -333,7 +353,7 @@ export class AuthService {
   private async rotateSpentToken(
     presented: string,
     nextHash: string,
-  ): Promise<{ id: number; userId: number } | null> {
+  ): Promise<{ id: number; userId: number; familyId: number | null } | null> {
     const spent = await this.prisma.consumedRefreshToken.findUnique({
       where: { tokenHash: presented },
     });

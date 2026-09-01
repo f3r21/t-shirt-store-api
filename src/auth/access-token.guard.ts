@@ -5,12 +5,15 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { AccessTokenPayload } from './access-token-payload';
+import { liveSessionWhere } from './live-session';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { IS_OPTIONAL_AUTH_KEY } from './decorators/optional-auth.decorator';
 
@@ -36,6 +39,7 @@ export class AccessTokenGuard implements CanActivate {
     private readonly jwt: JwtService,
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -70,7 +74,17 @@ export class AccessTokenGuard implements CanActivate {
     // The cost was not cosmetic. A manager whose client mangles the header got
     // the catalog without their disabled products, with a 200 and nothing
     // saying why, which is the exact failure `@OptionalAuth` exists to prevent.
-    if (header === undefined) {
+    // **And `''` counts as absent, which is the same mistake in reverse.** The
+    // check above used to be `token === undefined`, which flattened "no header"
+    // into "unusable header" and served a broken one as anonymous. Splitting
+    // them fixed that and created the opposite: Node hands a present but empty
+    // `Authorization:` over as `''`, which is not `undefined`, so a proxy that
+    // always injects the header made `GET /products` and `GET /products/{id}`,
+    // the two operations the contract marks anonymous, answer 401 to everybody.
+    //
+    // A header with nothing in it carries no credential, so it is the absence
+    // of one. `.trim()` because a header of spaces is the same statement.
+    if (header === undefined || header.trim() === '') {
       if (optional) {
         return true;
       }
@@ -114,13 +128,37 @@ export class AccessTokenGuard implements CanActivate {
     // alternative is that signing out does not sign out. If it ever becomes the
     // bottleneck, the answer is a short-lived cache of revoked session ids and
     // not removing the check.
+    // **The claims are checked before they are used, and that is not paranoia.**
+    // `verifyAsync` proves the signature and returns whatever was inside. A
+    // payload without `sub` or `sid` casts cleanly to the payload type and both
+    // fields arrive here as `undefined`, which **Prisma drops from a `where`**
+    // rather than matching against. Measured: the filter below reduces to
+    // `{"OR":[{},{"familyId":null}]}`, and an empty object inside an `OR`
+    // matches every row, so `findFirst` returns the first refresh row in the
+    // table and this guard admits the request. It needs `JWT_SECRET`, so it is
+    // a footgun rather than an open door, and a filter that silently means
+    // "everything" is not a thing to leave written down.
+    const { sub, sid } = request.user;
+    if (!Number.isInteger(sub) || !Number.isInteger(sid)) {
+      throw this.unauthorized();
+    }
+
     const live = await this.prisma.refreshToken.findFirst({
       where: {
-        userId: request.user.sub,
-        OR: [
-          { familyId: request.user.sid },
-          { id: request.user.sid, familyId: null },
-        ],
+        userId: sub,
+        OR: [{ familyId: sid }, { id: sid, familyId: null }],
+        // **The same predicate the rotation uses.** Without it a refresh row
+        // that has expired, or whose session ran past the absolute cap, still
+        // authenticates every protected route: `POST /auth/refresh` answers 401
+        // and `GET /auth/sessions` hides the row, while everything else answers
+        // 200. Nothing ever deletes a dead row, which `auth.service.ts` says in
+        // as many words, so the row is there to be found.
+        //
+        // `liveSessionWhere` was extracted so two places deciding the same
+        // thing could not drift. This was the third place and it drifted.
+        ...liveSessionWhere(
+          this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS'),
+        ),
       },
       select: { id: true },
     });

@@ -1,6 +1,8 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
+import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '../config/env.validation';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
@@ -61,8 +63,12 @@ describe('AccessTokenGuard', () => {
 
     const jwt = { verifyAsync: verify } as unknown as JwtService;
 
+    // `!== undefined` and not a truthiness check. `authorization ? … : {}`
+    // turned `''` into a request with no header at all, so a test for an empty
+    // header was really a second test for an absent one and passed without
+    // touching the branch it named.
     const request: Partial<Request> = {
-      headers: authorization ? { authorization } : {},
+      headers: authorization !== undefined ? { authorization } : {},
     };
 
     const context = {
@@ -75,8 +81,12 @@ describe('AccessTokenGuard', () => {
       refreshToken: { findFirst: session },
     } as unknown as PrismaService;
 
+    const config = {
+      getOrThrow: () => 30,
+    } as unknown as ConfigService<EnvironmentVariables, true>;
+
     return {
-      guard: new AccessTokenGuard(jwt, reflector, prisma),
+      guard: new AccessTokenGuard(jwt, reflector, prisma, config),
       context,
       request,
       verify,
@@ -114,13 +124,76 @@ describe('AccessTokenGuard', () => {
 
       await guard.canActivate(context);
 
-      expect(session).toHaveBeenCalledWith({
-        where: {
-          userId: PAYLOAD.sub,
-          OR: [{ familyId: PAYLOAD.sid }, { id: PAYLOAD.sid, familyId: null }],
-        },
-        select: { id: true },
-      });
+      const call = (session.mock.calls[0] as [Record<string, unknown>])[0];
+      const where = call.where as Record<string, unknown>;
+      expect(where.userId).toBe(PAYLOAD.sub);
+      expect(where.OR).toEqual([
+        { familyId: PAYLOAD.sid },
+        { id: PAYLOAD.sid, familyId: null },
+      ]);
+    });
+
+    /**
+     * **The liveness predicate, and this assertion is the one that was missing.**
+     *
+     * The lookup used to carry the owner and the family and nothing else, so a
+     * refresh row that had expired, or whose session had run past the absolute
+     * cap, still authenticated every protected route while `POST /auth/refresh`
+     * answered 401 for the same row. Nothing ever deletes a dead row, so the
+     * row is there to be found.
+     *
+     * Asserted as shape rather than as exact dates, because the two `gt` values
+     * are computed from the clock at call time.
+     */
+    it('asks only for a session that is still alive', async () => {
+      const { guard, context, session } = harness({}, 'Bearer good');
+
+      await guard.canActivate(context);
+
+      const call = (session.mock.calls[0] as [Record<string, unknown>])[0];
+      const where = call.where as {
+        expiresAt?: { gt: Date };
+        createdAt?: { gt: Date };
+      };
+      expect(where.expiresAt?.gt).toBeInstanceOf(Date);
+      expect(where.createdAt?.gt).toBeInstanceOf(Date);
+      // The cap reaches back, the expiry does not.
+      expect(where.createdAt!.gt.getTime()).toBeLessThan(Date.now());
+      expect(where.expiresAt!.gt.getTime()).toBeGreaterThan(
+        where.createdAt!.gt.getTime(),
+      );
+    });
+
+    /**
+     * A signature is not a set of claims.
+     *
+     * `verifyAsync` proves the token came from this server and returns whatever
+     * was inside it. A payload without `sub` or `sid` casts cleanly to the
+     * payload type, and both fields then reach Prisma as `undefined`, which it
+     * **drops from a `where`** rather than matching on. The filter reduces to
+     * `{"OR":[{},{"familyId":null}]}`, and an empty object inside an `OR`
+     * matches every row.
+     *
+     * The last row is the control: a payload with both claims still passes.
+     */
+    it.each([
+      ['no claims at all', {}],
+      ['no sub', { sid: 12, role: 'client' }],
+      ['no sid', { sub: 7, role: 'client' }],
+      ['a sub that is not an integer', { sub: 'seven', sid: 12 }],
+    ])('refuses a signed token with %s', async (_label, payload) => {
+      const { guard, context, session } = harness(
+        {},
+        'Bearer good',
+        jest.fn().mockResolvedValue(payload),
+      );
+
+      await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      // And never reaches the database, so no `where` can be built from
+      // undefined at all.
+      expect(session).not.toHaveBeenCalled();
     });
 
     /**
@@ -240,6 +313,32 @@ describe('AccessTokenGuard', () => {
       await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+
+    /**
+     * **A header that is present and empty is the absence of a credential.**
+     *
+     * This is the previous fix overshooting. Splitting "no header" from "broken
+     * header" stopped a broken one being served as anonymous, and made a
+     * present but empty `Authorization:` land on the broken side. Node reports
+     * that header as `''`, which is not `undefined`, so a proxy that always
+     * injects the header made both anonymous catalog operations answer 401 to
+     * everybody.
+     *
+     * Two mistakes in the same three lines, in opposite directions, three hours
+     * apart.
+     */
+    it.each([
+      ['an empty header', ''],
+      ['a header of spaces', '   '],
+    ])('admits %s on an optional route, as anonymous', async (_l, header) => {
+      const { guard, context, request } = harness(
+        { [IS_OPTIONAL_AUTH_KEY]: true },
+        header,
+      );
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
     });
 
     /**
