@@ -53,6 +53,9 @@ export interface PrismaMock {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  productImage: {
+    findMany: jest.Mock;
+  };
   category: {
     findMany: jest.Mock;
     count: jest.Mock;
@@ -126,6 +129,12 @@ export function createPrismaMock(): PrismaMock {
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+    },
+    // Empty by default, for the reason `orderItem.count` defaults to zero: the
+    // list asks for the page's primary images on every call, and a spec that
+    // is not about images should read as it did before the table was read.
+    productImage: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
     category: {
       findMany: jest.fn(),

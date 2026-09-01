@@ -265,6 +265,11 @@ export async function seedProductWithVariant(
     stock?: number;
     isActive?: boolean;
     categoryIds?: number[];
+    // Written straight to `product_images`, for the reason `seedOrderLineFor`
+    // gives: no operation creates one yet, and the read has to be provable
+    // before the upload lands. Rows are created in array order, so ids follow
+    // it and a test can put the primary last to prove the order is not by id.
+    images?: { url: string; isPrimary?: boolean }[];
   } = {},
 ): Promise<CatalogFixture> {
   const product = await prisma.product.create({
@@ -278,6 +283,12 @@ export async function seedProductWithVariant(
           priceCents: 1999,
           stock: overrides.stock ?? 7,
         },
+      },
+      images: {
+        create: (overrides.images ?? []).map((image) => ({
+          url: image.url,
+          isPrimary: image.isPrimary ?? false,
+        })),
       },
       categories: {
         create: (overrides.categoryIds ?? []).map((categoryId) => ({

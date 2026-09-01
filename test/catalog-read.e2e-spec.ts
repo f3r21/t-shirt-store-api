@@ -311,6 +311,65 @@ describe('Catalog reads (e2e)', () => {
   });
 
   /**
+   * Images come from `product_images`, which exists and which nothing writes
+   * until the upload operation lands. The mapper answered `[]` under a comment
+   * saying the table did not exist, so a row in it was invisible and the list's
+   * `primaryImageUrl` was never set. The rows here are seeded straight into the
+   * table, the way `seedOrderLineFor` seeds an order line, because no operation
+   * can create one yet.
+   *
+   * The primary is seeded second, so it has the higher id. The first assertion
+   * passes only if the order is primary first and not by id.
+   */
+  describe('images, from a table nothing writes yet', () => {
+    interface Detail {
+      images: { id: number; url: string; isPrimary: boolean }[];
+    }
+    interface Listing {
+      data: { name: string; primaryImageUrl?: string }[];
+    }
+
+    it('returns the images of a product, primary first', async () => {
+      const { productId } = await seedProductWithVariant(ctx.prisma, {
+        name: 'Pictured',
+        images: [
+          { url: 'https://cdn.example/back.jpg' },
+          { url: 'https://cdn.example/front.jpg', isPrimary: true },
+        ],
+      });
+
+      const res = await http().get(`/v1/products/${productId}`).expect(200);
+
+      const { images } = res.body as Detail;
+      expect(images.map((image) => image.url)).toEqual([
+        'https://cdn.example/front.jpg',
+        'https://cdn.example/back.jpg',
+      ]);
+      expect(images[0].isPrimary).toBe(true);
+      // Three fields and no `productId`, per the contract's `ProductImage`.
+      expect(Object.keys(images[0]).sort()).toEqual(['id', 'isPrimary', 'url']);
+    });
+
+    it('carries primaryImageUrl on the list, and no key for a product with no image', async () => {
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'Pictured',
+        images: [{ url: 'https://cdn.example/front.jpg', isPrimary: true }],
+      });
+      await seedProductWithVariant(ctx.prisma, { name: 'Plain' });
+
+      const res = await http().get('/v1/products').expect(200);
+
+      const byName = new Map(
+        (res.body as Listing).data.map((entry) => [entry.name, entry]),
+      );
+      expect(byName.get('Pictured')?.primaryImageUrl).toBe(
+        'https://cdn.example/front.jpg',
+      );
+      expect(byName.get('Plain')).not.toHaveProperty('primaryImageUrl');
+    });
+  });
+
+  /**
    * An integer the column cannot hold, on the two routes that need no token.
    *
    * These are unit tested at `src/common/dto/catalog-validation.spec.ts` and

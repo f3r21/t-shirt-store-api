@@ -1,6 +1,7 @@
 import type {
   Category as CategoryRow,
   Product as ProductRow,
+  ProductImage as ProductImageRow,
   ProductVariant as ProductVariantRow,
 } from '../generated/prisma/client';
 import type { ProductWithRelations } from './product.mapper';
@@ -42,12 +43,29 @@ export function aCategory(overrides: Partial<CategoryRow> = {}): CategoryRow {
   return { id: 3, name: 'T-shirts', ...overrides };
 }
 
+export function anImage(
+  overrides: Partial<ProductImageRow> = {},
+): ProductImageRow {
+  return {
+    id: 88,
+    productId: 7,
+    url: 'https://cdn.tshirt.store/products/7/front.jpg',
+    isPrimary: true,
+    ...overrides,
+  };
+}
+
+/**
+ * No image by default, which is the state every product created through the
+ * API is in until the upload operation exists. A test about images says so.
+ */
 export function aProductWithRelations(
   overrides: Partial<ProductWithRelations> = {},
 ): ProductWithRelations {
   return {
     ...aProduct(),
     variants: [aVariant()],
+    images: [],
     categories: [{ category: aCategory() }],
     ...overrides,
   };

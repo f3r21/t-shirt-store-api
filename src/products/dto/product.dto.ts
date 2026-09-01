@@ -3,11 +3,13 @@ import { CategoryDto } from '../../categories/dto/category.dto';
 import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
 
 /**
- * One image of a product. See `openapi.yaml:1878-1890`.
+ * One image of a product. See `openapi.yaml:2021-2033`.
  *
- * The two image operations need object storage and are out of scope this week,
- * so `ProductDto.images` is an empty array until then. The contract makes the
- * array required, so the key is always present.
+ * The table exists since migration `20260829023040` and the detail read maps
+ * it, primary first. Nothing writes it until `uploadProductImage` lands, which
+ * needs object storage and is Week 4 work, so a product created through the API
+ * carries an empty array. The contract makes the array required, so the key is
+ * always present.
  */
 @ApiSchema({ name: 'ProductImage' })
 export class ProductImageDto {

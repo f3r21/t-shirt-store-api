@@ -7,6 +7,7 @@ import {
   PrismaMock,
 } from '../prisma/prisma.service.mock';
 import {
+  anImage,
   aProduct,
   aProductWithRelations,
   AS_CLIENT,
@@ -118,6 +119,45 @@ describe('ProductsService', () => {
         where: { productId: { in: number[] } };
       };
       expect(call.where.productId.in).toEqual([7, 8, 9]);
+    });
+
+    /**
+     * `primaryImageUrl` follows `priceFrom` exactly: one query for the page,
+     * absent rather than null when there is nothing. The table existed for
+     * three days before anything read it, under a mapper comment saying it did
+     * not exist.
+     */
+    it('reports primaryImageUrl from the primary image of the page in one query', async () => {
+      prisma.productImage.findMany.mockResolvedValue([
+        { productId: 7, url: 'https://cdn.tshirt.store/products/7/front.jpg' },
+      ]);
+
+      const result = await service.listProducts(undefined, query());
+
+      expect(result.data[0].primaryImageUrl).toBe(
+        'https://cdn.tshirt.store/products/7/front.jpg',
+      );
+      expect(prisma.productImage.findMany).toHaveBeenCalledTimes(1);
+      const call = nthArg(prisma.productImage.findMany) as {
+        where: { productId: { in: number[] }; isPrimary: boolean };
+      };
+      expect(call.where).toEqual({ productId: { in: [7] }, isPrimary: true });
+    });
+
+    it('leaves primaryImageUrl absent when the product has no primary image', async () => {
+      const result = await service.listProducts(undefined, query());
+
+      // Absent, not null and not an empty string: the contract says absent.
+      expect(result.data[0]).not.toHaveProperty('primaryImageUrl');
+    });
+
+    it('runs no image query for an empty page', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+      prisma.product.count.mockResolvedValue(0);
+
+      await service.listProducts(undefined, query());
+
+      expect(prisma.productImage.findMany).not.toHaveBeenCalled();
     });
 
     it('reports the total before limit and offset apply', async () => {
@@ -271,8 +311,53 @@ describe('ProductsService', () => {
       expect(result.id).toBe(7);
       expect(result.variants).toHaveLength(1);
       expect(result.categories).toEqual([{ id: 3, name: 'T-shirts' }]);
-      // Required by the contract and empty until images exist.
+      // Required by the contract, and empty for a product with no image row,
+      // which is every product created through the API until the upload lands.
       expect(result.images).toEqual([]);
+    });
+
+    /**
+     * The order is decided by the query, not by the mapper, so the assertion
+     * is on the `include` handed to Prisma as well as on the mapped rows. The
+     * mapper names three fields; `productId` is the one it must not leak.
+     */
+    it('maps the images the include loaded, primary first, three fields each', async () => {
+      prisma.product.findFirst.mockResolvedValue(
+        aProductWithRelations({
+          images: [
+            anImage({ id: 89, isPrimary: true }),
+            anImage({
+              id: 88,
+              url: 'https://cdn.tshirt.store/products/7/back.jpg',
+              isPrimary: false,
+            }),
+          ],
+        }),
+      );
+
+      const result = await service.getProduct(AS_CLIENT, 7);
+
+      expect(result.images).toEqual([
+        {
+          id: 89,
+          url: 'https://cdn.tshirt.store/products/7/front.jpg',
+          isPrimary: true,
+        },
+        {
+          id: 88,
+          url: 'https://cdn.tshirt.store/products/7/back.jpg',
+          isPrimary: false,
+        },
+      ]);
+      expect(result.images[0]).not.toHaveProperty('productId');
+
+      const call = nthArg(prisma.product.findFirst) as {
+        include: { images: { orderBy: unknown } };
+      };
+      expect(call.include.images.orderBy).toEqual([
+        { isPrimary: 'desc' },
+        { id: 'asc' },
+      ]);
     });
 
     it('never leaks deletedAt or the raw price column', async () => {

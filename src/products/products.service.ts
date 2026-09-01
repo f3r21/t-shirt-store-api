@@ -75,14 +75,61 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
-    const priceFrom = await this.cheapestVariantByProduct(
-      rows.map((row) => row.id),
-    );
+    const ids = rows.map((row) => row.id);
+    const [priceFrom, primaryImage] = await Promise.all([
+      this.cheapestVariantByProduct(ids),
+      this.primaryImageByProduct(ids),
+    ]);
 
     return {
-      data: rows.map((row) => toProductSummaryDto(row, priceFrom.get(row.id))),
+      data: rows.map((row) =>
+        toProductSummaryDto(
+          row,
+          priceFrom.get(row.id),
+          primaryImage.get(row.id),
+        ),
+      ),
       meta: { total, limit: query.limit, offset: query.offset },
     };
+  }
+
+  /**
+   * The primary image of each product on this page, in one query.
+   *
+   * The same shape as `cheapestVariantByProduct`, for the same reason: one
+   * round trip per page and never one per row. A product with no primary image
+   * is absent from the map, so `primaryImageUrl` is absent from its entry,
+   * which is what the contract asks for.
+   *
+   * The schema has no unique index on `(product_id, is_primary)`, so two rows
+   * of one product could both claim primary. The lowest id wins, by the
+   * `orderBy` and the `has` check, so the answer is stable rather than
+   * whichever row the planner returned first.
+   *
+   * Nothing writes `product_images` until `uploadProductImage` lands, so every
+   * page built through the API gets an empty map today. It is wired now so
+   * that operation lands into a working list.
+   */
+  private async primaryImageByProduct(
+    productIds: readonly number[],
+  ): Promise<Map<number, string>> {
+    if (productIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await this.prisma.productImage.findMany({
+      where: { productId: { in: [...productIds] }, isPrimary: true },
+      select: { productId: true, url: true },
+      orderBy: { id: 'asc' },
+    });
+
+    const primary = new Map<number, string>();
+    for (const row of rows) {
+      if (!primary.has(row.productId)) {
+        primary.set(row.productId, row.url);
+      }
+    }
+    return primary;
   }
 
   /**
