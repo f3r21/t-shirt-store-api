@@ -108,6 +108,24 @@ export class EnvironmentVariables {
   @Min(1)
   REFRESH_ABSOLUTE_TTL_DAYS: number = 30;
 
+  /**
+   * How long the immediately previous refresh token keeps working after a
+   * rotation, so two honest tabs refreshing at once do not sign the account out.
+   *
+   * Ten seconds is a network round trip and a retry, not a session. It is here
+   * rather than a constant because it is the dial that trades a false breach
+   * signal against a real one: **every second of this window is a second in
+   * which a stolen previous-generation token is accepted without raising the
+   * alarm**, so whoever operates this service should be able to shorten it
+   * without a deployment.
+   *
+   * Zero is allowed and turns the window off, which restores the behaviour this
+   * replaced and is the cheapest way to test that reuse detection still fires.
+   */
+  @IsInt()
+  @Min(0)
+  REFRESH_GRACE_SECONDS: number = 10;
+
   @IsInt()
   @Min(1)
   THROTTLE_TTL: number = 60;

@@ -52,6 +52,19 @@ model RefreshToken {
   expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  // When the row last rotated, which is what the grace window is measured from.
+  // Neither existing column could carry it: `created_at` is the start of the
+  // device session and never moves, and `expires_at` is rewritten on every
+  // rotation, so deriving the moment as `expires_at` minus the TTL would tie the
+  // window to a configuration value and break in silence the day that value
+  // changes.
+  //
+  // Nullable, so the migration is additive and a rollback to the previous image
+  // still runs. A row that has never rotated has nothing to be inside the window
+  // of, and the grace branch requires a value, so null reads as "not eligible"
+  // rather than as "eligible forever".
+  rotatedAt         DateTime? @map("rotated_at") @db.Timestamptz(6)
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Every rotation looks a presented token up by previous_token_hash, and

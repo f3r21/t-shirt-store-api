@@ -191,37 +191,46 @@ export class AuthService {
    * is expired or whose session has simply run long matches nothing and takes
    * the same path as one that was never real.
    *
-   * Zero rows is not yet an error. It is the question "was this token already
-   * used", and a hash found in `previous_token_hash` means the answer is yes,
-   * which the contract answers by deleting every refresh row for that user.
+   * Zero rows is not yet an error. It asks two questions in order: was this
+   * token rotated a moment ago by another tab of the same session, and if not,
+   * was it already used. The first is `rotateWithinGrace`. The second is
+   * `detectReuse`, and the contract answers it by deleting every refresh row
+   * for that user.
    *
-   * Known limit, deliberate: this fixes the lost update and does not fix the
-   * two-tab false positive. Two honest tabs rotating in the same moment leave
-   * the loser holding a hash that is now the previous one, so the loser trips
-   * reuse detection and signs the account out everywhere. See DECISIONS.md.
+   * **The grace window exists because the second question used to be asked
+   * first, and it answered yes to an honest client.** Two tabs refreshing in
+   * the same moment left the loser holding a hash that was now the previous
+   * one, so the loser tripped reuse detection and signed the account out on
+   * every device, with no attacker anywhere. It reproduced on the first try
+   * with two concurrent refreshes of one token.
    */
   async refreshSession(dto: RefreshSessionDto): Promise<SessionTokensDto> {
     const presented = hashToken(dto.refreshToken, this.pepper);
 
     const nextToken = generateToken();
+    const nextHash = hashToken(nextToken, this.pepper);
     const rotated = await this.prisma.refreshToken.updateManyAndReturn({
       where: {
         tokenHash: presented,
         ...this.liveSessionWhere(),
       },
       data: {
-        tokenHash: hashToken(nextToken, this.pepper),
+        tokenHash: nextHash,
         previousTokenHash: presented,
+        rotatedAt: new Date(),
         expiresAt: this.refreshExpiry(),
       },
     });
 
-    if (rotated.length !== 1) {
+    const row =
+      rotated.length === 1
+        ? rotated[0]
+        : await this.rotateWithinGrace(presented, nextHash);
+
+    if (row === null) {
       await this.detectReuse(presented);
       throw this.refreshTokenUnknown();
     }
-
-    const row = rotated[0];
     const user = await this.prisma.user.findUnique({
       where: { id: row.userId },
       include: { role: true },
@@ -235,6 +244,79 @@ export class AuthService {
       refreshToken: nextToken,
       user: toUserDto(user),
     };
+  }
+
+  /**
+   * Accept the immediately previous token, once more, for a few seconds.
+   *
+   * Reached only when the main rotation matched nothing. It looks for the row
+   * this token rotated into, and rotates that row again if the first rotation
+   * was recent enough. Both tabs then hold a working token and neither triggers
+   * a breach response.
+   *
+   * **`rotated_at` is not touched here, and that is the bound on the whole
+   * episode.** Refreshing it would extend the window on every use, so one old
+   * token would stay replayable for as long as anyone kept using it. Left
+   * alone, the window closes `REFRESH_GRACE_SECONDS` after the original
+   * rotation no matter how many tabs race.
+   *
+   * **`previous_token_hash` becomes the row's current hash, not the presented
+   * one, and that is the part that is easy to get wrong.** Leaving it as
+   * presented would orphan the token the winner is holding: it would be neither
+   * `token_hash` nor `previous_token_hash`, so the winner's next refresh would
+   * answer 401. That stops the account-wide sign-out and still throws one tab
+   * out, which is most of the bug wearing a smaller coat.
+   *
+   * **What it costs.** After this runs, the token that was presented is no
+   * longer anybody's previous hash, so replaying it inside the same window
+   * answers 401 without raising the alarm rather than ending every session. One
+   * generation of reuse detection is given up for the length of the window, in
+   * exchange for not ending every session of every user who opens two tabs.
+   * That trade is written up in `DECISIONS.md` item 2.
+   *
+   * A read then a conditional write, rather than one statement, because the new
+   * `previous_token_hash` has to be a value read from the row and Prisma cannot
+   * name a column on the right of an update. **The read does not weaken it**:
+   * the write's `where` carries the `token_hash` that was read, so a concurrent
+   * writer that already moved the row matches nothing and this returns null.
+   */
+  private async rotateWithinGrace(
+    presented: string,
+    nextHash: string,
+  ): Promise<{ id: number; userId: number } | null> {
+    const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
+    if (seconds <= 0) {
+      return null;
+    }
+
+    const opensAfter = new Date(Date.now() - seconds * 1000);
+    const candidate = await this.prisma.refreshToken.findFirst({
+      where: {
+        previousTokenHash: presented,
+        rotatedAt: { gt: opensAfter },
+        ...this.liveSessionWhere(),
+      },
+    });
+    if (candidate === null) {
+      return null;
+    }
+
+    const graced = await this.prisma.refreshToken.updateManyAndReturn({
+      where: {
+        id: candidate.id,
+        tokenHash: candidate.tokenHash,
+        previousTokenHash: presented,
+        rotatedAt: { gt: opensAfter },
+        ...this.liveSessionWhere(),
+      },
+      data: {
+        tokenHash: nextHash,
+        previousTokenHash: candidate.tokenHash,
+        expiresAt: this.refreshExpiry(),
+      },
+    });
+
+    return graced.length === 1 ? graced[0] : null;
   }
 
   /**

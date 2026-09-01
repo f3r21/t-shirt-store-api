@@ -33,25 +33,53 @@ for a low-entropy secret, so this is a small margin bought with real operational
 `JWT_SECRET` is deliberately not reused, because rotating the signing key would otherwise
 invalidate every stored hash at the same moment.
 
-## 2. Rotation is one conditional write, and the two-tab race is not solved
+## 2. Rotation is one conditional write, with a grace window over it
 
 `refreshSession` rotates with a single `updateManyAndReturn` whose `where` carries the
 token hash, the expiry and the absolute cap. PostgreSQL re-evaluates a `WHERE` clause after
 waiting on a concurrent writer, so exactly one of two racing requests can match a given
 hash. A read followed by a write would let both pass.
 
-**What this does not fix.** Two honest browser tabs refreshing in the same moment leave the
-loser holding a token whose hash is now in `previous_token_hash`. The loser therefore trips
-reuse detection, and the contract's response to reuse is to delete every refresh row for
-that user. So two tabs can sign a user out everywhere with no attacker involved.
+**That is correct and it was only half the story.** The loser of the race held a token whose
+hash was now in `previous_token_hash`, so it went to reuse detection, and the contract's
+answer to reuse is to delete every refresh row for that user. Two honest browser tabs
+refreshing in the same moment signed the account out of every device, with no attacker
+anywhere. It reproduced on the first attempt with two concurrent refreshes of one token,
+as `200 401` and zero rows left.
 
-**Chosen anyway, because the contract states the behaviour literally.** Recorded because the
-position is at one end of the industry range rather than in the middle: Okta ships a 30
-second grace period, configurable from 0 to 60, and Supabase ships 10 seconds and documents
-that it does not recommend changing it. Our blast radius is also wider than theirs: Auth0
-revokes a token family and Supabase and Keycloak revoke a session, while this revokes the
-account. **What I would do with another hour:** a short grace window keyed on
-`previous_token_hash` with a few seconds of tolerance.
+**This entry used to defend keeping it, and the defence does not survive its own
+repository.** The argument was that the contract states the behaviour literally, at
+`openapi.yaml:247`. Item 7 of this file amended the contract when the code and the document
+disagreed about a 429, under the heading "The contract was amended rather than the guard
+weakened". A rule applied in one entry and not the other is not a rule, and shipping a
+self-inflicted account-wide sign-out to preserve one sentence is the wrong side of that
+trade. The position was also at one end of the industry range rather than in the middle:
+Okta ships a 30 second grace period configurable from 0 to 60, Supabase ships 10 seconds
+and does not recommend changing it, and where Auth0 revokes a token family and Supabase and
+Keycloak revoke a session, this revoked the account.
+
+**What it does now.** When the main rotation matches nothing, `rotateWithinGrace` looks for
+the row the presented token rotated into and rotates that row again, if the first rotation
+was inside `REFRESH_GRACE_SECONDS`, which defaults to 10. Both tabs end up holding a working
+token and neither raises an alarm. Two details carry the design:
+
+- **`rotated_at` is not refreshed on the grace path.** Refreshing it would extend the window
+  on every use, so one old token would stay replayable for as long as anyone kept using it.
+  Left alone, the episode is bounded by the original rotation however many tabs race.
+- **`previous_token_hash` becomes the row's current hash, not the presented one.** Leaving it
+  as presented orphans the token the winner holds, so the winner's next refresh answers 401.
+  That would stop the account-wide sign-out and still throw one tab out, which is most of the
+  bug in a smaller coat.
+
+**Given up, and it is a real cost.** Inside the window, a stolen previous-generation token is
+accepted and no alarm fires, and after a grace rotation the presented token is no longer
+anybody's previous hash, so replaying it answers 401 without ending sessions. One generation
+of reuse detection is traded for the length of the window. `REFRESH_GRACE_SECONDS` is an
+environment variable rather than a constant precisely because that is the dial, and setting
+it to 0 restores the previous behaviour. `test/auth.e2e-spec.ts` asserts both sides: two
+concurrent refreshes both answer 200 with the session intact, and a replay aged past the
+window still deletes every row. **The second of those is the one that matters**, because
+without it a window that never closed would look identical to a working one.
 
 ## 3. Reuse detection retains one generation, not a chain
 
@@ -60,8 +88,9 @@ an attacker who waits through two or more legitimate rotations before replaying 
 token is not caught.
 
 **This diverges from the contract, and the divergence is the point of this entry.**
-`openapi.yaml:245-247` says the server deletes every refresh row for that user when it
-receives an already-used token, and it states no carve-out for how old that token is. This
+`openapi.yaml:247-249` says the server deletes every refresh row for that user when it
+receives an already-used token. It now states one carve-out, the grace window of item 2,
+and that carve-out is measured in seconds while this gap is measured in rotations. This
 implementation recognises one generation, so a token replayed after two rotations revokes
 nothing. The contract outranks the code, which makes this a known defect
 rather than a design choice, and it is recorded here so it is declared rather than

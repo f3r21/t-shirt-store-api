@@ -18,6 +18,9 @@ export function aRefreshToken(
     deviceName: 'Ana iPhone',
     expiresAt: new Date('2026-08-28T09:14:00.000Z'),
     createdAt: new Date('2026-08-21T09:14:00.000Z'),
+    // A row that has never rotated, which is what a fresh sign-in produces.
+    // A spec that needs the grace window sets this itself.
+    rotatedAt: null,
     ...overrides,
   };
 }

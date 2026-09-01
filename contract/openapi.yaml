@@ -248,6 +248,13 @@ paths:
         used, the server deletes every refresh row for that user. The server assumes an
         attacker stole the token. Each device must sign in again.
 
+        The server allows one exception, for a few seconds after a rotation. If the client
+        sends the token that the current one replaced, and the rotation happened inside that
+        window, the server rotates again and returns new tokens. It does not delete the
+        refresh rows. Two tabs of one application can send the same token at the same moment,
+        and the server must not read that as theft. The window is short and it does not
+        extend when the old token is used again.
+
         A refresh token that is unknown, expired or already used returns 401 with the
         `refresh-token-unknown` problem type.
       operationId: refreshSession
