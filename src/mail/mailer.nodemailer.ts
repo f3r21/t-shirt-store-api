@@ -36,9 +36,17 @@ export class NodemailerMailer implements Mailer {
     //
     // The default is still plaintext because Mailpit is what `docker-compose`
     // runs and it speaks no TLS. What changed is that a deployment can now say
-    // otherwise, and `ignoreTLS` follows `secure` instead of overriding it, so
-    // opportunistic STARTTLS is available on the default path too.
+    // otherwise. `secure` is implicit TLS and belongs to port 465. A 587 relay
+    // upgrades with STARTTLS, which nodemailer does on its own when the relay
+    // offers it, and `requireTLS` is what turns a relay that does not offer it
+    // into a failed send rather than a plaintext one. `env.validation.ts` says
+    // which to set where.
+    //
+    // `user !== undefined` is safe only because `ConfigModule` runs with
+    // `skipProcessEnv`. Without it a pair the shell exported empty arrived
+    // here as `''` and became a request to authenticate with no credentials.
     const secure = this.config.get<boolean>('SMTP_SECURE');
+    const requireTLS = this.config.get<boolean>('SMTP_REQUIRE_TLS');
     const user = this.config.get<string>('SMTP_USER');
     const pass = this.config.get<string>('SMTP_PASS');
 
@@ -46,6 +54,7 @@ export class NodemailerMailer implements Mailer {
       host: this.config.getOrThrow<string>('SMTP_HOST'),
       port: this.config.getOrThrow<number>('SMTP_PORT'),
       secure,
+      requireTLS,
       ...(user !== undefined && pass !== undefined
         ? { auth: { user, pass } }
         : {}),

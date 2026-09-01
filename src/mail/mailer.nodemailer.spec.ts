@@ -26,6 +26,7 @@ describe('NodemailerMailer', () => {
     SMTP_HOST: 'localhost',
     SMTP_PORT: 1025,
     SMTP_SECURE: false,
+    SMTP_REQUIRE_TLS: false,
     MAIL_FROM: 'no-reply@tshirt.store',
     APP_URL: 'http://localhost:3000',
   };
@@ -75,6 +76,20 @@ describe('NodemailerMailer', () => {
 
       expect(build({ SMTP_SECURE: true }).options).toMatchObject({
         secure: true,
+      });
+    });
+
+    /**
+     * `secure` is implicit TLS and belongs to port 465. A 587 relay upgrades
+     * with STARTTLS, and without `requireTLS` a relay that offers none, or a
+     * connection downgraded on the wire, is sent in the clear. The flag is
+     * read rather than pinned, so this stays red if it is hard coded either
+     * way.
+     */
+    it('follows SMTP_REQUIRE_TLS, so a 587 relay can refuse a downgrade', () => {
+      expect(build().options).toMatchObject({ requireTLS: false });
+      expect(build({ SMTP_REQUIRE_TLS: true }).options).toMatchObject({
+        requireTLS: true,
       });
     });
 

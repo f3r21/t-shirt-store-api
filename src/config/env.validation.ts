@@ -177,10 +177,10 @@ export class EnvironmentVariables {
 
   /**
    * The loosest of three tiers, and the one a browsing client lives under. It is
-   * sized for reading the catalog, so it is deliberately too loose for sign-in
-   * and for the password operations. Those two carry their own `@Throttle`, at
-   * `SIGN_IN_THROTTLE` and `PASSWORD_THROTTLE`, and lowering this number is not a
-   * way to tighten them.
+   * sized for reading the catalog, so it is deliberately too loose for the
+   * credential routes. Sign-in, sign-up and refresh carry `SIGN_IN_THROTTLE`,
+   * the three password operations carry `PASSWORD_THROTTLE`, and lowering this
+   * number is not a way to tighten either.
    */
   @IsInt()
   @Min(1)
@@ -202,23 +202,30 @@ export class EnvironmentVariables {
   SMTP_PORT: number = 1025;
 
   /**
-   * Whether the mailer requires a secure connection to the relay.
+   * Whether the connection to the relay is TLS from the first byte.
+   *
+   * **This is nodemailer's `secure`, and it means implicit TLS, not "require
+   * encryption".** True is right for a relay on port 465. A relay on 587 or 25
+   * speaks plaintext first and upgrades with STARTTLS, and `secure: true`
+   * against one of those fails the handshake on every send. The mailer logs
+   * and swallows a failed send, so `POST /auth/forgot-password` answers 202
+   * and nobody receives the link. The previous docstring said to set this
+   * true anywhere that is not a laptop, and most relays are on 587.
+   *
+   * False, the default, is right for Mailpit, which speaks no TLS and is what
+   * `docker-compose.yml` runs, and for every STARTTLS relay. On that path
+   * nodemailer upgrades when the relay offers STARTTLS and stays in the clear
+   * when it does not. `SMTP_REQUIRE_TLS` below is what refuses the second
+   * case.
    *
    * **The transport was hard coded to `secure: false` with `ignoreTLS: true`,
    * and that is the production binding.** `ignoreTLS` does not merely allow a
    * plaintext connection: it refuses STARTTLS **even when the server offers
    * it**, so a relay willing to encrypt was talked to in the clear anyway. The
    * password reset message carries the raw token, which is a bearer credential
-   * for the account.
-   *
-   * The docstring justified it with Mailpit and local development, and Mailpit
-   * is why the default stays false: it speaks no TLS and it is what
-   * `docker-compose.yml` runs.
-   *
-   * Set it to true anywhere that is not a laptop. `SMTP_USER` and `SMTP_PASS`
-   * below exist for the same reason: without them there was no configuration
-   * path to an authenticated relay at all, so the only reachable deployment was
-   * an open one.
+   * for the account. `SMTP_USER` and `SMTP_PASS` below exist for the same
+   * reason: without them there was no configuration path to an authenticated
+   * relay at all, so the only reachable deployment was an open one.
    *
    * **There is no `@Type(() => Boolean)` here, and that is the point.** Under
    * `enableImplicitConversion` that decorator is `Boolean(value)`, so every
@@ -234,6 +241,23 @@ export class EnvironmentVariables {
    */
   @IsBoolean()
   SMTP_SECURE: boolean = false;
+
+  /**
+   * Whether a relay that offers no STARTTLS is refused.
+   *
+   * With `SMTP_SECURE` false, nodemailer upgrades when the relay advertises
+   * STARTTLS and otherwise sends in the clear, and a connection that was
+   * downgraded on the wire looks exactly like a relay that never offered it.
+   * This is nodemailer's `requireTLS`: the client sends STARTTLS whether or
+   * not the relay advertised it, and fails the send if the relay declines.
+   * Set it true for any 587 relay that is not on the laptop. It changes
+   * nothing when `SMTP_SECURE` is true, because that connection is TLS
+   * already.
+   *
+   * False by default, because Mailpit offers no STARTTLS at all.
+   */
+  @IsBoolean()
+  SMTP_REQUIRE_TLS: boolean = false;
 
   @IsOptional()
   @IsString()
