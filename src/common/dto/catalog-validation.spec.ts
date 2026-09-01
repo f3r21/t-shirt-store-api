@@ -117,6 +117,59 @@ describe('catalog validation', () => {
     });
   });
 
+  /**
+   * The one query parameter that arrives as a string and must not be coerced.
+   *
+   * `includeInactive` decides who sees a disabled product, and a query string
+   * carries it as `'true'` or `'false'`. The obvious `@Type(() => Boolean)`
+   * cannot be used: class-transformer returns `Boolean(value)` for that target
+   * (`TransformOperationExecutor.js:91-94`) and `Boolean('false')` is `true`, so
+   * a caller who asks for the enabled products would be asking for the disabled
+   * ones and would get 403.
+   *
+   * The hand written transform that avoids this had 0% branch coverage, and
+   * deleting its `'false'` line left the whole suite green. The three cases
+   * below are its three branches.
+   */
+  describe('the includeInactive transform, which must not use Boolean()', () => {
+    const parse = (value: string) =>
+      runPipe(ListProductsQueryDto, { includeInactive: value }, 'query');
+
+    it("reads 'false' as false, which Boolean('false') would get wrong", async () => {
+      await expect(parse('false')).resolves.toMatchObject({
+        includeInactive: false,
+      });
+    });
+
+    it("reads 'true' as true", async () => {
+      await expect(parse('true')).resolves.toMatchObject({
+        includeInactive: true,
+      });
+    });
+
+    it('defaults to false when the query omits it', async () => {
+      await expect(
+        runPipe(ListProductsQueryDto, {}, 'query'),
+      ).resolves.toMatchObject({ includeInactive: false });
+    });
+
+    it.each(['yes', '1', 'FALSE', ''])(
+      'rejects %p rather than guessing, so the operation keeps its 400',
+      async (value) => {
+        // The third branch. Anything the contract does not spell is returned
+        // unchanged, which is what lets `@IsBoolean` refuse it. A transform that
+        // coerced instead would answer 200 for a value the contract never
+        // allowed.
+        const fields = await rejectedFields(
+          ListProductsQueryDto,
+          { includeInactive: value },
+          'query',
+        );
+        expect(names(fields)).toEqual(['includeInactive']);
+      },
+    );
+  });
+
   describe('null is not absent', () => {
     it.each(['name', 'description', 'isActive', 'categoryIds'])(
       'rejects an explicit null %s on UpdateProductDto',

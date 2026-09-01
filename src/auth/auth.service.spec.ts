@@ -191,6 +191,44 @@ describe('AuthService', () => {
       expect(JSON.stringify(call)).not.toContain(result.refreshToken);
     });
 
+    /**
+     * The address is folded before it is looked up.
+     *
+     * `normalizeEmail` at `auth.service.ts:101` was unasserted, and deleting it
+     * left all 245 tests green. Nothing in the suite ever sent an address that
+     * was not already lower case, so the whole rule was invisible: every
+     * existing test would pass against a server where signing up as
+     * `Ana@Example.com` and signing in as `ana@example.com` are two accounts.
+     *
+     * The assertion reads the `where` handed to Prisma rather than the result,
+     * because the mock returns a user whatever it is asked for. Asserting the
+     * return value here would pass with the fold deleted, which is exactly the
+     * failure this replaces.
+     */
+    it('folds the address before it looks the user up', async () => {
+      await service.createSession({
+        email: '  Ana@EXAMPLE.com  ',
+        password: PASSWORD,
+      });
+
+      const call = nthArg(prisma.user.findUnique) as {
+        where: { email: string };
+      };
+      expect(call.where.email).toBe('ana@example.com');
+    });
+
+    it('leaves an already folded address alone, which is the control', async () => {
+      await service.createSession({
+        email: 'ana@example.com',
+        password: PASSWORD,
+      });
+
+      const call = nthArg(prisma.user.findUnique) as {
+        where: { email: string };
+      };
+      expect(call.where.email).toBe('ana@example.com');
+    });
+
     it('stores the device name when the body sends one', async () => {
       await service.createSession({
         email: 'ana@example.com',
@@ -315,6 +353,36 @@ describe('AuthService', () => {
       );
       expect(call.where.createdAt.gt.getTime()).toBeLessThanOrEqual(
         Date.now() - cap,
+      );
+    });
+
+    /**
+     * The sliding window, which is the other half of the pair above.
+     *
+     * The cap test asserts the bound that ends a session. This asserts the one
+     * that keeps it alive: every rotation writes a new `expiresAt`, which is
+     * what `openapi.yaml:1724` promises and what makes a refresh token useful
+     * at all. `expiresAt` at `auth.service.ts:171` was unasserted, and deleting
+     * it left the suite green. The column has no `@updatedAt` and no default
+     * (`schema.prisma:52`), so without that line the expiry keeps whatever the
+     * row was created with and every session dies seven days after sign-in
+     * however often it is refreshed.
+     *
+     * Asserted against the clock, not against `toBeInstanceOf(Date)`, which
+     * `new Date(0)` satisfies while expiring the session in 1970.
+     */
+    it('moves the expiry forward on every rotation', async () => {
+      rotates();
+      const before = Date.now();
+
+      await service.refreshSession({ refreshToken: PRESENTED });
+
+      const call = nthArg(prisma.refreshToken.updateManyAndReturn, 0, 0) as {
+        data: { expiresAt: Date };
+      };
+      expect(call.data.expiresAt.getTime()).toBeGreaterThan(before);
+      expect(call.data.expiresAt.getTime()).toBeLessThanOrEqual(
+        Date.now() + 604800 * 1000,
       );
     });
 
@@ -569,6 +637,25 @@ describe('AuthService', () => {
 
       expect(mailer.sendPasswordReset).toHaveBeenCalledTimes(1);
       expect(nthArg(mailer.sendPasswordReset, 0, 0)).toBe('ana@example.com');
+    });
+
+    /**
+     * The same fold, on the route where losing it is worse.
+     *
+     * A sign-in that fails tells the user to try again. A reset that silently
+     * finds nobody answers 204 either way, by design, so a user whose address
+     * was stored in one case and typed in another gets no mail and no reason.
+     */
+    it('folds the address before it looks the user up', async () => {
+      prisma.user.findUnique.mockResolvedValue(signedInUser());
+      prisma.user.update.mockResolvedValue(signedInUser());
+
+      await service.requestPasswordReset({ email: 'Ana@EXAMPLE.com' });
+
+      const call = nthArg(prisma.user.findUnique) as {
+        where: { email: string };
+      };
+      expect(call.where.email).toBe('ana@example.com');
     });
 
     it('accepts an unknown address and sends no mail (openapi.yaml:290)', async () => {

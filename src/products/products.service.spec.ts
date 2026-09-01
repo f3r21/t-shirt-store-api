@@ -130,6 +130,66 @@ describe('ProductsService', () => {
     });
 
     /**
+     * The page reaches the database, and the envelope reports what was asked.
+     *
+     * Both halves were unasserted, and both survived a mutation run: deleting
+     * `take` and `skip` from `products.service.ts:72-73` left all 245 tests
+     * green, and so did deleting `limit` and `offset` from the `meta` at :84.
+     * `listSessions`, an operation the brief never mentions, was pinned at
+     * `auth.service.spec.ts:487-494` while this one, which the capstone names by
+     * name at line 45, was not.
+     *
+     * The two assertions answer different failures and neither substitutes for
+     * the other. `take` and `skip` say the database returned a page. `meta` says
+     * the caller was told which page, which is what a client needs to ask for
+     * the next one.
+     */
+    it('passes limit and offset to findMany as take and skip', async () => {
+      await service.listProducts(undefined, query({ limit: 5, offset: 40 }));
+
+      const call = nthArg(prisma.product.findMany) as {
+        take: number;
+        skip: number;
+      };
+      expect(call.take).toBe(5);
+      expect(call.skip).toBe(40);
+    });
+
+    it('applies the contract defaults when the query names neither', async () => {
+      // Built from the DTO rather than from a literal, so this asserts the
+      // contract's default and not a number written twice.
+      await service.listProducts(undefined, query());
+
+      const call = nthArg(prisma.product.findMany) as {
+        take: number;
+        skip: number;
+      };
+      expect(call.take).toBe(20);
+      expect(call.skip).toBe(0);
+    });
+
+    it('echoes limit and offset back in meta', async () => {
+      const result = await service.listProducts(
+        undefined,
+        query({ limit: 5, offset: 40 }),
+      );
+
+      expect(result.meta.limit).toBe(5);
+      expect(result.meta.offset).toBe(40);
+    });
+
+    it('never sends take or skip to the count, which must see every match', async () => {
+      // The count is the total before the page applies. Paginating it would make
+      // `meta.total` the size of the page, and every client's "page N of M"
+      // would read 1 of 1.
+      await service.listProducts(undefined, query({ limit: 5, offset: 40 }));
+
+      const countCall = nthArg(prisma.product.count);
+      expect(countCall).not.toHaveProperty('take');
+      expect(countCall).not.toHaveProperty('skip');
+    });
+
+    /**
      * The total is a second query and it has to carry the same visibility rule.
      *
      * The test above asserts what the mock returned, which is the shape of

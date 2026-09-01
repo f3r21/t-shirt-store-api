@@ -2,6 +2,7 @@ import request from 'supertest';
 import {
   createTestApp,
   ensureRoles,
+  resetThrottleCounter,
   truncateAll,
   TestApp,
 } from './app-factory';
@@ -35,23 +36,27 @@ describe('Rate limiting (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAll(ctx.prisma);
+    // The counter is state this suite writes, exactly like the tables, so it is
+    // emptied the same way and at the same moment. Without this the five tests
+    // share one bucket per handler and pass only in the order they are written:
+    // `--randomize --seed=3` put this file in red.
+    resetThrottleCounter(ctx);
   });
 
   /**
-   * Sign-in is capped at ten a minute, so the eleventh is refused. The address is
-   * varied per test through `X-Forwarded-For` because the counter is keyed on the
-   * source address and the suite shares one process.
+   * Sign-in is capped at ten a minute, so the eleventh is refused.
+   *
+   * Every request in this file arrives from 127.0.0.1 and shares one bucket per
+   * handler. `beforeEach` empties that bucket, which is why each test can count
+   * from zero. An earlier version varied `X-Forwarded-For` instead, which the
+   * tracker never reads.
    */
   it('refuses the eleventh sign-in from one address', async () => {
     const body = { email: 'nobody@example.com', password: 'wrong password' };
-    const ip = '203.0.113.10';
 
     const codes: number[] = [];
     for (let i = 0; i < 11; i++) {
-      const res = await http()
-        .post('/v1/auth/sessions')
-        .set('X-Forwarded-For', ip)
-        .send(body);
+      const res = await http().post('/v1/auth/sessions').send(body);
       codes.push(res.status);
     }
 
@@ -67,12 +72,10 @@ describe('Rate limiting (e2e)', () => {
    * `Retry-After-<name>` and satisfy no client reading the contract.
    */
   it('answers 429 as a problem document with a plain Retry-After', async () => {
-    const ip = '203.0.113.11';
-    let res = await http().post('/v1/auth/sessions').set('X-Forwarded-For', ip);
+    let res = await http().post('/v1/auth/sessions');
     for (let i = 0; i < 11; i++) {
       res = await http()
         .post('/v1/auth/sessions')
-        .set('X-Forwarded-For', ip)
         .send({ email: 'nobody@example.com', password: 'wrong password' });
     }
 
@@ -92,11 +95,9 @@ describe('Rate limiting (e2e)', () => {
    * the global limit is ever set at or below twenty.
    */
   it('lets twenty catalog reads through from one address', async () => {
-    const ip = '203.0.113.12';
-
     const codes: number[] = [];
     for (let i = 0; i < 20; i++) {
-      const res = await http().get('/v1/products').set('X-Forwarded-For', ip);
+      const res = await http().get('/v1/products');
       codes.push(res.status);
     }
 
@@ -120,14 +121,10 @@ describe('Rate limiting (e2e)', () => {
    */
   it('refuses the sixth reset-password from one address', async () => {
     const body = { token: 'not-a-real-reset-token', password: 'Password123!' };
-    const ip = '203.0.113.13';
 
     const codes: number[] = [];
     for (let i = 0; i < 6; i++) {
-      const res = await http()
-        .post('/v1/auth/reset-password')
-        .set('X-Forwarded-For', ip)
-        .send(body);
+      const res = await http().post('/v1/auth/reset-password').send(body);
       codes.push(res.status);
     }
 
@@ -146,17 +143,10 @@ describe('Rate limiting (e2e)', () => {
    */
   it('answers the password-tier 429 with a plain Retry-After', async () => {
     const body = { token: 'not-a-real-reset-token', password: 'Password123!' };
-    const ip = '203.0.113.14';
 
-    let res = await http()
-      .post('/v1/auth/reset-password')
-      .set('X-Forwarded-For', ip)
-      .send(body);
+    let res = await http().post('/v1/auth/reset-password').send(body);
     for (let i = 0; i < 5; i++) {
-      res = await http()
-        .post('/v1/auth/reset-password')
-        .set('X-Forwarded-For', ip)
-        .send(body);
+      res = await http().post('/v1/auth/reset-password').send(body);
     }
 
     expect(res.status).toBe(429);

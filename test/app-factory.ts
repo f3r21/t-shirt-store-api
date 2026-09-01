@@ -110,6 +110,39 @@ export async function createTestApp(
 }
 
 /**
+ * Empty the rate limiter's counter, the way `truncateAll` empties the tables.
+ *
+ * The throttler holds state across tests exactly as the database does, and the
+ * suite that uses the real counter had no way to reset it. It varied
+ * `X-Forwarded-For` per test instead, under a comment saying the counter is
+ * keyed on the source address. It is, and the header never reaches it: the
+ * tracker reads `req.ip`, Express does not populate that from the header unless
+ * `trust proxy` is set, and `rg -n 'trust proxy|trustProxy' src test` exits 1.
+ * The comment on `NeverBlocks` above had the truth written down the whole time.
+ *
+ * What that cost, measured:
+ *
+ *     jest --config ./test/jest-e2e.json test/rate-limit.e2e-spec.ts
+ *       -> 5 passed
+ *     the same, --randomize --seed=3
+ *       -> 1 failed: "refuses the sixth reset-password from one address"
+ *
+ * Five tests shared one bucket per handler and passed only in the order they
+ * were written. This resets the real counter instead of pretending to isolate
+ * it, so the tier being asserted is still the real one.
+ */
+export function resetThrottleCounter(ctx: TestApp): void {
+  const storage = ctx.app.get<ThrottlerStorage>(ThrottlerStorage);
+  const map = (storage as { storage?: Map<string, unknown> }).storage;
+  if (map === undefined) {
+    throw new Error(
+      'the throttler storage carries no counter to reset, so this app was built without { throttle: true }',
+    );
+  }
+  map.clear();
+}
+
+/**
  * Empty every table the tests write to, and leave `roles` alone.
  *
  * `roles` is a hard prerequisite rather than test data: `users.role_id` is not
