@@ -1,12 +1,19 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsInt, Max, Min } from 'class-validator';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
+import { INT4_MAX } from '../../common/int4';
+import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
  * Query parameters of GET /products. See `openapi.yaml:514-532`.
  *
  * The class extends `PageQueryDto`, so `limit` and `offset` keep the defaults
  * every collection declares and this file states only what is new.
+ *
+ * `categoryId` carries an upper bound because this operation is `@OptionalAuth`
+ * and so reachable with no token. Measured before the bound existed,
+ * `?categoryId=2147483648` reached Prisma, which answered `P2020`, which nothing
+ * maps, which left a 500 one anonymous request could produce.
  *
  * `includeInactive` must not use `@Type(() => Boolean)`.
  * `node_modules/class-transformer/cjs/TransformOperationExecutor.js:91-94`
@@ -20,10 +27,11 @@ import { PageQueryDto } from '../../common/dto/page-query.dto';
  */
 export class ListProductsQueryDto extends PageQueryDto {
   /** Return only the products in this category. */
-  @IsOptional()
+  @IsOptionalNotNull()
   @Type(() => Number)
   @IsInt({ message: 'must be an integer' })
   @Min(1, { message: 'must be at least 1' })
+  @Max(INT4_MAX, { message: 'must be at most 2147483647' })
   categoryId?: number;
 
   /**
@@ -33,7 +41,7 @@ export class ListProductsQueryDto extends PageQueryDto {
    * 401 and a caller who is not a manager receives 403. The guard applies both
    * rules, because this class cannot read the caller.
    */
-  @IsOptional()
+  @IsOptionalNotNull()
   @Transform(({ value }: { value: unknown }) => {
     if (value === 'true') return true;
     if (value === 'false') return false;

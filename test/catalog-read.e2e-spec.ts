@@ -252,4 +252,48 @@ describe('Catalog reads (e2e)', () => {
       expect((res.body as Page).meta.total).toBe(0);
     });
   });
+
+  /**
+   * An integer the column cannot hold, on the two routes that need no token.
+   *
+   * These are unit tested at `src/common/dto/catalog-validation.spec.ts` and
+   * `src/common/parse-id.pipe.spec.ts`, which prove the DTO and the pipe refuse
+   * the value. Neither can prove what the caller receives, because the defect
+   * was never in the validators. It was that the value passed them, reached
+   * Postgres, came back as `P2020`, and fell through the exception filter as a
+   * 500. Only a real request through the whole pipeline shows that.
+   *
+   * Measured before the bounds existed, both without a token:
+   *
+   *     GET /v1/products?categoryId=2147483648   500
+   *     GET /v1/products/-2147483649             500
+   */
+  describe('an id past the int4 bounds, with no token', () => {
+    beforeEach(async () => {
+      await seedProductWithVariant(ctx.prisma, { name: 'In stock' });
+    });
+
+    it('answers 400 for a categoryId above the ceiling', async () => {
+      await http()
+        .get('/v1/products')
+        .query({ categoryId: '2147483648' })
+        .expect(400);
+    });
+
+    it('answers 404 for a path id below the floor', async () => {
+      await http().get('/v1/products/-2147483649').expect(404);
+    });
+
+    it.each([
+      ['categoryId at the ceiling', '2147483647'],
+      ['an ordinary categoryId', '1'],
+    ])('still answers 200 for %s, which is the control', async (_n, value) => {
+      // Without these the fix could pass by refusing every request.
+      await http().get('/v1/products').query({ categoryId: value }).expect(200);
+    });
+
+    it('still answers 404 for an in-range id that names no row', async () => {
+      await http().get('/v1/products/2147483647').expect(404);
+    });
+  });
 });

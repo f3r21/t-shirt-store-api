@@ -30,7 +30,7 @@ export function runPipe(
 }
 
 /** The rejected fields, or a failure if the pipe accepted the value. */
-async function rejectedFields(
+export async function rejectedFields(
   metatype: new () => object,
   value: unknown,
   type: 'body' | 'query' = 'body',
@@ -55,7 +55,7 @@ async function rejectedFields(
   return payload.errors;
 }
 
-const names = (fields: ProblemField[]) => fields.map((f) => f.field);
+export const names = (fields: ProblemField[]) => fields.map((f) => f.field);
 
 describe('request validation', () => {
   describe('CreateUserDto', () => {

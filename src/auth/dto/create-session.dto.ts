@@ -1,10 +1,5 @@
-import {
-  IsEmail,
-  IsString,
-  MaxLength,
-  MinLength,
-  ValidateIf,
-} from 'class-validator';
+import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
  * Request body of POST /auth/sessions.
@@ -27,12 +22,11 @@ export class CreateSessionDto {
   /**
    * A label for this device. The user sees it in the device list.
    *
-   * `@ValidateIf` on undefined rather than `@IsOptional()`. `@IsOptional()`
-   * treats null as missing and skips every decorator after it, so an explicit
-   * `"deviceName": null` would reach the service unchecked, against a contract
-   * whose optional values are absent and never null.
+   * This property is where the codebase first found that `@IsOptional()` treats
+   * null as missing, and it carried the condition inline. The rule now lives in
+   * `src/common/is-optional-not-null.ts` and every optional property uses it.
    */
-  @ValidateIf((body: CreateSessionDto) => body.deviceName !== undefined)
+  @IsOptionalNotNull()
   @IsString({ message: 'must be a string' })
   @MaxLength(64, { message: 'must be at most 64 characters' })
   deviceName?: string;

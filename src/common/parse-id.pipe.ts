@@ -4,12 +4,7 @@ import {
   ParseIntPipe,
   PipeTransform,
 } from '@nestjs/common';
-
-/**
- * The largest value a Postgres `integer` holds. Every id column in this schema
- * is a Prisma `Int`, which is `int4`.
- */
-const INT4_MAX = 2_147_483_647;
+import { INT4_MAX, INT4_MIN } from './int4';
 
 /**
  * Parse a path id, and refuse one no row could ever carry.
@@ -37,9 +32,15 @@ const INT4_MAX = 2_147_483_647;
  * could carry is a lookup that finds nothing, which is the same answer a
  * negative id and a zero id already give today.
  *
- * No lower bound. A negative id already answers 404 by matching no row, so
- * rejecting it here would move the same answer earlier and would make the
- * transport assert something the schema owns.
+ * **The bound runs in both directions, and the reason is not symmetry.** This
+ * pipe carried only the upper bound, under a paragraph arguing that a lower one
+ * was redundant because a negative id already answers 404 by matching no row.
+ * That holds for `-1` and stops holding at the `int4` floor, where the value
+ * stops being a row that does not exist and becomes a value the column cannot
+ * hold. Measured on this pipe before the second bound existed:
+ *
+ *     -1                404, by matching no row
+ *     -2147483649       reached Prisma, P2020, then 500
  */
 @Injectable()
 export class ParseIdPipe implements PipeTransform<string, Promise<number>> {
@@ -51,7 +52,7 @@ export class ParseIdPipe implements PipeTransform<string, Promise<number>> {
       metatype: Number,
     });
 
-    if (id > INT4_MAX) {
+    if (id > INT4_MAX || id < INT4_MIN) {
       throw new NotFoundException();
     }
     return id;

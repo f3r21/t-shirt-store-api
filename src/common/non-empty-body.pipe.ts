@@ -12,9 +12,9 @@ import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
  * **Why a pipe and not a class-validator rule.** class-validator 0.15.1 types
  * `registerDecorator`'s `propertyName` as a required string, so there is no
  * class level constraint to hang this on, and hanging it on a property does not
- * work either: every field on these DTOs carries `@IsOptional()`, which
- * short circuits the rest of that property's validators the moment the value is
- * absent, which is exactly the case being caught. Measured, not assumed: a class
+ * work either: every field on these DTOs is optional, and an optional property
+ * short circuits the rest of its validators the moment the value is absent,
+ * which is exactly the case being caught. Measured, not assumed: a class
  * level `registerDecorator` with an undefined `propertyName` registers nothing
  * and `validate()` returns an empty array for a body that should fail.
  *
