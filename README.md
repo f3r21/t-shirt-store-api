@@ -107,8 +107,7 @@ unwritten.
 
 Two counts are deliberately absent from that paragraph. They went stale twice, and the second time
 a reviewer found them before I did, so the numbers now live where they cannot rot: run
-`npm test` and `npm run test:e2e` and read the summary line. `ARCHITECTURE.md` still carries them,
-because there the size of the suite is part of an argument rather than a fact about the repository.
+`npm test` and `npm run test:e2e` and read the summary line.
 
 ```bash
 npm test          # unit
@@ -127,12 +126,17 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
 
 **Tokens.** The access token is a JWT valid for 15 minutes, carrying the user id, the role,
 and the id of the device's session. The refresh token is an opaque random string valid for
-7 days, stored only as a keyed hash, and it rotates on every use. Rotation updates one row
-in place, so a session keeps its id and a client can sign one device out by that id.
+7 days, stored only as a keyed hash, and it rotates on every use. Rotation updates the row
+in place. A device's session is a family of rows named by its founding row, so two tabs
+refreshing in the same moment each get a live token, and the session id a client signs out
+by is the family's and does not change.
 
-**Reuse detection.** The previous hash is retained for one generation. A refresh token
-presented twice means the server is holding a stolen one, so it deletes every refresh row
-for that user and each device must sign in again.
+**Reuse detection.** Every spent hash is recorded for the life of the absolute cap. A
+refresh token presented again after a ten second grace window means the server is holding a
+stolen one, so it deletes every refresh row for that user and the records with them, and
+each device must sign in again. Inside the window it is a second tab and gets a live token
+of its own. A family's records die with it, so a token from a device that signed out ends
+nothing else.
 
 **403 protects an action, 404 protects a fact.** A caller who lacks the role for an
 operation gets 403. A caller who asks for a row belonging to somebody else gets 404, because
@@ -150,8 +154,9 @@ speaks and it is what a JSON float cannot represent exactly.
 - `ARCHITECTURE.md`, in this repository, is the production shape: the diagram, why the
   notification is queue-backed, the deploy shape, and what would be monitored.
 - `DECISIONS.md`, in this repository, records the implementation choices: why the token
-  hash is not argon2, why rotation cannot fix the two-tab race, why sign-in carries a tighter
-  rate limit than browsing and a looser one than a password change, and what each of those cost.
+  hash is not argon2, why a device is a family of tokens with a grace window over rotation,
+  why sign-in carries a tighter rate limit than browsing and a looser one than a password
+  change, and what each of those cost.
 - `contract/README.md` says where the contract came from and why it lives here.
 - `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
 - `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.
@@ -163,9 +168,9 @@ Stated here rather than discovered later. The longer list, with the reasoning, i
 
 - `POST /auth/forgot-password` answers identically for a known and an unknown address, but
   the two paths do not take the same time. The endpoint is rate limited instead.
-- Two browser tabs refreshing in the same moment can trip reuse detection and sign the user
-  out of every device, with no attacker involved. This follows the contract literally and is
-  at one end of the industry range.
+- Inside the grace window a stolen previous-generation token is accepted without raising the
+  alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
+  and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
 - Email addresses are folded to lower case in the service. The durable form is a unique
   index on `lower(email)`, which is not yet written.

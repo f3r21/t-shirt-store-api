@@ -56,8 +56,9 @@ out. The enqueue waits for the commit, so a mail outage cannot fail a paid order
 per recipient, because BullMQ is at-least-once and a job dying mid-list resends everything before
 it.
 
-**Why BullMQ, and what would change it.** Redis is already there for the throttler's storage
-adapter, and one job type does not use what a broker sells. I rejected RabbitMQ because exchanges,
+**Why BullMQ, and what would change it.** Redis is already provisioned for the day the throttler's
+counter has to be shared across replicas, and one job type does not use what a broker sells. I
+rejected RabbitMQ because exchanges,
 bindings and inter-queue dead-lettering are routing this system has no second consumer for, and its
 at-least-once guarantee is the same, so the idempotency work is identical either way. I rejected
 pg-boss for the opposite reason: it adds no service, and pays for that by polling the Postgres that
@@ -77,8 +78,8 @@ typecheck, the linter, the formatter, both suites and a `docker build` on every 
 tag the image, push it, run `prisma migrate deploy` before any container takes traffic, or roll the
 tag, and that is absent because there is no environment to deploy to.
 
-**Rollback is the image, never the schema**, so migrations are forward-only and additive. Four of
-the five are. The second drops `users.reset_token` in the same statement that adds
+**Rollback is the image, never the schema**, so migrations are forward-only and additive. Six of
+the seven are. The second drops `users.reset_token` in the same statement that adds
 `reset_token_hash`, so a replica still on the previous image breaks mid-rollout. That rename needed
 expand and contract.
 
@@ -96,8 +97,9 @@ counting `order_items` for a 409.
 **A01, broken access control, first**, because the roles guard is global, denies by default, and is
 the only thing standing there: CASL, which the challenge requires, is a dependency at
 `package.json:35` that no file in `src` imports. **A07 second**: `argon2.hash` takes no options, so
-its cost is inherited rather than chosen, and reuse detection retains one generation. **API4
-third**, three tiers by route, and the last paragraph below is why it does not hold in production.
+its cost is inherited rather than chosen, and reuse detection accepts a spent token for ten seconds
+after rotation without raising the alarm, the hole DECISIONS 2 prices. **API4 third**, three tiers
+by route, and the last paragraph below is why it does not hold in production.
 
 ## How I know it still works, and what I would watch
 
@@ -107,7 +109,7 @@ size, and stock going negative, which pages. Logs would carry one correlation id
 into the job, and never a token. None of that exists yet.
 
 **One regression would reach production unnoticed, and it is now a setting rather than a bug.**
-`ThrottlerGuard` keys the limit on `req.ip` (`app.module.ts:70`, no `getTracker` override). With
+`ThrottlerGuard` keys the limit on `req.ip` (`app.module.ts:71`, no `getTracker` override). With
 `trust proxy` unset, `req.ip` behind a load balancer is the balancer, so every caller shares one
 counter and one abusive client answers 429 to the whole store. `TRUST_PROXY_HOPS` now carries the
 answer, and it is a count rather than a boolean on purpose: `trust proxy: true` would fix the
