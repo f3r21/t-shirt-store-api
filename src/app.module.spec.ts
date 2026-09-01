@@ -167,6 +167,51 @@ describe('AppModule', () => {
     expect(missing).toEqual([]);
   });
 
+  /**
+   * **No boolean variable may read a word as truthy, and the list of them is
+   * discovered rather than written down.**
+   *
+   * The sibling of the check above, one type over, and it was found by running
+   * the numeric one's reasoning against the variable this round added.
+   * `SMTP_SECURE` carried `@Type(() => Boolean)`, which is `Boolean(value)`
+   * under implicit conversion, so `SMTP_SECURE=false` read true.
+   *
+   * The last assertion is the one that makes this a gate rather than a
+   * spelling test: an unknown word has to stop the boot. Every string is
+   * truthy, so a boolean that does not reject loudly accepts silently, and
+   * there is no third outcome.
+   */
+  it('reads every boolean variable as a word, not as a truthy string', () => {
+    const proto = EnvironmentVariables.prototype as object;
+    const booleans = Object.getOwnPropertyNames(
+      new EnvironmentVariables(),
+    ).filter(
+      (key) =>
+        (Reflect.getMetadata('design:type', proto, key) as unknown) === Boolean,
+    );
+
+    // Discovery found something. Without this the loop below proves nothing.
+    expect(booleans.length).toBeGreaterThan(0);
+
+    const read = (key: string, value: string) => {
+      const parsed = validateEnv({
+        ...REQUIRED,
+        [key]: value,
+      }) as unknown as Record<string, unknown>;
+      return parsed[key];
+    };
+
+    for (const key of booleans) {
+      expect([key, read(key, 'false')]).toEqual([key, false]);
+      expect([key, read(key, '0')]).toEqual([key, false]);
+      expect([key, read(key, 'true')]).toEqual([key, true]);
+      expect([key, read(key, '1')]).toEqual([key, true]);
+      expect(() => validateEnv({ ...REQUIRED, [key]: 'nonsense' })).toThrow(
+        new RegExp(key),
+      );
+    }
+  });
+
   it('reads a numeric variable that arrives as a string, as dotenv supplies it', () => {
     // The regression this guards: every numeric property needs an explicit
     // `: number`, or `emitDecoratorMetadata` writes Object, class-transformer

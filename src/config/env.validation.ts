@@ -1,5 +1,7 @@
+import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsEmail,
   IsInt,
@@ -199,9 +201,64 @@ export class EnvironmentVariables {
   @Max(65535)
   SMTP_PORT: number = 1025;
 
+  /**
+   * Whether the mailer requires a secure connection to the relay.
+   *
+   * **The transport was hard coded to `secure: false` with `ignoreTLS: true`,
+   * and that is the production binding.** `ignoreTLS` does not merely allow a
+   * plaintext connection: it refuses STARTTLS **even when the server offers
+   * it**, so a relay willing to encrypt was talked to in the clear anyway. The
+   * password reset message carries the raw token, which is a bearer credential
+   * for the account.
+   *
+   * The docstring justified it with Mailpit and local development, and Mailpit
+   * is why the default stays false: it speaks no TLS and it is what
+   * `docker-compose.yml` runs.
+   *
+   * Set it to true anywhere that is not a laptop. `SMTP_USER` and `SMTP_PASS`
+   * below exist for the same reason: without them there was no configuration
+   * path to an authenticated relay at all, so the only reachable deployment was
+   * an open one.
+   *
+   * **There is no `@Type(() => Boolean)` here, and that is the point.** Under
+   * `enableImplicitConversion` that decorator is `Boolean(value)`, so every
+   * non-empty string is true and `SMTP_SECURE=false` in a `.env` file means
+   * true. Measured against the version of this file that carried it:
+   *
+   *     'false'     -> true        '0'   -> true
+   *     'nonsense'  -> true        ''    -> false
+   *     omitted     -> false
+   *
+   * Only the last two rows are right. `validateEnv` reads the word instead, and
+   * refuses a word it does not know.
+   */
+  @IsBoolean()
+  SMTP_SECURE: boolean = false;
+
+  @IsOptional()
+  @IsString()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PASS?: string;
+
   @IsEmail()
   MAIL_FROM!: string;
 }
+
+/**
+ * The words a `.env` file may write for a boolean.
+ *
+ * Deliberately four and not a dialect. A value outside this set stops the boot,
+ * which is the same answer this file gives to a malformed `REDIS_URL`.
+ */
+const BOOLEAN_WORDS: Record<string, boolean> = {
+  true: true,
+  '1': true,
+  false: false,
+  '0': false,
+};
 
 export function validateEnv(config: Record<string, unknown>) {
   // **A variable that is present and empty is a variable nobody set.**
@@ -223,6 +280,36 @@ export function validateEnv(config: Record<string, unknown>) {
       ([, value]) => typeof value !== 'string' || value.trim() !== '',
     ),
   );
+
+  // **A boolean read from a file is a word, and `Boolean('false')` is true.**
+  //
+  // Same shape as the empty string above, one type over. `SMTP_SECURE` carried
+  // `@Type(() => Boolean)`, which under `enableImplicitConversion` is exactly
+  // that call, so an operator writing `SMTP_SECURE=false` got a mailer that
+  // demanded TLS from a Mailpit that speaks none, `SMTP_SECURE=0` got the same,
+  // and `nonsense` was accepted as true. Only an omitted variable read false.
+  //
+  // Discovered through `design:type` rather than listed, for the reason the
+  // numeric gate in `app.module.spec.ts` gives: a list is one more place to
+  // forget. The throw happens here because there is no later chance. Every
+  // string is truthy, so a validator that runs after the coercion has nothing
+  // left to reject.
+  const proto = EnvironmentVariables.prototype as object;
+  for (const key of Object.getOwnPropertyNames(new EnvironmentVariables())) {
+    const declared = Reflect.getMetadata('design:type', proto, key) as unknown;
+    const raw = present[key];
+    if (declared !== Boolean || typeof raw !== 'string') {
+      continue;
+    }
+
+    const word = BOOLEAN_WORDS[raw.trim().toLowerCase()];
+    if (word === undefined) {
+      throw new Error(
+        `Invalid environment variables:\n${key} must be true or false, and it is "${raw}"`,
+      );
+    }
+    present[key] = word;
+  }
 
   const validatedConfig = plainToInstance(EnvironmentVariables, present, {
     enableImplicitConversion: true,

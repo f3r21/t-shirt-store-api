@@ -45,10 +45,13 @@ when `NODE_ENV` is `production`, and seeds only the roles and categories there.
 `.env.example` names every variable the schema declares, and
 `src/app.module.spec.ts` fails if one is missing rather than leaving that sentence to rot.
 
-Three are blank. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are blank because they are secrets and
-the boot refuses without them. `CORS_ORIGINS` is blank because empty is its real default and it
-means no cross-origin browser may call this service.
-Both need at least 32 characters:
+Five are blank and only two of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
+blank because they are secrets and the boot refuses without them. `CORS_ORIGINS` is blank because
+empty is its real default and it means no cross-origin browser may call this service. `SMTP_USER`
+and `SMTP_PASS` are blank because Mailpit wants no credentials, and the mailer sends none unless
+both are set.
+
+Only the two secrets need at least 32 characters:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"

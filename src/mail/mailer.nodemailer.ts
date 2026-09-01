@@ -26,11 +26,29 @@ export class NodemailerMailer implements Mailer {
   constructor(
     private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {
+    // **`ignoreTLS` used to be hard coded here, and it does more than allow a
+    // plaintext connection: it refuses STARTTLS even when the relay offers it.**
+    // So a server willing to encrypt was talked to in the clear anyway, and the
+    // reset message carries a raw bearer credential for the account. There was
+    // also no `SMTP_USER` or `SMTP_PASS` in the schema, so **no configuration
+    // path to an authenticated relay existed at all**: the only deployment this
+    // class could reach was an open one.
+    //
+    // The default is still plaintext because Mailpit is what `docker-compose`
+    // runs and it speaks no TLS. What changed is that a deployment can now say
+    // otherwise, and `ignoreTLS` follows `secure` instead of overriding it, so
+    // opportunistic STARTTLS is available on the default path too.
+    const secure = this.config.get<boolean>('SMTP_SECURE');
+    const user = this.config.get<string>('SMTP_USER');
+    const pass = this.config.get<string>('SMTP_PASS');
+
     this.transporter = createTransport({
       host: this.config.getOrThrow<string>('SMTP_HOST'),
       port: this.config.getOrThrow<number>('SMTP_PORT'),
-      secure: false,
-      ignoreTLS: true,
+      secure,
+      ...(user !== undefined && pass !== undefined
+        ? { auth: { user, pass } }
+        : {}),
     });
     this.from = this.config.getOrThrow<string>('MAIL_FROM');
     this.appUrl = this.config.getOrThrow<string>('APP_URL');
@@ -67,11 +85,29 @@ export class NodemailerMailer implements Mailer {
   }
 
   /**
-   * A failed send must not undo work that already committed.
+   * A failed send is logged and never thrown, and the two callers need that for
+   * two different reasons.
    *
-   * Both callers change a password first and mail afterwards. Letting the send
-   * throw would answer with an error for a request that succeeded, and the
-   * caller would reasonably try again with a password that no longer works.
+   * **The changed-password mail.** The password already changed and the
+   * transaction committed. Throwing would answer with an error for a request
+   * that succeeded, and the caller would reasonably retry with a password that
+   * no longer works. This is the case the previous version of this comment
+   * described, and it described it as though it covered both callers.
+   *
+   * **The reset mail, which it does not cover.** There the message *is* the
+   * deliverable: with SMTP down, `requestPasswordReset` has written the token
+   * hash and its expiry, answers 202, and nobody receives anything. Swallowing
+   * that is worse, and it is still right, because **the 202 is unconditional on
+   * purpose**. Answering 500 when the send fails would answer 500 for a
+   * registered address and 202 for an unknown one, which rebuilds exactly the
+   * enumeration oracle the unconditional 202 exists to close, and it would
+   * rebuild it on the route this repository already hardened twice.
+   *
+   * So the caller cannot be told and the operator has to be. The error log is
+   * the only signal, and that is thin: **the durable answer is the queue**, one
+   * job per recipient with a failed set whose size is the alert, which is what
+   * `ARCHITECTURE.md` describes and nothing has built. Until then, a send
+   * failure is a line in a log somebody has to be watching.
    */
   private async send(message: {
     to: string;
