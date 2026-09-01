@@ -478,6 +478,40 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
+     * **The same token, sent again after the wipe, deletes nothing.**
+     *
+     * The case above proves one replay inside the cap ends every session. This
+     * proves it ends them once. The wipe used to leave the consumed row that
+     * triggered it, so the owner signed in again, the same string arrived
+     * again, and the new session was gone, for the life of the cap. No
+     * attacker is needed: a browser that signed out on a shared machine and
+     * later retries the refresh it still holds did this to the owner's phone.
+     *
+     * The first round is the control and repeats the assertion above. The
+     * second is the fix: a fresh sign-in survives the replay, and the replay
+     * still answers 401.
+     */
+    it('a token spent inside the cap ends every session once, and never again', async () => {
+      const { refreshToken } = await signUpAndIn();
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(200);
+      await ctx.prisma.consumedRefreshToken.updateMany({
+        data: { consumedAt: new Date(Date.now() - 3600_000) },
+      });
+
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(401);
+      expect(await ctx.prisma.refreshToken.count()).toBe(0);
+      expect(await ctx.prisma.consumedRefreshToken.count()).toBe(0);
+
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: CLIENT.password })
+        .expect(201);
+
+      await http().post('/v1/auth/refresh').send({ refreshToken }).expect(401);
+      expect(await ctx.prisma.refreshToken.count()).toBe(1);
+    });
+
+    /**
      * The third tab, which the first fix could not serve at all.
      *
      * With one row per device the grace path had exactly one row to rotate, so

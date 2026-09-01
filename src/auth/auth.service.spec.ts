@@ -489,6 +489,11 @@ describe('AuthService', () => {
       expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: { userId: 128 },
       });
+      // And the consumed rows go with the refresh rows, or the same token
+      // wipes the owner's next sign-in too, for the life of the cap.
+      expect(prisma.consumedRefreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 128 },
+      });
       expect(err).toBeInstanceOf(ProblemException);
       expect(err.type).toBe(ProblemType.RefreshTokenUnknown);
       expect(err.getStatus()).toBe(401);

@@ -392,9 +392,31 @@ export class AuthService {
     const within = spent.consumedAt.getTime() > now.getTime() - seconds * 1000;
 
     if (seconds <= 0 || !within) {
-      await this.prisma.refreshToken.deleteMany({
-        where: { userId: spent.userId },
-      });
+      // **The consumed rows go with the refresh rows, or the wipe repeats.**
+      //
+      // The `where` above stops a spent token being a lever for ever. It was
+      // still one for the life of the cap: the wipe deleted every refresh row
+      // and left the consumed row that triggered it, so the owner signed in
+      // again, the same string arrived again, and the new session was gone.
+      // Measured: three sign-ins, three replays of one token, zero rows after
+      // each. No attacker is needed. A browser that signed out on a shared
+      // machine and later retries the refresh it still holds did this to the
+      // owner's phone.
+      //
+      // After the first statement every family of this user is dead, so every
+      // consumed row of this user records a family that cannot be alive.
+      // Removing them makes the next presentation a token the server never
+      // issued, which the contract answers with 401 and nothing deleted. One
+      // transaction, because a wipe that commits without its second half
+      // reopens the lever.
+      await this.prisma.$transaction([
+        this.prisma.refreshToken.deleteMany({
+          where: { userId: spent.userId },
+        }),
+        this.prisma.consumedRefreshToken.deleteMany({
+          where: { userId: spent.userId },
+        }),
+      ]);
       return null;
     }
 
@@ -420,13 +442,12 @@ export class AuthService {
     //
     // The bound is the window times the rate. The window is
     // `REFRESH_GRACE_SECONDS`, ten by default, and the rate is now the sign-in
-    // tier on `POST /auth/refresh`, ten a minute, so one spent token buys at
-    // most a couple of rows before it ages out. Those rows expire on their own
-    // and the whole family dies at the absolute cap, so they are bounded and
-    // self-clearing rather than merely rare.
-    //
-    // `DECISIONS.md` priced the window as one accepted token. It is a handful,
-    // and that entry is corrected rather than the code bent to match it.
+    // tier on `POST /auth/refresh`, ten in any sixty seconds. That tier is a
+    // fixed window, so all ten can land inside the grace window: one spent
+    // token buys at most ten rows before it ages out. Those rows expire on
+    // their own and the whole family dies at the absolute cap, so they are
+    // bounded and self-clearing rather than merely rare. `DECISIONS.md`
+    // entry 2 records the same bound under "Given up".
     return this.prisma.refreshToken.create({
       data: {
         userId: founder.userId,
@@ -488,9 +509,11 @@ export class AuthService {
   /**
    * Sign this device out. See `openapi.yaml:196`.
    *
-   * The session id comes from the access token, so the row this deletes is the
-   * one belonging to the device that sent the request. Other devices stay signed
-   * in. The access token itself stays valid until it expires.
+   * The session id comes from the access token, so the family this deletes is
+   * the one belonging to the device that sent the request. Other devices stay
+   * signed in. The access token stops working at once, because
+   * `AccessTokenGuard` checks on every request that the session it names is
+   * still alive.
    */
   async deleteCurrentSession(userId: number, sessionId: number): Promise<void> {
     // By family. Deleting the one row whose id matches would leave every other

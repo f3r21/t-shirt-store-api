@@ -99,7 +99,9 @@ Both session deletes name the family, or ending a session would leave the other 
 contract's promise that the session id does not change survives without touching the type.
 
 **Given up, and it is a real cost.** Inside the window a stolen token is accepted and no alarm
-fires. `REFRESH_GRACE_SECONDS` is an environment variable rather than a constant precisely
+fires, and each acceptance adds a live row to the family. The bound is the window times the
+tier on `POST /auth/refresh`, ten rows per spent token at the defaults, and those rows expire on
+their own. `REFRESH_GRACE_SECONDS` is an environment variable rather than a constant precisely
 because that is the dial, and 0 turns it off. `consumed_refresh_tokens` grows with traffic and
 nothing prunes it yet; a sweep of rows older than the absolute cap is safe by construction,
 since a token past that cap can rotate nothing, and it is the first thing to add before this
