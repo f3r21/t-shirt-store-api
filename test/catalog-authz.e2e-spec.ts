@@ -3,6 +3,7 @@ import {
   CatalogFixture,
   createTestApp,
   ensureRoles,
+  seedOrderLineFor,
   seedProductWithVariant,
   signInAs,
   truncateAll,
@@ -188,12 +189,38 @@ describe('Catalog authorization (e2e)', () => {
     it('deletes a variant', async () => {
       await call(MUTATIONS[4], token).expect(204);
 
-      // A variant is deleted for real, unlike a product. Nothing points at it
-      // yet, and the contract gives it a 409 for the day something does.
+      // A variant is deleted for real, unlike a product, and only while nothing
+      // points at it. The 409 for the other case is two tests below.
       const row = await ctx.prisma.productVariant.findUnique({
         where: { id: fixture.variantId },
       });
       expect(row).toBeNull();
+    });
+
+    /**
+     * The contract's 409 at `openapi.yaml:1084`, run against a real order row.
+     *
+     * No operation creates an order this week, so the rows go in directly. That
+     * is what makes this a test rather than a promise: without it the branch is
+     * unreachable, and the schema's own `onDelete: Restrict` would answer an
+     * unmapped 500 the first day an order existed.
+     */
+    it('refuses to delete a variant an order points at, and keeps the row', async () => {
+      await seedOrderLineFor(ctx.prisma, fixture, 'manager@example.com');
+
+      const res = await call(MUTATIONS[4], token).expect(409);
+
+      expect(res.type).toBe('application/problem+json');
+      expect(res.body).toMatchObject({
+        status: 409,
+        detail:
+          'This variant appears in an order. Set its stock to zero instead.',
+      });
+
+      const row = await ctx.prisma.productVariant.findUnique({
+        where: { id: fixture.variantId },
+      });
+      expect(row).not.toBeNull();
     });
 
     it('sets the stock of a variant', async () => {
@@ -204,6 +231,44 @@ describe('Catalog authorization (e2e)', () => {
         where: { id: fixture.variantId },
       });
       expect(row?.stock).toBe(3);
+    });
+
+    /**
+     * `minProperties: 1`, which both update operations declare and neither
+     * enforced. An empty body answered 200 having written nothing, which tells
+     * the caller a change landed.
+     *
+     * The assertion is on the status and on the row, because a handler that
+     * answered 400 and wrote anyway would satisfy the first half alone.
+     */
+    describe.each([
+      ['a product', (f: CatalogFixture) => `/v1/products/${f.productId}`],
+      ['a variant', (f: CatalogFixture) => `/v1/variants/${f.variantId}`],
+    ])('an empty PATCH body on %s', (_label, path) => {
+      it('answers 400 and changes nothing', async () => {
+        const before = await ctx.prisma.product.findUnique({
+          where: { id: fixture.productId },
+          include: { variants: true },
+        });
+
+        const res = await http()
+          .patch(path(fixture))
+          .set('authorization', `Bearer ${token}`)
+          .send({})
+          .expect(400);
+
+        expect(res.type).toBe('application/problem+json');
+        expect(res.body).toMatchObject({
+          status: 400,
+          detail: 'Send at least one field.',
+        });
+
+        const after = await ctx.prisma.product.findUnique({
+          where: { id: fixture.productId },
+          include: { variants: true },
+        });
+        expect(after).toEqual(before);
+      });
     });
   });
 });

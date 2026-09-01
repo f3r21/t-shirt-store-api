@@ -5,10 +5,11 @@ import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
  *
  * The body carries no `stock`. The contract gives the stock its own operation,
  * because the payment webhook writes that value too. A request that sends
- * `stock` here loses it to `whitelist: true`, which `src/main.ts:16` sets.
+ * `stock` here loses it to `whitelist: true`, which `src/common/validation-pipe-options.ts:17` sets.
  *
  * The contract also declares `minProperties: 1`. This class does not enforce
- * that rule. See the note in `create-product.dto.ts`.
+ * that rule and cannot. `NonEmptyBodyPipe` does, and the reason it is a pipe
+ * rather than a validator is recorded in `update-product.dto.ts`.
  */
 export class UpdateVariantDto {
   @IsOptional()

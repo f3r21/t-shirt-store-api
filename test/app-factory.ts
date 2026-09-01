@@ -228,6 +228,47 @@ export async function seedProductWithVariant(
 }
 
 /**
+ * One paid order carrying one line for this variant.
+ *
+ * Written straight to the database because no operation creates an order yet.
+ * That is the point: `deleteVariant` promises a 409 for a variant an order
+ * points at, and without these rows that branch could only be written, never
+ * run. Every column here is required by the schema, and the four snapshots are
+ * copied the way `createOrder` will copy them, so this fixture does not encode a
+ * shape the real writer will contradict.
+ */
+export async function seedOrderLineFor(
+  prisma: PrismaService,
+  fixture: CatalogFixture,
+  email: string,
+): Promise<void> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  const variant = await prisma.productVariant.findUniqueOrThrow({
+    where: { id: fixture.variantId },
+  });
+
+  await prisma.order.create({
+    data: {
+      userId: user.id,
+      status: 'paid',
+      subtotalCents: variant.priceCents,
+      totalCents: variant.priceCents,
+      items: {
+        create: {
+          variantId: variant.id,
+          productId: fixture.productId,
+          productName: 'Fixture Tee',
+          size: variant.size,
+          color: variant.color,
+          unitPriceCents: variant.priceCents,
+          quantity: 1,
+        },
+      },
+    },
+  });
+}
+
+/**
  * A category row, by name, created once and reused.
  *
  * Upserted rather than created because `truncateAll` deliberately leaves

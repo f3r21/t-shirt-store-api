@@ -11,12 +11,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ProductsService } from './products.service';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
@@ -28,9 +23,9 @@ import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
+import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 
 @ApiTags('catalog')
-@ApiBearerAuth('bearerAuth')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
@@ -116,7 +111,7 @@ export class ProductsController {
   @Patch(':id')
   updateProduct(
     @Param('id', ParseIdPipe) id: number,
-    @Body() dto: UpdateProductDto,
+    @Body(NonEmptyBodyPipe) dto: UpdateProductDto,
   ): Promise<ProductDto> {
     return this.products.updateProduct(id, dto);
   }

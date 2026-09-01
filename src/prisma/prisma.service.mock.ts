@@ -54,6 +54,12 @@ export interface PrismaMock {
     deleteMany: jest.Mock;
     createMany: jest.Mock;
   };
+  // The catalog's one read of an order table. `deleteVariant` counts the lines
+  // pointing at a variant before removing it, because the contract answers 409
+  // there and `onDelete: Restrict` would otherwise surface as an unmapped 500.
+  orderItem: {
+    count: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -111,6 +117,11 @@ export function createPrismaMock(): PrismaMock {
     productCategory: {
       deleteMany: jest.fn(),
       createMany: jest.fn(),
+    },
+    // Zero by default, so a spec that does not care about order lines gets the
+    // path it means to test. A spec that does care says so.
+    orderItem: {
+      count: jest.fn().mockResolvedValue(0),
     },
     $transaction: jest.fn(),
   };

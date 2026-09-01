@@ -10,12 +10,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -35,7 +30,6 @@ import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 @ApiTags('auth')
-@ApiBearerAuth('bearerAuth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}

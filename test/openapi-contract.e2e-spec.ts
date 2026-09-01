@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { OpenAPIObject } from '@nestjs/swagger';
@@ -12,12 +12,21 @@ import { createTestApp, TestApp } from './app-factory';
  * code stops matching it, and it is the only reason generating a second
  * description of the same API is worth anything.
  *
- * **What it compares:** the set of operations, the status codes each declares,
- * and the property and required names of each request body. **What it does
- * not:** types, formats, lengths, examples and descriptions. The contract
- * expresses bounds the generated document spells differently, and asserting on
- * those would fail on spelling rather than on substance. That limit is stated
- * here rather than left for a reader to find out.
+ * **What it compares:** the set of operations, the name each one is served
+ * under, who may call it, the status codes it declares, whether every failure
+ * describes its body, and the property and required names of each request body.
+ *
+ * **What it does not:** types, formats, lengths, examples and descriptions. The
+ * contract expresses bounds the generated document spells differently, and
+ * asserting on those would fail on spelling rather than on substance. That limit
+ * is stated here rather than left for a reader to find out.
+ *
+ * The first four of those six were added on 2026-08-31, after an audit found
+ * that the served document renamed all 19 operations, showed seven of them with
+ * the wrong authentication, described 75 failures with no body at all, and
+ * pointed readers at a file in another repository. Every one of those was green
+ * here, because comparing status code keys says nothing about what sits under
+ * them. A drift test is only worth what it compares.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
@@ -38,6 +47,8 @@ describe('OpenAPI document against the contract (e2e)', () => {
   };
 
   type Operation = {
+    operationId?: string;
+    security?: Record<string, unknown>[];
     responses?: Record<string, unknown>;
     requestBody?: { content?: Record<string, { schema?: unknown }> };
   };
@@ -109,6 +120,23 @@ describe('OpenAPI document against the contract (e2e)', () => {
     );
   }
 
+  /**
+   * The served document points a reader at a file that exists here.
+   *
+   * It named `5-api-design/openapi.yaml`, which is the sibling repository this
+   * copy came from and is not a path in this checkout. Two commits, `43b7995`
+   * and `f96b834`, both claim to have repointed every contract reference, and
+   * both missed this one because nothing read it. A reviewer who follows the
+   * pointer and finds nothing trusts the rest of the document less.
+   */
+  it('points at a contract file this repository actually has', () => {
+    const described = generated.info.description ?? '';
+    const cited = described.match(/[\w/.-]+openapi\.yaml/)?.[0];
+
+    expect(cited).toBeDefined();
+    expect(existsSync(join(__dirname, '..', cited as string))).toBe(true);
+  });
+
   it('describes only operations the contract declares', () => {
     const declared = operationsOf(contract);
     const extra = implementedOperations().filter(
@@ -145,6 +173,87 @@ describe('OpenAPI document against the contract (e2e)', () => {
       );
 
     expect(wrong).toEqual([]);
+  });
+
+  /**
+   * The name a generated client calls the method.
+   *
+   * Nest's default is `${controllerKey}_${methodKey}`, so without an
+   * `operationIdFactory` every one of the 19 operations was served under a name
+   * the contract does not use. Two clients generated from the two documents
+   * would not compile against each other, and nothing here noticed.
+   */
+  it('names each operation the way the contract names it', () => {
+    const wrong = implementedOperations()
+      .filter(
+        (op) =>
+          operationAt(generated, op)?.operationId !==
+          operationAt(contract, op)?.operationId,
+      )
+      .map(
+        (op) =>
+          `${op}: generated ${operationAt(generated, op)?.operationId} contract ${operationAt(contract, op)?.operationId}`,
+      );
+
+    expect(wrong).toEqual([]);
+  });
+
+  /**
+   * Whether a caller needs a token, which the contract spells three ways.
+   *
+   * The root `security` is the default and means required. An operation's own
+   * `security: []` means public. `[{}, {bearerAuth: []}]` is the 3.0.3 spelling
+   * for optional, a token allowed and not required, and `listProducts` and
+   * `getProduct` are the two that carry it.
+   *
+   * Comparing the arrays literally would fail on ordering, so both sides are
+   * reduced to the answer a reader of the document actually wants: may I call
+   * this without signing in.
+   */
+  function authOf(doc: OpenAPIObject, op: string): string {
+    const requirements = operationAt(doc, op)?.security ?? doc.security ?? [];
+    if (requirements.length === 0) return 'public';
+    return requirements.some((r) => Object.keys(r).length === 0)
+      ? 'optional'
+      : 'required';
+  }
+
+  it('agrees with the contract on who may call each operation', () => {
+    const wrong = implementedOperations()
+      .filter((op) => authOf(generated, op) !== authOf(contract, op))
+      .map(
+        (op) =>
+          `${op}: generated ${authOf(generated, op)} contract ${authOf(contract, op)}`,
+      );
+
+    expect(wrong).toEqual([]);
+  });
+
+  /**
+   * Every failure the document describes has to say what the body looks like.
+   *
+   * RFC 9457 problem documents are this API's headline choice and the contract
+   * gives all 94 error responses a `Problem` schema. A generated document that
+   * describes them with a description and nothing else tells a client the
+   * request can fail and not how to read the failure, which is the half that
+   * matters: `type` is what a client branches on.
+   */
+  function untypedFailures(op: string): string[] {
+    const responses = operationAt(generated, op)?.responses ?? {};
+    return Object.entries(responses)
+      .filter(([status]) => Number(status) >= 400)
+      .filter(([, response]) => {
+        const content = (response as { content?: Record<string, unknown> })
+          .content;
+        return content === undefined || Object.keys(content).length === 0;
+      })
+      .map(([status]) => `${op} ${status}`);
+  }
+
+  it('gives every failure a body schema', () => {
+    const untyped = implementedOperations().flatMap(untypedFailures);
+
+    expect(untyped).toEqual([]);
   });
 
   it('agrees with the contract on request body shapes', () => {

@@ -165,7 +165,7 @@ describe('VariantsService', () => {
   });
 
   describe('deleteVariant', () => {
-    it('deletes the row outright, because nothing points at a variant yet', async () => {
+    it('deletes the row when no order line points at it', async () => {
       prisma.productVariant.findFirst.mockResolvedValue(aVariant());
       prisma.productVariant.delete.mockResolvedValue(aVariant());
 
@@ -182,6 +182,64 @@ describe('VariantsService', () => {
       await expect(service.deleteVariant(21)).rejects.toMatchObject({
         status: 404,
       });
+    });
+
+    /**
+     * The contract's 409 at `openapi.yaml:1084`. Order history points at the
+     * variant row, so removing it would rewrite what a customer bought.
+     */
+    it('answers 409 when an order line points at the variant', async () => {
+      prisma.productVariant.findFirst.mockResolvedValue(aVariant());
+      prisma.orderItem.count.mockResolvedValue(1);
+
+      await expect(service.deleteVariant(21)).rejects.toMatchObject({
+        status: 409,
+      });
+      // Refused before the write, not after it failed.
+      expect(prisma.productVariant.delete).not.toHaveBeenCalled();
+    });
+
+    it('counts the order lines of this variant and no other', async () => {
+      prisma.productVariant.findFirst.mockResolvedValue(aVariant());
+      prisma.productVariant.delete.mockResolvedValue(aVariant());
+
+      await service.deleteVariant(21);
+
+      expect(prisma.orderItem.count).toHaveBeenCalledWith({
+        where: { variantId: 21 },
+      });
+    });
+
+    /**
+     * The race the count cannot close, and the reason the catch exists. An order
+     * placed between the count and the delete reaches `onDelete: Restrict`, and
+     * without this branch that arrives as an unmapped `P2003`, which is a 500
+     * where the contract declares a 409. Same shape as the unique index catch in
+     * `users.service.ts:81-89`.
+     */
+    it('turns the foreign key refusal into the same 409, not a 500', async () => {
+      prisma.productVariant.findFirst.mockResolvedValue(aVariant());
+      prisma.productVariant.delete.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('fk', {
+          code: 'P2003',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(service.deleteVariant(21)).rejects.toMatchObject({
+        status: 409,
+      });
+    });
+
+    it('lets an unrelated database error through untouched', async () => {
+      prisma.productVariant.findFirst.mockResolvedValue(aVariant());
+      const boom = new Error('connection reset');
+      prisma.productVariant.delete.mockRejectedValue(boom);
+
+      // The catch is narrow on purpose. Swallowing every failure here would turn
+      // an outage into a 409 and tell the caller to retry a request that cannot
+      // succeed.
+      await expect(service.deleteVariant(21)).rejects.toBe(boom);
     });
   });
 });

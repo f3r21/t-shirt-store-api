@@ -20,7 +20,7 @@ import {
  * belongs to the service and not to this class.
  *
  * `@Type(() => Number)` on the array is required and not decoration.
- * `src/main.ts:19` sets `enableImplicitConversion: false`, so class-transformer
+ * `src/common/validation-pipe-options.ts:20` sets `enableImplicitConversion: false`, so class-transformer
  * leaves each entry as it arrives and `@IsInt()` reads the real type.
  */
 export class CreateProductDto {

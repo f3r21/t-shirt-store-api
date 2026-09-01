@@ -20,10 +20,15 @@ import {
  * disabled product stays visible to a manager and disappears for every other
  * caller.
  *
- * The contract also declares `minProperties: 1`, and this class does not
- * enforce it. class-validator carries no built-in rule for "at least one
- * property is present", and a class-level custom validator is a decorator. An
- * empty body therefore reaches the service today and updates nothing.
+ * The contract also declares `minProperties: 1`, and this class still does not
+ * enforce it, because class-validator cannot. Version 0.15.1 types
+ * `registerDecorator`'s `propertyName` as a required string, so there is no
+ * class level constraint, and hanging the rule on a property fails too: every
+ * field here carries `@IsOptional()`, which short circuits that property's
+ * remaining validators the moment the value is absent, which is the case being
+ * caught. `NonEmptyBodyPipe` enforces it instead, at
+ * `src/common/non-empty-body.pipe.ts`, and `products.controller.ts` applies it
+ * to this operation.
  */
 export class UpdateProductDto {
   @IsOptional()

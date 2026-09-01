@@ -7,12 +7,7 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { UsersService } from './users.service';
@@ -27,7 +22,6 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { ROLE_NAMES } from './dto/user.dto';
 
 @ApiTags('auth')
-@ApiBearerAuth('bearerAuth')
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}

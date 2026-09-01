@@ -9,12 +9,7 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { VariantsService } from './variants.service';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -23,6 +18,7 @@ import { SetVariantStockDto } from './dto/set-variant-stock.dto';
 import { ProductVariantDto } from './dto/product-variant.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ParseIdPipe } from '../common/parse-id.pipe';
+import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 
 /**
  * Creating a variant hangs off its product, so it lives on the product path.
@@ -32,7 +28,6 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
  * which nothing maps, so the caller reads 500 instead of 400.
  */
 @ApiTags('catalog')
-@ApiBearerAuth('bearerAuth')
 @Controller('products')
 export class ProductVariantsController {
   constructor(private readonly variants: VariantsService) {}
@@ -64,7 +59,6 @@ export class ProductVariantsController {
 }
 
 @ApiTags('catalog')
-@ApiBearerAuth('bearerAuth')
 @Controller('variants')
 export class VariantsController {
   constructor(private readonly variants: VariantsService) {}
@@ -85,7 +79,7 @@ export class VariantsController {
   @Patch(':id')
   updateVariant(
     @Param('id', ParseIdPipe) id: number,
-    @Body() dto: UpdateVariantDto,
+    @Body(NonEmptyBodyPipe) dto: UpdateVariantDto,
   ): Promise<ProductVariantDto> {
     return this.variants.updateVariant(id, dto);
   }
