@@ -159,6 +159,41 @@ describe('Catalog authorization (e2e)', () => {
       expect(row?.deletedAt).toBeInstanceOf(Date);
     });
 
+    /**
+     * Disabling through the API, which the contract prescribes as `isActive:
+     * false` on PATCH. The visibility tests in `catalog-read.e2e-spec.ts` seed
+     * the flag straight into the database, so until this test nothing proved
+     * that the request a manager actually sends reaches the column and that
+     * the storefront then hides the product. The manager's own view is the
+     * control: hidden from the shopper, still there for the person who did it.
+     */
+    it('disables a product through PATCH, and the storefront hides it', async () => {
+      const res = await http()
+        .patch(`/v1/products/${fixture.productId}`)
+        .set('authorization', `Bearer ${token}`)
+        .send({ isActive: false })
+        .expect(200);
+      expect(res.body).toMatchObject({
+        id: fixture.productId,
+        isActive: false,
+      });
+
+      const shopper = await http().get('/v1/products').expect(200);
+      expect(
+        (shopper.body as { data: { id: number }[] }).data.map((p) => p.id),
+      ).not.toContain(fixture.productId);
+      await http().get(`/v1/products/${fixture.productId}`).expect(404);
+
+      const manager = await http()
+        .get('/v1/products')
+        .query({ includeInactive: true })
+        .set('authorization', `Bearer ${token}`)
+        .expect(200);
+      expect(
+        (manager.body as { data: { id: number }[] }).data.map((p) => p.id),
+      ).toContain(fixture.productId);
+    });
+
     it('creates a variant', async () => {
       const res = await call(MUTATIONS[2], token).expect(201);
 

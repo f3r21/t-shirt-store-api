@@ -311,6 +311,41 @@ describe('Catalog reads (e2e)', () => {
   });
 
   /**
+   * `GET /categories` had no e2e request at all. The audit names it beside the
+   * password change as the two served operations the suite never drives. The
+   * controller's own comment says why the marker matters: without `@Public()`
+   * the global guard answers 401 and a shopper cannot browse before signing
+   * in. This is the test that goes red when that happens.
+   *
+   * `truncateAll` leaves `categories` alone, so rows from other suites may
+   * exist; the assertion is containment by name, not equality.
+   */
+  describe('the category list', () => {
+    interface CategoryPage {
+      data: { id: number; name: string }[];
+      meta: { total: number; limit: number; offset: number };
+    }
+
+    it('returns one page with the envelope, to a caller with no token', async () => {
+      const res = await http().get('/v1/categories').expect(200);
+
+      const page = res.body as CategoryPage;
+      expect(page.data.map((c) => c.name)).toEqual(
+        expect.arrayContaining(['e2e-tees', 'e2e-mugs']),
+      );
+      expect(Object.keys(page.data[0]).sort()).toEqual(['id', 'name']);
+      expect(page.meta).toMatchObject({ limit: 20, offset: 0 });
+      expect(page.meta.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('answers 400 for a limit above the contract ceiling of 100', async () => {
+      await http().get('/v1/categories').query({ limit: 101 }).expect(400);
+      // The control: the ceiling itself is accepted.
+      await http().get('/v1/categories').query({ limit: 100 }).expect(200);
+    });
+  });
+
+  /**
    * Images come from `product_images`, which exists and which nothing writes
    * until the upload operation lands. The mapper answered `[]` under a comment
    * saying the table did not exist, so a row in it was invisible and the list's

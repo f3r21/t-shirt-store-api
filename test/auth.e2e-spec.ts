@@ -242,6 +242,53 @@ describe('Authentication (e2e)', () => {
         .set('authorization', `Bearer ${accessToken}`)
         .expect(200);
     });
+
+    /**
+     * **The token that expired, through the real guard.**
+     *
+     * The audit found this branch proven only by `access-token.guard.spec.ts`
+     * with a mocked `verifyAsync`, which asserts the guard handles a
+     * `TokenExpiredError` and not that a real expired token produces one. The
+     * payload is the signed-in user's own, so the only thing wrong with the
+     * token is the clock, and `exp` is an explicit claim with no `expiresIn`,
+     * so nothing else decides the expiry.
+     *
+     * The control is the same payload fifteen minutes ahead, which proves the
+     * secret and the session are real and only the clock differed.
+     */
+    it('refuses an expired token with the access-token-expired type, and accepts the same payload before expiry', async () => {
+      const { accessToken } = await signUpAndIn();
+      const jwt = new JwtService({ secret: process.env.JWT_SECRET });
+      const { sub, sid, role } = jwt.decode<{
+        sub: number;
+        sid: number;
+        role: string;
+      }>(accessToken);
+      const now = Math.floor(Date.now() / 1000);
+
+      const expired = await http()
+        .get('/v1/auth/sessions')
+        .set(
+          'authorization',
+          `Bearer ${await jwt.signAsync({ sub, sid, role, exp: now - 60 })}`,
+        )
+        .expect(401);
+      expect(expired.body.type).toBe(
+        'https://tshirt.store/problems/access-token-expired',
+      );
+      expect(expired.body.detail).toBe(
+        'Refresh the token and send the request again.',
+      );
+      expect(expired.headers['www-authenticate']).toBe('Bearer');
+
+      await http()
+        .get('/v1/auth/sessions')
+        .set(
+          'authorization',
+          `Bearer ${await jwt.signAsync({ sub, sid, role, exp: now + 900 })}`,
+        )
+        .expect(200);
+    });
   });
 
   describe('rotation', () => {
@@ -730,6 +777,101 @@ describe('Authentication (e2e)', () => {
       await http()
         .get('/v1/auth/sessions')
         .set('authorization', `Bearer ${accessToken}`)
+        .expect(401);
+    });
+  });
+
+  /**
+   * `PATCH /users/me/password`, which no e2e test had ever requested. The
+   * audit found it unit tested and nothing more, on the route that wipes every
+   * session and mails the owner. Everything below is what the contract says
+   * under `changePassword`, driven through the real guard, the real pipe and
+   * the real database.
+   */
+  describe('change password', () => {
+    const NEW_PASSWORD = 'an entirely new password';
+
+    it('changes the password, ends every session, and mails the address', async () => {
+      const laptop = await signUpAndIn();
+      const phone = await http()
+        .post('/v1/auth/sessions')
+        .send({
+          email: CLIENT.email,
+          password: CLIENT.password,
+          deviceName: 'Ana phone',
+        })
+        .expect(201);
+
+      await http()
+        .patch('/v1/users/me/password')
+        .set('authorization', `Bearer ${laptop.accessToken}`)
+        .send({ currentPassword: CLIENT.password, newPassword: NEW_PASSWORD })
+        .expect(204);
+
+      // The old password is gone and the new one works.
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: CLIENT.password })
+        .expect(401);
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: NEW_PASSWORD })
+        .expect(201);
+
+      // Every session ended, the caller's included, and the guard enforces it
+      // at once rather than when the tokens expire.
+      for (const token of [
+        laptop.accessToken,
+        phone.body.accessToken as string,
+      ]) {
+        await http()
+          .get('/v1/auth/sessions')
+          .set('authorization', `Bearer ${token}`)
+          .expect(401);
+      }
+      // One row, the sign-in with the new password, and no consumed record
+      // left behind to wipe it.
+      expect(await ctx.prisma.refreshToken.count()).toBe(1);
+      expect(await ctx.prisma.consumedRefreshToken.count()).toBe(0);
+
+      expect(ctx.mail.sent).toContainEqual({
+        kind: 'changed',
+        to: CLIENT.email,
+      });
+    });
+
+    it('answers 401 with the invalid-credentials type for a wrong current password, and changes nothing', async () => {
+      const { accessToken } = await signUpAndIn();
+
+      const res = await http()
+        .patch('/v1/users/me/password')
+        .set('authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'not the current one',
+          newPassword: NEW_PASSWORD,
+        })
+        .expect(401);
+      expect(res.body.type).toBe(
+        'https://tshirt.store/problems/invalid-credentials',
+      );
+
+      // Nothing changed: the old password signs in, the session that asked is
+      // still alive, and no mail went out.
+      await http()
+        .post('/v1/auth/sessions')
+        .send({ email: CLIENT.email, password: CLIENT.password })
+        .expect(201);
+      await http()
+        .get('/v1/auth/sessions')
+        .set('authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      expect(ctx.mail.sent.filter((m) => m.kind === 'changed')).toEqual([]);
+    });
+
+    it('answers 401 to a caller with no token', async () => {
+      await http()
+        .patch('/v1/users/me/password')
+        .send({ currentPassword: CLIENT.password, newPassword: NEW_PASSWORD })
         .expect(401);
     });
   });
