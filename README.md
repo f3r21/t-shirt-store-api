@@ -1,6 +1,6 @@
 # T-Shirt Store API
 
-A store API built on NestJS, Prisma and PostgreSQL. It is the capstone of RAVN's NodeJS
+A store API built on NestJS, Prisma, and PostgreSQL. It is the capstone of RAVN's NodeJS
 programme, and it answers to a hand-written OpenAPI contract that was designed in week 2.
 
 **The contract is authoritative.** It lives at
@@ -70,11 +70,16 @@ npm test             # jest, unit
 npm run test:e2e     # jest, against a real database
 npm run lint:ci      # eslint, reports and changes nothing
 npm run format:check # prettier, reports and changes nothing
+npm run docs:lint    # vale, this file and ARCHITECTURE.md, reports and changes nothing
 ```
 
 `lint:ci` and `format:check` are the read-only pair, and they are what CI runs. `npm run lint`
 and `npm run format` exist too and carry `--fix` and `--write`, so they edit the tree. Reach for
 those when you mean to change something, not when you mean to check it.
+
+`docs:lint` needs Vale on the machine (`brew install vale`) and, once, `vale sync` to fetch the
+Google style into `.vale/styles`. The rules it applies and the ones it deliberately does not are
+in `.vale.ini`; the project's own terms are in `.vale/styles/config/vocabularies`.
 
 `npm run typecheck` is worth running after any schema change. **A green typecheck is not
 evidence that the generated Prisma client matches the schema**: every file under
@@ -172,5 +177,5 @@ Stated here rather than discovered later. The longer list, with the reasoning, i
   alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
   and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
-- Email addresses are folded to lower case in the service. The durable form is a unique
+- An email address is folded to lower case in the service. The durable form is a unique
   index on `lower(email)`, which is not yet written.

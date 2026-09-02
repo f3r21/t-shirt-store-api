@@ -122,6 +122,32 @@ jobs:
       - name: Build the runtime image
         run: docker build --tag t-shirt-store-api:${{ github.sha }} .
 
+  # The two pages a reviewer reads, linted with the Google developer style
+  # through Vale. The rule selection and the vocabulary live in .vale.ini and
+  # .vale/styles/config; the action downloads the Google package itself. Vale
+  # exits non-zero only on error-level alerts, so the gate is exactly the rules
+  # .vale.ini promotes to that level. `checks: write` is what the check reporter
+  # needs on a workflow that runs on push and never on a pull request.
+  prose:
+    name: Prose
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
+        with:
+          files: README.md,ARCHITECTURE.md
+          separator: ','
+          reporter: github-check
+          filter_mode: nofilter
+          fail_on_error: true
+
 # The deploy leg is designed and not built. It would push this image to a
 # registry, run `prisma migrate deploy` as a release step before the new
 # container takes traffic, and roll back by redeploying the previous tag. It is

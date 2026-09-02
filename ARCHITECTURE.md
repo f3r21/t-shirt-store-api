@@ -62,7 +62,7 @@ rejected RabbitMQ because exchanges,
 bindings and inter-queue dead-lettering are routing this system has no second consumer for, and its
 at-least-once guarantee is the same, so the idempotency work is identical either way. I rejected
 pg-boss for the opposite reason: it adds no service, and pays for that by polling the Postgres that
-is already the ceiling above. **I would switch to RabbitMQ the day a second consumer needs the same
+is already the ceiling. **I would switch to RabbitMQ the day a second consumer needs the same
 event under a different routing rule**, say fulfilment subscribing to a paid order beside the mail
 worker. BullMQ makes each new consumer an edit to the producer; one exchange and two bindings makes
 it a deployment.
