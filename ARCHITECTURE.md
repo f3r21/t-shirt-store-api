@@ -12,13 +12,13 @@ flowchart TB
     deploy["Deploy<br/>registry, migrate,<br/>then roll the tag"]
 
     client["Client<br/>browser or mobile"]
-    api["API, NestJS<br/>helmet, CORS, roles guard,<br/>throttler with a<br/>per-process counter"]
+    api["API, NestJS<br/>helmet, CORS, policies guard,<br/>throttler with a<br/>per-process counter"]
     pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>pool of 10 per process,<br/>97 usable, so 9 replicas")]
     casl["CASL abilities<br/>a dependency, not a guard"]
     store[("Object storage<br/>product images")]
     smtp["Email provider"]
     stripe["Stripe"]
-    redis[("Redis<br/>provisioned, unused")]
+    redis[("Redis<br/>stock queue")]
     worker["Worker<br/>same image,<br/>different entrypoint"]
 
     code --> ci
@@ -28,18 +28,18 @@ flowchart TB
 
     client -->|"HTTPS, bearer token"| api
     api --> pg
-    api -.->|"who liked it"| pg
-    api -.-> casl
+    api -->|"who liked it"| pg
+    api --> casl
     api -.->|"images"| store
     api -->|"reset and changed mail"| smtp
-    api -.->|"create intent or link"| stripe
-    api -.->|"after the commit,<br/>one job per recipient"| redis
-    stripe -.->|"signed webhook"| api
+    api -->|"create intent or link"| stripe
+    api -->|"after the commit,<br/>one job per recipient"| redis
+    stripe -->|"signed webhook"| api
     redis -.-> worker
-    worker -.->|"restock mail"| smtp
+    worker -.->|"low-stock mail"| smtp
 
     classDef planned stroke-dasharray:5 3
-    class casl,deploy,stripe,store,redis,worker planned
+    class deploy,store,worker planned
 ```
 
 **The shared ceiling is Postgres.** `prisma.service.ts:14` builds `PrismaPg` from a connection

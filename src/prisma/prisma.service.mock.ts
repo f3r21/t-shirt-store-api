@@ -11,6 +11,9 @@ export interface PrismaMock {
   user: {
     findUnique: jest.Mock;
     findFirst: jest.Mock;
+    // The low-stock producer's one read: who liked a variant and has not
+    // bought it or been told.
+    findMany: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
     updateMany: jest.Mock;
@@ -124,6 +127,7 @@ export function createPrismaMock(): PrismaMock {
     user: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),

@@ -69,19 +69,16 @@ export class EnvironmentVariables {
   DATABASE_URL!: string;
 
   /**
-   * Optional, because nothing reads it yet.
+   * Required, because the stock notification queue opens it.
    *
-   * It was required, so `validateEnv` refused to boot without it, and
-   * `rg -n 'REDIS_URL' src test` finds it only here and in two test setups
-   * while `rg -n 'redis|bullmq|ioredis' package.json` finds no client at all.
-   * Every deployment and the CI job had to invent a value for a service the
-   * process never opens, which teaches a reader that this file's requirements
-   * are decorative.
-   *
-   * **It becomes required again the day something opens the connection**, which
-   * is either the throttler's Redis storage adapter or the stock notification
-   * queue, whichever lands first. The `@IsUrl` stays, so a value that is present
-   * and wrong still fails at boot rather than at the first job.
+   * It was optional for a while: nothing in `src` read it, so every deployment
+   * and the CI job invented a value for a service the process never dialled,
+   * and this comment said it would become required again the day something
+   * opened the connection. `stock-notifications/stock-queue.ts` is that
+   * something. The queue is built from this value alone: BullMQ hands the URL
+   * to ioredis, which reads the host, the port, the password and the database
+   * index out of it. The `@IsUrl` still fails a present and wrong value at boot
+   * rather than at the first job.
    *
    * **`require_protocol` is not decoration.** Without it `protocols: ['redis']`
    * only constrains a protocol that is already there, so a bare word passed.
@@ -96,9 +93,8 @@ export class EnvironmentVariables {
    * The first two are the reason this line changed. The last two are the
    * control: the option tightens the check and does not replace it.
    */
-  @IsOptional()
   @IsUrl({ protocols: ['redis'], require_tld: false, require_protocol: true })
-  REDIS_URL?: string;
+  REDIS_URL!: string;
 
   @IsString()
   @MinLength(32)

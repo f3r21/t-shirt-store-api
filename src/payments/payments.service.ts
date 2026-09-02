@@ -14,11 +14,16 @@ import type { AppAbility } from '../authz/ability';
 import { visibleProductWhere } from '../products/product-visibility';
 import { insufficientStock } from '../common/problem/insufficient-stock';
 import { StripeGateway } from './stripe.gateway';
+import { LowStockProducer } from '../stock-notifications/low-stock.producer';
+import type { StockChange } from '../stock-notifications/low-stock';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import { PaymentLinkDto } from './dto/payment-link.dto';
 import { PaymentIntentDto } from './dto/payment-intent.dto';
 
-/** What applying one event came to, for the log line and nothing else. */
+/**
+ * What applying one event came to, for the log line and for the low-stock
+ * producer, which reads `stocks` once the transaction has committed.
+ */
 type Outcome =
   | { kind: 'duplicate' }
   | { kind: 'orphan'; orderId: number | null }
@@ -26,7 +31,7 @@ type Outcome =
   | {
       kind: 'applied';
       orderId: number;
-      stocks: { variantId: number; stock: number }[];
+      stocks: StockChange[];
       oversold: { variantId: number; shortfall: number }[];
     };
 
@@ -77,6 +82,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripe: StripeGateway,
+    private readonly lowStock: LowStockProducer,
   ) {}
 
   /**
@@ -248,9 +254,10 @@ export class PaymentsService {
    * Then each line's stock comes down, conditional on the units being there;
    * when they are not, the money is already taken, so the stock floors at
    * zero and a warning names the shortfall rather than refusing a payment
-   * that happened. The new stock of every line is read back, because the
-   * notification rule of block 5 needs it and this is the only place it is
-   * known.
+   * that happened. The stock of every line before and after is read back,
+   * because the low-stock producer decides on the pair and this is the only
+   * place it is known; it is handed over after the commit, so a queue outage
+   * cannot fail a paid order, and it never throws.
    */
   async applyEvent(event: Stripe.Event): Promise<void> {
     const payment = this.paymentOf(event);
@@ -274,6 +281,9 @@ export class PaymentsService {
         : await this.apply(event, payment.method, payment.orderId);
 
     this.report(event, payment.method, outcome);
+    if (outcome.kind === 'applied') {
+      await this.lowStock.notify(outcome.stocks);
+    }
   }
 
   private async apply(
@@ -311,7 +321,7 @@ export class PaymentsService {
           where: { orderId },
           select: { variantId: true, quantity: true },
         });
-        const stocks: { variantId: number; stock: number }[] = [];
+        const stocks: StockChange[] = [];
         const oversold: { variantId: number; shortfall: number }[] = [];
         for (const line of lines) {
           const down = await tx.productVariant.updateMany({
@@ -323,7 +333,13 @@ export class PaymentsService {
               where: { id: line.variantId },
               select: { stock: true },
             });
-            stocks.push({ variantId: line.variantId, stock: after.stock });
+            // The value before is the value after plus what just came off,
+            // and that is one read fewer than reading it first.
+            stocks.push({
+              variantId: line.variantId,
+              before: after.stock + line.quantity,
+              after: after.stock,
+            });
             continue;
           }
           const before = await tx.productVariant.findUniqueOrThrow({
@@ -334,7 +350,11 @@ export class PaymentsService {
             where: { id: line.variantId },
             data: { stock: 0 },
           });
-          stocks.push({ variantId: line.variantId, stock: 0 });
+          stocks.push({
+            variantId: line.variantId,
+            before: before.stock,
+            after: 0,
+          });
           oversold.push({
             variantId: line.variantId,
             shortfall: line.quantity - before.stock,

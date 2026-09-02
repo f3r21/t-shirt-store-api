@@ -4,8 +4,11 @@ import {
   ProductVariantsController,
   VariantsController,
 } from './variants.controller';
+import { StockNotificationsModule } from '../stock-notifications/stock-notifications.module';
 
+/** The stock count is the second stock writer, so the producer comes in. */
 @Module({
+  imports: [StockNotificationsModule],
   controllers: [ProductVariantsController, VariantsController],
   providers: [VariantsService],
 })

@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import type Stripe from 'stripe';
 import { PaymentsService } from './payments.service';
 import { StripeGateway } from './stripe.gateway';
+import { LowStockProducer } from '../stock-notifications/low-stock.producer';
 import {
   createPrismaMock,
   prismaMockProvider,
@@ -52,6 +53,7 @@ describe('PaymentsService', () => {
     createPaymentIntent: jest.Mock;
     parseEvent: jest.Mock;
   };
+  let notify: jest.Mock;
   let warn: jest.SpyInstance;
   let log: jest.SpyInstance;
 
@@ -62,6 +64,7 @@ describe('PaymentsService', () => {
       createPaymentIntent: jest.fn(),
       parseEvent: jest.fn(),
     };
+    notify = jest.fn().mockResolvedValue(undefined);
     warn = jest
       .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
@@ -74,6 +77,7 @@ describe('PaymentsService', () => {
         PaymentsService,
         prismaMockProvider(prisma),
         { provide: StripeGateway, useValue: gateway },
+        { provide: LowStockProducer, useValue: { notify } },
       ],
     }).compile();
     service = module.get(PaymentsService);
@@ -314,6 +318,7 @@ describe('PaymentsService', () => {
       expect(log).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'payment.duplicate' }),
       );
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it('treats a losing race on the event id as the same replay', async () => {
@@ -339,6 +344,7 @@ describe('PaymentsService', () => {
       expect(warn).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'payment.orphan', orderId: null }),
       );
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it('pays a cart order from payment_intent.succeeded: event first, conditional move, history, stock down', async () => {
@@ -363,10 +369,17 @@ describe('PaymentsService', () => {
           event: 'payment.applied',
           orderId: 501,
           method: 'payment_intent',
-          stocks: [{ variantId: 21, stock: 5 }],
+          stocks: [{ variantId: 21, before: 7, after: 5 }],
         }),
       );
       expect(warn).not.toHaveBeenCalled();
+      // The producer hears after the transaction, with the pair it decides on.
+      expect(notify).toHaveBeenCalledWith([
+        { variantId: 21, before: 7, after: 5 },
+      ]);
+      expect(notify.mock.invocationCallOrder[0]).toBeGreaterThan(
+        prisma.$transaction.mock.invocationCallOrder[0],
+      );
     });
 
     it('pays a link order from checkout.session.completed as payment_link', async () => {
@@ -394,6 +407,7 @@ describe('PaymentsService', () => {
           status: 'cancelled',
         }),
       );
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it('treats an unknown order id as an orphan', async () => {
@@ -427,9 +441,12 @@ describe('PaymentsService', () => {
       expect(log).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'payment.applied',
-          stocks: [{ variantId: 21, stock: 0 }],
+          stocks: [{ variantId: 21, before: 1, after: 0 }],
         }),
       );
+      expect(notify).toHaveBeenCalledWith([
+        { variantId: 21, before: 1, after: 0 },
+      ]);
     });
 
     it('reads a metadata order id that is not a positive integer as none', async () => {

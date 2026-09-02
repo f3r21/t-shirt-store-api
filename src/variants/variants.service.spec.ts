@@ -8,6 +8,7 @@ import {
 import { aProduct, aVariant } from '../products/products.fixtures';
 import { nthArg } from '../common/mock-args';
 import { Prisma } from '../generated/prisma/client';
+import { LowStockProducer } from '../stock-notifications/low-stock.producer';
 
 const uniqueViolation = () =>
   new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
@@ -18,11 +19,17 @@ const uniqueViolation = () =>
 describe('VariantsService', () => {
   let service: VariantsService;
   let prisma: PrismaMock;
+  let notify: jest.Mock;
 
   beforeEach(async () => {
     prisma = createPrismaMock();
+    notify = jest.fn().mockResolvedValue(undefined);
     const module = await Test.createTestingModule({
-      providers: [VariantsService, prismaMockProvider(prisma)],
+      providers: [
+        VariantsService,
+        prismaMockProvider(prisma),
+        { provide: LowStockProducer, useValue: { notify } },
+      ],
     }).compile();
     service = module.get(VariantsService);
   });
@@ -153,6 +160,13 @@ describe('VariantsService', () => {
       // 3, not 7 minus 3. The caller is a person doing a stock count.
       expect(call.data.stock).toBe(3);
       expect(result.stock).toBe(3);
+      // The second stock writer hands the pair over once the write is done.
+      expect(notify).toHaveBeenCalledWith([
+        { variantId: 21, before: 7, after: 3 },
+      ]);
+      expect(notify.mock.invocationCallOrder[0]).toBeGreaterThan(
+        prisma.productVariant.update.mock.invocationCallOrder[0],
+      );
     });
 
     it('answers 404 for a variant that is not visible', async () => {
@@ -161,6 +175,7 @@ describe('VariantsService', () => {
       await expect(
         service.setVariantStock(21, { stock: 3 }),
       ).rejects.toMatchObject({ status: 404 });
+      expect(notify).not.toHaveBeenCalled();
     });
   });
 

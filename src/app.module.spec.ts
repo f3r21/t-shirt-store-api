@@ -7,6 +7,7 @@ import { CONFIG_MODULE_OPTIONS } from './config/config-module-options';
 import { AuthController } from './auth/auth.controller';
 import { UsersController } from './users/users.controller';
 import { MAILER } from './mail/mailer';
+import { STOCK_QUEUE } from './stock-notifications/stock-queue';
 import { validateEnv, EnvironmentVariables } from './config/env.validation';
 
 /**
@@ -26,12 +27,13 @@ import { validateEnv, EnvironmentVariables } from './config/env.validation';
  * machine happens to be configured.
  */
 describe('AppModule', () => {
-  // `REDIS_URL` used to sit in here, and it is the reason this constant is
-  // worth reading: it is the list of what the application genuinely cannot
-  // start without, and a variable nothing opens does not belong on it.
+  // This constant is the list of what the application genuinely cannot start
+  // without. `REDIS_URL` left it while nothing opened a Redis connection, and
+  // it is back since the stock notification queue does.
   const REQUIRED = {
     NODE_ENV: 'test',
     DATABASE_URL: 'postgresql://postgres:postgres@localhost:5433/tshirt_store',
+    REDIS_URL: 'redis://localhost:6379',
     JWT_SECRET: 'a'.repeat(32),
     REFRESH_TOKEN_PEPPER: 'b'.repeat(32),
     MAIL_FROM: 'no-reply@tshirt.store',
@@ -53,9 +55,14 @@ describe('AppModule', () => {
   });
 
   it('resolves every provider the application declares', async () => {
+    // The queue is the one provider that would open a socket when used, so
+    // it is replaced here and the test keeps the promise its docstring makes.
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(STOCK_QUEUE)
+      .useValue({ add: jest.fn(), close: jest.fn() })
+      .compile();
 
     // The two controllers the auth work added, and the mailer binding that
     // nothing outside a test used to supply.
@@ -83,26 +90,26 @@ describe('AppModule', () => {
   });
 
   /**
-   * A variable nothing reads must not stop the boot, and must still be checked
-   * when it is supplied.
+   * A variable something opens must stop the boot when it is missing, and must
+   * still be checked when it is supplied.
    *
-   * `REDIS_URL` was required, so every deployment and the CI job invented a
-   * value for a service the process never opens: no file in `src` reads it and
-   * `package.json` carries no Redis client. `REQUIRED` above no longer names
-   * it, which is the first half of the proof, and the second half is that a
-   * present but malformed value still fails at boot rather than at the first
-   * job that would have used it.
+   * `REDIS_URL` was optional while no file in `src` opened a Redis connection.
+   * The stock notification queue opens one now, so a missing value fails here
+   * rather than at the first enqueue, and a present but malformed value, or one
+   * with the wrong scheme, fails the same way.
    */
-  it('accepts a missing REDIS_URL and still refuses a malformed one', () => {
-    expect(() => validateEnv({ ...REQUIRED })).not.toThrow();
+  it('refuses a missing REDIS_URL, and a malformed one', () => {
+    const withoutRedis: Record<string, string> = { ...REQUIRED };
+    delete withoutRedis.REDIS_URL;
 
-    expect(() =>
-      validateEnv({ ...REQUIRED, REDIS_URL: 'redis://localhost:6379' }),
-    ).not.toThrow();
-
+    expect(() => validateEnv(withoutRedis)).toThrow(/REDIS_URL/);
     expect(() => validateEnv({ ...REQUIRED, REDIS_URL: 'not-a-url' })).toThrow(
       /REDIS_URL/,
     );
+    expect(() =>
+      validateEnv({ ...REQUIRED, REDIS_URL: 'http://localhost:6379' }),
+    ).toThrow(/REDIS_URL/);
+    expect(() => validateEnv(REQUIRED)).not.toThrow();
   });
 
   /**

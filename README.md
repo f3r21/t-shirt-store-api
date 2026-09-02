@@ -50,7 +50,8 @@ blank because they are secrets and the boot refuses without them. `STRIPE_SECRET
 `STRIPE_WEBHOOK_SECRET` are blank for the same reason, and the next section says where they come
 from. `CORS_ORIGINS` is blank because empty is its real default and it means no cross-origin
 browser may call this service. `SMTP_USER` and `SMTP_PASS` are blank because Mailpit wants no
-credentials, and the mailer sends none unless both are set.
+credentials, and the mailer sends none unless both are set. `REDIS_URL` is filled in and
+required: the stock notification queue opens it at boot, and the compose file's Redis answers it.
 
 Only the two signing secrets need at least 32 characters:
 
@@ -136,9 +137,10 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Not built. The table ships, and the upload and the delete wait on object storage |
-| End-to-end tests | Done, in eleven suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
+| End-to-end tests | Done, in twelve suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock producer through the real queue, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
-| The notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
+| Stock notifications | The producer is done: when a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike. The worker and the mail are next. See `ARCHITECTURE.md` for the queue rationale |
+| S3 uploads | Not started |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
 against a real database. Neither has a placeholder entry left. What is untested is what is

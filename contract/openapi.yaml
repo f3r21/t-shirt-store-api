@@ -2012,9 +2012,10 @@ components:
         stock:
           type: integer
           description: The units on hand for this variant. Feature 8 mails the users who
-            like this variant when this value reaches 3. The trigger is per variant, so a
-            customer waiting on one size hears when that size arrives and not when some
-            other size does. This API does not treat the number as a secret.
+            like this variant when a write takes this value from above 3 to 3 or below.
+            The trigger is per variant, so a customer waiting on one size hears when that
+            size runs low and not when some other size does. This API does not treat the
+            number as a secret.
           minimum: 0
           example: 7
 

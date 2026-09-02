@@ -11,10 +11,14 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { SetVariantStockDto } from './dto/set-variant-stock.dto';
 import { ProductVariantDto } from './dto/product-variant.dto';
 import { toProductVariantDto, toStoredOption } from './variant.mapper';
+import { LowStockProducer } from '../stock-notifications/low-stock.producer';
 
 @Injectable()
 export class VariantsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lowStock: LowStockProducer,
+  ) {}
 
   /**
    * A size and colour pair the product already has.
@@ -199,17 +203,24 @@ export class VariantsService {
    * An absolute value and not a delta, because the caller is a person doing a
    * stock count. The DTO bounds it at zero, so the column cannot go negative
    * through this path.
+   *
+   * This is the second stock writer, so the value before and after goes to
+   * the low-stock producer once the write is done. A count that takes a
+   * variant from ten to three tells its likers the same way a purchase does.
    */
   async setVariantStock(
     id: number,
     dto: SetVariantStockDto,
   ): Promise<ProductVariantDto> {
-    await this.findVariantOr404(id);
+    const current = await this.findVariantOr404(id);
 
     const row = await this.prisma.productVariant.update({
       where: { id },
       data: { stock: dto.stock },
     });
+    await this.lowStock.notify([
+      { variantId: id, before: current.stock, after: dto.stock },
+    ]);
     return toProductVariantDto(row);
   }
 }

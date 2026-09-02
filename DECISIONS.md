@@ -732,3 +732,58 @@ pins the instance checks and the clause.
 variant of a deleted product is a 404 rather than a silent 204, because the variant rule says a
 deleted product's variants do not exist, so a like that outlives a deletion is one unreachable row
 until the product row goes.
+
+## 27. Low stock is a crossing, the producer decides after the commit, and it is one job per person
+
+Feature 8 says "when the stock of a product reaches 3, notify users who liked the product but
+haven't purchased it yet", by a background job, by email, with the product's image. This entry is
+the half that decides who and when. The worker and the mail are the next one.
+
+**Reaches means crosses.** A purchase of two units from four leaves two and never shows a three,
+and the point of the feature is a warning before the variant sells out, so `crossesLowStock` fires
+when a write takes the stock from above three to three or below, and never on a rise. The threshold
+is per variant, because the like is (DECISIONS 26, and the ERD ledger's decision 15). This
+repository used to call the message a restock mail, in the page, in two schema comments and in the
+contract's description of `stock`; that was the wrong word for the brief's sentence, and the three
+places now say low stock. Stock oscillating at the threshold fires on every downward crossing, and
+the row the worker writes is what keeps that from mailing a person twice.
+
+**Two writers, one rule.** The webhook and the manager's stock count are the only writes to
+`product_variants.stock`, and both hand `{ variantId, before, after }` to `LowStockProducer.notify`
+after their own write is done. The webhook reads the stock after the decrement and adds the quantity
+back for the value before, one read fewer than reading it first; the oversold path already reads the
+value before it floors. The count already reads the row for its 404.
+
+**The audience is three clauses on the user.** Liked the variant; no `stock_notifications` row
+for it; no line for it in an order whose status is not `pending` or `cancelled`. "Purchased" is
+money taken: the contract says a pending order reserves nothing, and a cancelled order bought
+nothing. The buyer whose payment caused the crossing is excluded by the third clause, since their
+order is `paid` by the time the producer runs.
+
+**After the commit, one job per recipient, and nothing thrown.** The page says the enqueue waits
+for the commit so a queue outage cannot fail a paid order, and it names the gap: a crash between
+the commit and the enqueue loses the job. So `notify` runs after the log line, catches everything,
+and writes `stock.notify-failed` at error; the webhook still answers 200 and the count still answers
+the row. One job per recipient rather than one per variant, because BullMQ is at-least-once and
+retries are per job, so a job dying halfway through a list would resend everything before it. The
+id is `low-stock:<variant>:<user>`, and BullMQ ignores an add whose id exists, so two crossings
+before the worker runs leave one job. A completed job is removed and frees its id, and the database
+row takes over then. A job that failed its attempts keeps its id in the failed set, which the page
+names as the thing to watch, until somebody clears it.
+
+**BullMQ 6.3.4 over ioredis 6.0.0, behind a token.** This major of BullMQ ships no Redis client:
+it loads `ioredis` as an optional peer at the first command and refuses without it, so both are
+dependencies. `STOCK_QUEUE` is the token and `StockQueue` its two methods, the `StripeClient` shape
+again: the producer spec hands it a plain object, the boot spec replaces it so `compile()` opens no
+socket, and the e2e suite keeps the real one against the Redis `docker-compose.yml` runs, on
+database 1 so the suite's keys never share the development queue's. `connection: { url }` is what
+this version hands to ioredis, read from the package rather than remembered. The job defaults are
+three attempts with an exponential backoff from one second, completed jobs removed, failed jobs
+kept. `REDIS_URL` is required again, which its own docstring said would happen the day something
+opened the connection, and CI runs `redis:7-alpine` beside postgres.
+
+**Given up:** the request id does not travel in the job. The `stock.low` line carries the request
+id through the logger and the job ids as its payload, so a mail is traced back to the write through
+that line and not through the job. And the audience query runs inside the request, one per
+crossing: a variant with ten thousand likers would enqueue ten thousand jobs inside the webhook's
+response time, which is the day the producer itself becomes a job.

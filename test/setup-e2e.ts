@@ -25,9 +25,11 @@ process.env.STRIPE_WEBHOOK_SECRET = 'whsec_e2e_secret';
 // one and the silence for any other. An empty list would only prove the
 // refusal, and a permissive default is what this suite exists to catch.
 process.env.CORS_ORIGINS = 'https://shop.example';
-// `REDIS_URL` is deliberately absent. Nothing in `src` opens a Redis
-// connection, so the whole end-to-end suite booting without it is the proof
-// that the variable is optional, and it is a better proof than any assertion.
+// Database 1 on the same container as development, so the suite's queue keys
+// never share the development queue's. `TEST_REDIS_URL` overrides it, the way
+// `TEST_DATABASE_URL` does above.
+process.env.REDIS_URL =
+  process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/1';
 
 // Short, so an expiry test does not have to wait fifteen minutes.
 process.env.JWT_ACCESS_TTL = '900';

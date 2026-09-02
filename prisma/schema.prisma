@@ -392,7 +392,7 @@ model OrderStatusChange {
 ///
 /// Keyed on the variant and not the product, which was the mentor's single
 /// explicit schema correction in the week 2 review: a like says "tell me when
-/// this size in this colour is back", and a product-level like cannot answer it.
+/// this size in this colour runs low", and a product-level like cannot answer it.
 ///
 /// No surrogate id and no timestamp. The pair is the whole fact, the contract
 /// exposes neither, and `PUT` and `DELETE` on the like are idempotent because
@@ -450,7 +450,7 @@ model StripeEvent {
   @@map("stripe_events")
 }
 
-/// One restock mail already sent, so it is not sent twice.
+/// One low-stock mail already sent, so it is not sent twice.
 ///
 /// Stock oscillating around the threshold, three to four to three, would mail
 /// the same person on every crossing. This row is written before the mail, so
