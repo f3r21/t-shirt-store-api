@@ -94,6 +94,35 @@ describe('Authentication (e2e)', () => {
         .expect(409);
     });
 
+    /**
+     * The test above goes through the service, which folds the address before
+     * the write. This one writes around the service, the way a seed or a raw
+     * statement would, so what it proves is the column itself: `email` is
+     * `citext`, and the unique index compares without regard to case. The first
+     * create is the control that the direct path works at all.
+     */
+    it('refuses a second capitalisation of one address written outside the service', async () => {
+      await http().post('/v1/users').send(CLIENT).expect(201);
+
+      const outside = (email: string) =>
+        ctx.prisma.user.create({
+          data: {
+            email,
+            passwordHash: 'not a real hash',
+            firstName: 'Ana',
+            lastName: 'Ramirez',
+            role: { connect: { name: 'client' } },
+          },
+        });
+
+      await expect(outside('bob@example.com')).resolves.toMatchObject({
+        email: 'bob@example.com',
+      });
+      await expect(outside('ANA@Example.COM')).rejects.toMatchObject({
+        code: 'P2002',
+      });
+    });
+
     it('rejects a role in the body rather than granting it', async () => {
       const res = await http()
         .post('/v1/users')

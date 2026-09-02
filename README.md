@@ -184,5 +184,3 @@ Stated here rather than discovered later. The longer list, with the reasoning, i
   alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
   and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
-- An email address is folded to lower case in the service. The durable form is a unique
-  index on `lower(email)`, which is not yet written.

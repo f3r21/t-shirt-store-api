@@ -251,16 +251,34 @@ the number, so it is a module constant rather than configuration.
 
 ## 10. Email is folded to lower case, in full
 
-The column is plain text behind a case-sensitive unique index, so without normalisation
-`ana@example.com` and `ana@EXAMPLE.com` register as two accounts, and three operations look
+The column was plain text behind a case-sensitive unique index, so without normalisation
+`ana@example.com` and `ana@EXAMPLE.com` registered as two accounts, and three operations look
 an address up by equality.
 
 The **whole** address is folded, not only the domain. RFC 5321 leaves the local part
 case-sensitive, so this is a product decision rather than a standards one: no mail provider
 a customer of this store is likely to use treats `Ana@` and `ana@` as two people, and two
-accounts for one person is the worse failure. **Not yet done:** the durable form is a unique
-index on `lower(email)` or a `citext` column, so that a second code path cannot reintroduce
-the gap. Today the normaliser is the only writer.
+accounts for one person is the worse failure.
+
+**Done in `20260902013632_email_citext`:** the column is `citext`, so the database refuses
+a second capitalisation from any writer, and `auth.e2e-spec.ts` proves it with a create that
+goes around the service. It is a column type and not the `lower(email)` index this entry
+first named, for three reasons. The schema cannot state an expression index, and Prisma's
+own documentation says one added by hand is invisible to `db pull`. Since 7.4.0 `migrate dev`
+has emitted `DROP INDEX` for hand-written partial indexes it meets in the shadow database
+(prisma/prisma#29289, open), and a constraint the tooling may remove on the next migration
+is not a durable form. Whether an expression index shares that fate is unverified, and the
+CI drift check is not where to find out. `@db.Citext` is a native type, so
+`migrate diff --exit-code`, which CI runs, sees the column and nothing to drop: it answers
+"No difference detected" after the migration and reports the type change against the
+previous schema. The extension is installed by one line in the migration,
+`CREATE EXTENSION IF NOT EXISTS citext`, because Prisma manages extensions only behind the
+`postgresqlExtensions` preview flag and does not need to here.
+
+The cost is that every comparison on the column is case-insensitive, `ORDER BY` included,
+which is right for an address and wrong for almost anything else, so nothing else is
+`citext`. The normaliser stays: `citext` does not trim, and one stored form keeps the mailed
+address and the three lookups the same string.
 
 ## 11. Problem titles come from a table, never from the exception message
 
