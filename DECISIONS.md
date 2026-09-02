@@ -415,3 +415,37 @@ and wrong the moment something is. No test can catch that, because the end-to-en
 the process directly and `req.ip` there is the real client. It is a setting somebody has to know
 to set, and saying so is the most this repository can do about it without an environment to
 deploy to.
+
+## 20. Two transitive advisories are overridden, not accepted
+
+`npm audit` on this tree reported four high findings, and no code of mine is in the path.
+`mysql2@3.15.3` (GHSA-3f6p-5ww8-9rcr, an authentication downgrade that leaks a plaintext
+password) and `deepmerge-ts@7.1.5` (GHSA-ggr8-5vv4-36mx, stack exhaustion on a recursive
+object graph) both arrive through `prisma@7.10.0`, the CLI package. The CLI is a
+devDependency, and that would be the end of it, except that `@prisma/client@7.10.0` depends
+on the CLI, so `npm audit --omit=dev` reports the same four and the `npm ci --omit=dev` in the
+Dockerfile ships both packages in the runtime image. `npm view 'prisma@>=7.10.0 <8' version`
+answers 7.10.0 alone, the `latest` tag is a release candidate of 8, and `npm audit fix --force`
+offers 6.19.3, a downgrade across a major version to fix a driver this service never loads.
+
+**The fix is an `overrides` block, a floor and not a pin.** `mysql2: ">=3.22.0"` and
+`deepmerge-ts: ">=8.0.0"`. The first is a MySQL driver in a Postgres service:
+`rg -n mysql src prisma test` exits 1, and the only adapter in the tree is
+`@prisma/adapter-pg`, so the override changes bytes in `node_modules` that no code path
+reaches. The second is not free. `@prisma/config` imports `deepmerge` and hands it to c12 as
+the merger that assembles `prisma.config.ts`, so every CLI call goes through it. The 8.0.0
+changelog names its breaking changes, `deepmergeInto` no longer mutating its inputs, two
+metadata renames and the map-merge internals, and the variadic `deepmerge` export is not
+among them. That is an argument, not a proof; the proof is that `prisma generate` and
+`migrate diff` ran through the new version before this entry was committed.
+
+**The CI step is the test.** An override is a promise about packages the project never calls,
+so no unit test can fail when it stops being true. `npm audit --omit=dev --audit-level=high`
+in the Verify job is the only assertion that can, and it audits the closure the image ships,
+which is the one that matters. It exited 1 on the lockfile before the override and 0 after.
+
+**Given up:** the floor is re-evaluated on every install, so a future advisory in either
+overridden package is accepted silently until the audit step says otherwise, and a future
+Prisma release that fixes this itself makes the block dead weight rather than wrong. It should
+be deleted the day Prisma 7 ships a fix or 8 lands, and nothing in the repository will remind
+anyone; this entry is the reminder.

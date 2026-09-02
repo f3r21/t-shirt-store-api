@@ -82,6 +82,12 @@ jobs:
 
       - run: npm ci
 
+      # The closure the Dockerfile ships is `npm ci --omit=dev`, so that is the
+      # tree audited here. High and critical fail the job. The two `overrides`
+      # in package.json exist because of this step; DECISIONS 20 says why.
+      - name: Audit the production dependency tree
+        run: npm audit --omit=dev --audit-level=high
+
       # src/generated is not in version control, and 15 files import from it, so
       # nothing below this step compiles without it.
       - name: Generate the Prisma client

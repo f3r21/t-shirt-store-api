@@ -113,5 +113,9 @@
       "eslint --fix",
       "prettier --write"
     ]
+  },
+  "overrides": {
+    "mysql2": ">=3.22.0",
+    "deepmerge-ts": ">=8.0.0"
   }
 }

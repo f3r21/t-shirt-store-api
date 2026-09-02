@@ -71,6 +71,7 @@ npm run test:e2e     # jest, against a real database
 npm run lint:ci      # eslint, reports and changes nothing
 npm run format:check # prettier, reports and changes nothing
 npm run docs:lint    # vale, this file and ARCHITECTURE.md, reports and changes nothing
+npm audit --omit=dev --audit-level=high   # the dependency tree the image ships
 ```
 
 `lint:ci` and `format:check` are the read-only pair, and they are what CI runs. `npm run lint`
