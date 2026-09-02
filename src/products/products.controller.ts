@@ -20,10 +20,11 @@ import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductDto } from './dto/product.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can, inactiveProductsNeedManager } from '../authz/policies';
+import { CurrentAbility } from '../authz/current-ability.decorator';
+import type { AppAbility } from '../authz/ability';
 import { OptionalAuth } from '../auth/decorators/optional-auth.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 
@@ -42,6 +43,7 @@ export class ProductsController {
    * sent a token would be invisible to the handler.
    */
   @OptionalAuth()
+  @CheckPolicies(can('read', 'Product'), inactiveProductsNeedManager)
   @ApiOperation({ summary: 'List products' })
   @ApiPageResponse(ProductSummaryDto, 'A page of products.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
@@ -50,13 +52,14 @@ export class ProductsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listProducts(
-    @CurrentUser() viewer: AccessTokenPayload | undefined,
+    @CurrentAbility() ability: AppAbility,
     @Query() query: ListProductsQueryDto,
   ) {
-    return this.products.listProducts(viewer, query);
+    return this.products.listProducts(ability, query);
   }
 
   @OptionalAuth()
+  @CheckPolicies(can('read', 'Product'))
   @ApiOperation({ summary: 'Get one product' })
   @ApiResponse({
     status: 200,
@@ -68,13 +71,13 @@ export class ProductsController {
   @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get(':id')
   getProduct(
-    @CurrentUser() viewer: AccessTokenPayload | undefined,
+    @CurrentAbility() ability: AppAbility,
     @Param('id', ParseIdPipe) id: number,
   ): Promise<ProductDto> {
-    return this.products.getProduct(viewer, id);
+    return this.products.getProduct(ability, id);
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('create', 'Product'))
   @ApiOperation({ summary: 'Create a product' })
   @ApiResponse({
     status: 201,
@@ -103,7 +106,7 @@ export class ProductsController {
     return product;
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('update', 'Product'))
   @ApiOperation({ summary: 'Update a product' })
   @ApiResponse({
     status: 200,
@@ -124,7 +127,7 @@ export class ProductsController {
     return this.products.updateProduct(id, dto);
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('delete', 'Product'))
   @ApiOperation({ summary: 'Delete a product' })
   @ApiResponse({ status: 204, description: 'The product is deleted.' })
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })

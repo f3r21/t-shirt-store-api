@@ -23,11 +23,13 @@ import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import { PaymentLinkDto } from './dto/payment-link.dto';
 import { PaymentIntentDto } from './dto/payment-intent.dto';
 import { StripeEventDto } from './dto/stripe-event.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
+import { CurrentAbility } from '../authz/current-ability.decorator';
+import type { AppAbility } from '../authz/ability';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { ROLE_NAMES } from '../users/dto/user.dto';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
@@ -46,7 +48,7 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('create', 'Order'))
   @ApiOperation({ summary: 'Create a payment link for one product' })
   @ApiResponse({
     status: 201,
@@ -82,7 +84,7 @@ export class PaymentsController {
     return link;
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('pay', 'Order'))
   @ApiOperation({ summary: 'Create a payment intent for an order' })
   @ApiResponse({
     status: 201,
@@ -105,9 +107,10 @@ export class PaymentsController {
   @HttpCode(HttpStatus.CREATED)
   createPaymentIntent(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentAbility() ability: AppAbility,
     @Param('id', ParseIdPipe) id: number,
   ): Promise<PaymentIntentDto> {
-    return this.payments.createPaymentIntent(user, id);
+    return this.payments.createPaymentIntent(user, ability, id);
   }
 
   @Public()

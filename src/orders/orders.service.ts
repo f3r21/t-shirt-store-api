@@ -8,7 +8,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { isManager, visibleProductWhere } from '../products/product-visibility';
+import { accessibleBy } from '@casl/prisma';
+import { subject } from '@casl/ability';
+import type { AppAbility } from '../authz/ability';
+import { visibleProductWhere } from '../products/product-visibility';
 import { CART_LINE_INCLUDE } from '../cart/cart.mapper';
 import { insufficientStock } from '../common/problem/insufficient-stock';
 import { ProblemException } from '../common/problem/problem.exception';
@@ -31,11 +34,13 @@ import {
  * Orders: placed from the cart, moved through the status flow, and read back
  * as one order or as a filtered page. See `openapi.yaml:1375-1586`.
  *
- * **Ownership is in the `where`, not in an `if`.** A client's reads and
- * writes resolve the order with `userId` fixed to the caller, so another
- * client's order and a missing order are the same 404 and no branch can leak
- * that an id exists. A manager resolves without it. The contract asks for
- * exactly this: 404 and not 403, because an integer id can be guessed.
+ * **Ownership is in the `where`, not in an `if`, and the `where` comes from
+ * the ability.** `accessibleBy(ability).Order` is the rule's own condition as
+ * a Prisma clause: a client's own rows, every row for a manager. A client's
+ * reads and writes resolve the order through it, so another client's order
+ * and a missing order are the same 404 and no branch can leak that an id
+ * exists. The contract asks for exactly this: 404 and not 403, because an
+ * integer id can be guessed.
  *
  * **Stock is read here and never written.** The contract says an unpaid order
  * reserves nothing and the stock falls when the payment webhook reports
@@ -92,9 +97,9 @@ export class OrdersService {
     });
   }
 
-  /** A manager sees every order; anyone else, their own. */
-  private ownedBy(viewer: AccessTokenPayload): Prisma.OrderWhereInput {
-    return isManager(viewer) ? {} : { userId: viewer.sub };
+  /** The rows the ability lets this caller read, as a where clause. */
+  private readable(ability: AppAbility): Prisma.OrderWhereInput {
+    return { AND: [accessibleBy(ability, 'read').Order] };
   }
 
   /**
@@ -172,9 +177,13 @@ export class OrdersService {
   }
 
   /** One order with its lines and history, or 404 under the ownership rule. */
-  async getOrder(viewer: AccessTokenPayload, id: number): Promise<OrderDto> {
+  async getOrder(
+    viewer: AccessTokenPayload,
+    ability: AppAbility,
+    id: number,
+  ): Promise<OrderDto> {
     const row = await this.prisma.order.findFirst({
-      where: { id, ...this.ownedBy(viewer) },
+      where: { id, ...this.readable(ability) },
       include: ORDER_DETAIL_INCLUDE,
     });
     if (row === null) {
@@ -259,30 +268,39 @@ export class OrdersService {
   /**
    * Move an order to another status.
    *
-   * The table decides (`order-status.ts`), and the write is conditional on the
-   * status the table saw: `updateMany` with the old status in its `where`, so
-   * a cancel and a ship racing on one order cannot both land, and the loser
+   * Two questions, in order. The ability says who: a cancel needs `cancel`
+   * on this order, which a client has on their own and a manager on any, and
+   * an advance needs `update`, which only a manager has; 403 otherwise. Then
+   * the table says whether the move is legal from where the order stands
+   * (`order-status.ts`), 409 otherwise. The write is conditional on the status
+   * the table saw: `updateMany` with the old status in its `where`, so a
+   * cancel and a ship racing on one order cannot both land, and the loser
    * reads 409 rather than overwriting a `shipped` with a `cancelled`. The
    * history row is written in the same transaction, then the order is read
    * back with it.
    */
   async setOrderStatus(
     viewer: AccessTokenPayload,
+    ability: AppAbility,
     id: number,
     dto: SetOrderStatusDto,
   ): Promise<OrderDto> {
     const order = await this.prisma.order.findFirst({
-      where: { id, ...this.ownedBy(viewer) },
-      select: { id: true, status: true },
+      where: { id, ...this.readable(ability) },
     });
     if (order === null) {
       throw new NotFoundException();
     }
 
-    const verdict = nextStatus(viewer.role, order.status, dto.status);
-    if (verdict === 'forbidden') {
+    const allowed =
+      dto.status === 'cancelled'
+        ? ability.can('cancel', subject('Order', order))
+        : ability.can('update', subject('Order', order));
+    if (!allowed) {
       throw new ForbiddenException();
     }
+
+    const verdict = nextStatus(order.status, dto.status);
     if (verdict === 'not-cancellable') {
       throw this.notCancellable();
     }

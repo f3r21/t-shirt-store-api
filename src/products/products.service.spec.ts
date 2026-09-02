@@ -15,6 +15,13 @@ import {
 } from './products.fixtures';
 import { nthArg } from '../common/mock-args';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
+import { AbilityFactory } from '../authz/ability.factory';
+
+/** The three callers, as the guard hands them to the service. */
+const abilities = new AbilityFactory();
+const ANON = abilities.for(undefined);
+const CLIENT = abilities.for(AS_CLIENT);
+const MANAGER = abilities.for(AS_MANAGER);
 
 /**
  * The five product operations.
@@ -54,42 +61,36 @@ describe('ProductsService', () => {
     });
 
     it('hides deleted and disabled products from an anonymous caller', async () => {
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       const call = nthArg(prisma.product.findMany) as {
-        where: { deletedAt: null; isActive: boolean };
+        where: Record<string, unknown>;
       };
-      expect(call.where.deletedAt).toBeNull();
-      expect(call.where.isActive).toBe(true);
+      // The ability's own condition, as `accessibleBy` writes it, and the
+      // shopper's view on top because the flag was not set.
+      expect(call.where).toEqual({
+        AND: [{ OR: [{ deletedAt: null, isActive: true }] }],
+        isActive: true,
+      });
     });
 
     it('still hides deleted products from a manager who asks for the inactive ones', async () => {
-      await service.listProducts(AS_MANAGER, query({ includeInactive: true }));
+      await service.listProducts(MANAGER, query({ includeInactive: true }));
 
       const call = nthArg(prisma.product.findMany) as {
-        where: { deletedAt: null; isActive?: boolean };
+        where: Record<string, unknown>;
       };
-      // Deleted is 404 for everyone. Only the isActive filter is relaxed.
-      expect(call.where.deletedAt).toBeNull();
-      expect(call.where).not.toHaveProperty('isActive');
-    });
-
-    it('refuses includeInactive with 401 when nobody is signed in', async () => {
-      // 401 and not 403: the server cannot know whether an anonymous caller is
-      // a manager until they say who they are.
-      await expect(
-        service.listProducts(undefined, query({ includeInactive: true })),
-      ).rejects.toMatchObject({ status: 401 });
-    });
-
-    it('refuses includeInactive with 403 when a client asks', async () => {
-      await expect(
-        service.listProducts(AS_CLIENT, query({ includeInactive: true })),
-      ).rejects.toMatchObject({ status: 403 });
+      // Deleted is 404 for everyone. Only the isActive filter is relaxed. Who
+      // may set the flag is the guard's question now, tested with it.
+      expect(call.where).toEqual({
+        AND: [
+          { OR: [{ deletedAt: null }, { deletedAt: null, isActive: true }] },
+        ],
+      });
     });
 
     it('reports priceFrom as the cheapest variant', async () => {
-      const result = await service.listProducts(undefined, query());
+      const result = await service.listProducts(ANON, query());
 
       expect(result.data[0].priceFrom).toBe(1999);
     });
@@ -97,7 +98,7 @@ describe('ProductsService', () => {
     it('leaves priceFrom absent when the product has no variant', async () => {
       prisma.productVariant.groupBy.mockResolvedValue([]);
 
-      const result = await service.listProducts(undefined, query());
+      const result = await service.listProducts(ANON, query());
 
       // Absent, not zero. Zero would read as free.
       expect(result.data[0]).not.toHaveProperty('priceFrom');
@@ -110,7 +111,7 @@ describe('ProductsService', () => {
         aProduct({ id: 9 }),
       ]);
 
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       // One groupBy for the page, not one query per row. This is the N+1 this
       // endpoint is most likely to grow.
@@ -132,7 +133,7 @@ describe('ProductsService', () => {
         { productId: 7, url: 'https://cdn.tshirt.store/products/7/front.jpg' },
       ]);
 
-      const result = await service.listProducts(undefined, query());
+      const result = await service.listProducts(ANON, query());
 
       expect(result.data[0].primaryImageUrl).toBe(
         'https://cdn.tshirt.store/products/7/front.jpg',
@@ -145,7 +146,7 @@ describe('ProductsService', () => {
     });
 
     it('leaves primaryImageUrl absent when the product has no primary image', async () => {
-      const result = await service.listProducts(undefined, query());
+      const result = await service.listProducts(ANON, query());
 
       // Absent, not null and not an empty string: the contract says absent.
       expect(result.data[0]).not.toHaveProperty('primaryImageUrl');
@@ -155,7 +156,7 @@ describe('ProductsService', () => {
       prisma.product.findMany.mockResolvedValue([]);
       prisma.product.count.mockResolvedValue(0);
 
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       expect(prisma.productImage.findMany).not.toHaveBeenCalled();
     });
@@ -163,7 +164,7 @@ describe('ProductsService', () => {
     it('reports the total before limit and offset apply', async () => {
       prisma.product.count.mockResolvedValue(347);
 
-      const result = await service.listProducts(undefined, query());
+      const result = await service.listProducts(ANON, query());
 
       expect(result.meta.total).toBe(347);
       expect(result.data).toHaveLength(1);
@@ -185,7 +186,7 @@ describe('ProductsService', () => {
      * the next one.
      */
     it('passes limit and offset to findMany as take and skip', async () => {
-      await service.listProducts(undefined, query({ limit: 5, offset: 40 }));
+      await service.listProducts(ANON, query({ limit: 5, offset: 40 }));
 
       const call = nthArg(prisma.product.findMany) as {
         take: number;
@@ -198,7 +199,7 @@ describe('ProductsService', () => {
     it('applies the contract defaults when the query names neither', async () => {
       // Built from the DTO rather than from a literal, so this asserts the
       // contract's default and not a number written twice.
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       const call = nthArg(prisma.product.findMany) as {
         take: number;
@@ -210,7 +211,7 @@ describe('ProductsService', () => {
 
     it('echoes limit and offset back in meta', async () => {
       const result = await service.listProducts(
-        undefined,
+        ANON,
         query({ limit: 5, offset: 40 }),
       );
 
@@ -222,7 +223,7 @@ describe('ProductsService', () => {
       // The count is the total before the page applies. Paginating it would make
       // `meta.total` the size of the page, and every client's "page N of M"
       // would read 1 of 1.
-      await service.listProducts(undefined, query({ limit: 5, offset: 40 }));
+      await service.listProducts(ANON, query({ limit: 5, offset: 40 }));
 
       const countCall = nthArg(prisma.product.count);
       expect(countCall).not.toHaveProperty('take');
@@ -239,17 +240,19 @@ describe('ProductsService', () => {
      * filtered, even though none of them appears in `data`.
      */
     it('counts with the visibility rule and not the whole table', async () => {
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       const call = nthArg(prisma.product.count) as {
-        where: { deletedAt: null; isActive: boolean };
+        where: Record<string, unknown>;
       };
-      expect(call.where.deletedAt).toBeNull();
-      expect(call.where.isActive).toBe(true);
+      expect(call.where).toEqual({
+        AND: [{ OR: [{ deletedAt: null, isActive: true }] }],
+        isActive: true,
+      });
     });
 
     it('orders by an expression that pins the rows uniquely', async () => {
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       const call = nthArg(prisma.product.findMany) as {
         orderBy: Record<string, string>[];
@@ -266,7 +269,7 @@ describe('ProductsService', () => {
      * for one of them must not require it to sit in only that one.
      */
     it('filters by the category the query names', async () => {
-      await service.listProducts(undefined, query({ categoryId: 4 }));
+      await service.listProducts(ANON, query({ categoryId: 4 }));
 
       const call = nthArg(prisma.product.findMany) as {
         where: { categories?: { some: { categoryId: number } } };
@@ -275,7 +278,7 @@ describe('ProductsService', () => {
     });
 
     it('sends no category filter when the query names none', async () => {
-      await service.listProducts(undefined, query());
+      await service.listProducts(ANON, query());
 
       // The negative half. Without it a hard-coded category would satisfy the
       // test above and quietly hide most of the catalog.
@@ -294,7 +297,7 @@ describe('ProductsService', () => {
      * assertion never sees.
      */
     it('counts the page with the same filter it lists it with', async () => {
-      await service.listProducts(undefined, query({ categoryId: 4 }));
+      await service.listProducts(ANON, query({ categoryId: 4 }));
 
       const listed = nthArg(prisma.product.findMany) as { where: unknown };
       const counted = nthArg(prisma.product.count) as { where: unknown };
@@ -306,7 +309,7 @@ describe('ProductsService', () => {
     it('returns the product with its variants and categories', async () => {
       prisma.product.findFirst.mockResolvedValue(aProductWithRelations());
 
-      const result = await service.getProduct(AS_CLIENT, 7);
+      const result = await service.getProduct(CLIENT, 7);
 
       expect(result.id).toBe(7);
       expect(result.variants).toHaveLength(1);
@@ -335,7 +338,7 @@ describe('ProductsService', () => {
         }),
       );
 
-      const result = await service.getProduct(AS_CLIENT, 7);
+      const result = await service.getProduct(CLIENT, 7);
 
       expect(result.images).toEqual([
         {
@@ -363,7 +366,7 @@ describe('ProductsService', () => {
     it('never leaks deletedAt or the raw price column', async () => {
       prisma.product.findFirst.mockResolvedValue(aProductWithRelations());
 
-      const result = await service.getProduct(AS_CLIENT, 7);
+      const result = await service.getProduct(CLIENT, 7);
 
       expect(result).not.toHaveProperty('deletedAt');
       expect(result.variants[0]).not.toHaveProperty('priceCents');
@@ -373,7 +376,7 @@ describe('ProductsService', () => {
     it('answers 404 when the visibility filter matches nothing', async () => {
       prisma.product.findFirst.mockResolvedValue(null);
 
-      await expect(service.getProduct(AS_CLIENT, 7)).rejects.toMatchObject({
+      await expect(service.getProduct(CLIENT, 7)).rejects.toMatchObject({
         status: 404,
       });
     });
@@ -381,18 +384,26 @@ describe('ProductsService', () => {
     it('lets a manager see a disabled product and nobody else', async () => {
       prisma.product.findFirst.mockResolvedValue(aProductWithRelations());
 
-      await service.getProduct(AS_MANAGER, 7);
+      await service.getProduct(MANAGER, 7);
       const asManager = nthArg(prisma.product.findFirst) as {
         where: Record<string, unknown>;
       };
 
-      await service.getProduct(AS_CLIENT, 7);
+      await service.getProduct(CLIENT, 7);
       const asClient = nthArg(prisma.product.findFirst, 0, 1) as {
-        where: { isActive?: boolean };
+        where: Record<string, unknown>;
       };
 
-      expect(asManager.where).not.toHaveProperty('isActive');
-      expect(asClient.where.isActive).toBe(true);
+      expect(asManager.where).toEqual({
+        id: 7,
+        AND: [
+          { OR: [{ deletedAt: null }, { deletedAt: null, isActive: true }] },
+        ],
+      });
+      expect(asClient.where).toEqual({
+        id: 7,
+        AND: [{ OR: [{ deletedAt: null, isActive: true }] }],
+      });
     });
   });
 

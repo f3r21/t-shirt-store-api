@@ -5,7 +5,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AccessTokenGuard } from './access-token.guard';
-import { RolesGuard } from './roles.guard';
+import { PoliciesGuard } from '../authz/policies.guard';
 import { EnvironmentVariables } from '../config/env.validation';
 
 /**
@@ -42,7 +42,7 @@ import { EnvironmentVariables } from '../config/env.validation';
     // Order is the point. Nest runs global guards in registration order, so the
     // token guard populates `request.user` before the roles guard reads it.
     { provide: APP_GUARD, useClass: AccessTokenGuard },
-    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: PoliciesGuard },
   ],
   exports: [AuthService],
 })

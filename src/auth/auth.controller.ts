@@ -26,8 +26,8 @@ import { PageQueryDto } from '../common/dto/page-query.dto';
 import { ApiPageResponse } from '../common/dto/api-page-response';
 import { SessionDto } from './dto/session.dto';
 import { PASSWORD_THROTTLE } from './password-throttle';
-import { Roles } from './decorators/roles.decorator';
-import { ROLE_NAMES } from '../users/dto/user.dto';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
 import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
@@ -101,7 +101,7 @@ export class AuthController {
     return this.auth.refreshSession(dto);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'RefreshToken'))
   @ApiOperation({ summary: 'List the devices signed in to this account' })
   @ApiPageResponse(SessionDto, 'The server sent the list.')
   @ApiResponse({ status: 400, description: 'The query is not valid.' })
@@ -122,7 +122,7 @@ export class AuthController {
    * so the parameterised route would otherwise swallow this one and the handler
    * would receive the literal string `current` as an id.
    */
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'RefreshToken'))
   @ApiOperation({ summary: 'Sign out this device' })
   @ApiResponse({ status: 204, description: 'The device is signed out.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
@@ -133,7 +133,7 @@ export class AuthController {
     return this.auth.deleteCurrentSession(user.sub, user.sid);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'RefreshToken'))
   @ApiOperation({ summary: 'Sign out another device' })
   @ApiResponse({ status: 204, description: 'The device is signed out.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })

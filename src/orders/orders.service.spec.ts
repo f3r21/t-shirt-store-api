@@ -6,6 +6,7 @@ import {
   PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER } from '../products/products.fixtures';
+import { AbilityFactory } from '../authz/ability.factory';
 import { aCartLine } from '../cart/cart.fixtures';
 import {
   anOrder,
@@ -21,6 +22,10 @@ const caught = (run: () => Promise<unknown>) =>
   run()
     .then(() => null)
     .catch((e: unknown) => e as ProblemException);
+
+const abilities = new AbilityFactory();
+const CLIENT_ABILITY = abilities.for(AS_CLIENT);
+const MANAGER_ABILITY = abilities.for(AS_MANAGER);
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -182,25 +187,27 @@ describe('OrdersService', () => {
     it("fixes the user id in the where for a client, so another client's order is the same 404", async () => {
       prisma.order.findFirst.mockResolvedValue(null);
 
-      await expect(service.getOrder(AS_CLIENT, 501)).rejects.toMatchObject({
+      await expect(
+        service.getOrder(AS_CLIENT, CLIENT_ABILITY, 501),
+      ).rejects.toMatchObject({
         status: 404,
       });
 
       const call = nthArg(prisma.order.findFirst) as {
         where: { id: number; userId?: number };
       };
-      expect(call.where).toEqual({ id: 501, userId: 128 });
+      expect(call.where).toEqual({ id: 501, AND: [{ OR: [{ userId: 128 }] }] });
     });
 
     it('lets a manager read any order, with the customer', async () => {
       prisma.order.findFirst.mockResolvedValue(anOrderWithDetail());
 
-      const order = await service.getOrder(AS_MANAGER, 501);
+      const order = await service.getOrder(AS_MANAGER, MANAGER_ABILITY, 501);
 
       const call = nthArg(prisma.order.findFirst) as {
         where: Record<string, unknown>;
       };
-      expect(call.where).toEqual({ id: 501 });
+      expect(call.where).toEqual({ id: 501, AND: [{}] });
       expect(order.customer?.email).toBe('ana@example.com');
     });
   });
@@ -291,7 +298,7 @@ describe('OrdersService', () => {
 
   describe('setOrderStatus', () => {
     beforeEach(() => {
-      prisma.order.findFirst.mockResolvedValue({ id: 501, status: 'pending' });
+      prisma.order.findFirst.mockResolvedValue(anOrder({ status: 'pending' }));
       prisma.order.findUniqueOrThrow.mockResolvedValue(
         anOrderWithDetail({ status: 'cancelled' }),
       );
@@ -301,26 +308,32 @@ describe('OrdersService', () => {
       prisma.order.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.setOrderStatus(AS_CLIENT, 501, { status: 'cancelled' }),
+        service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+          status: 'cancelled',
+        }),
       ).rejects.toMatchObject({ status: 404 });
 
       const call = nthArg(prisma.order.findFirst) as { where: unknown };
-      expect(call.where).toEqual({ id: 501, userId: 128 });
+      expect(call.where).toEqual({ id: 501, AND: [{ OR: [{ userId: 128 }] }] });
       expect(prisma.order.updateMany).not.toHaveBeenCalled();
     });
 
     it('answers 403 to a client sending anything but cancelled', async () => {
       await expect(
-        service.setOrderStatus(AS_CLIENT, 501, { status: 'processing' }),
+        service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+          status: 'processing',
+        }),
       ).rejects.toMatchObject({ status: 403 });
       expect(prisma.order.updateMany).not.toHaveBeenCalled();
     });
 
     it('answers 409 order-not-cancellable after the order shipped', async () => {
-      prisma.order.findFirst.mockResolvedValue({ id: 501, status: 'shipped' });
+      prisma.order.findFirst.mockResolvedValue(anOrder({ status: 'shipped' }));
 
       const err = await caught(() =>
-        service.setOrderStatus(AS_CLIENT, 501, { status: 'cancelled' }),
+        service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+          status: 'cancelled',
+        }),
       );
 
       expect(err?.type).toBe(ProblemType.OrderNotCancellable);
@@ -332,7 +345,9 @@ describe('OrdersService', () => {
 
     it('answers a plain 409 for a move the status does not allow', async () => {
       const err = await caught(() =>
-        service.setOrderStatus(AS_MANAGER, 501, { status: 'processing' }),
+        service.setOrderStatus(AS_MANAGER, MANAGER_ABILITY, 501, {
+          status: 'processing',
+        }),
       );
 
       expect(err?.getStatus()).toBe(409);
@@ -343,9 +358,14 @@ describe('OrdersService', () => {
     });
 
     it('writes the move conditionally on the status it read, then the history row', async () => {
-      const order = await service.setOrderStatus(AS_CLIENT, 501, {
-        status: 'cancelled',
-      });
+      const order = await service.setOrderStatus(
+        AS_CLIENT,
+        CLIENT_ABILITY,
+        501,
+        {
+          status: 'cancelled',
+        },
+      );
 
       expect(nthArg(prisma.order.updateMany)).toEqual({
         where: { id: 501, status: 'pending' },
@@ -361,7 +381,9 @@ describe('OrdersService', () => {
       prisma.order.updateMany.mockResolvedValue({ count: 0 });
 
       const err = await caught(() =>
-        service.setOrderStatus(AS_CLIENT, 501, { status: 'cancelled' }),
+        service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+          status: 'cancelled',
+        }),
       );
 
       expect(err?.getStatus()).toBe(409);
@@ -369,17 +391,22 @@ describe('OrdersService', () => {
     });
 
     it('lets a manager advance a paid order, reading any order', async () => {
-      prisma.order.findFirst.mockResolvedValue({ id: 501, status: 'paid' });
+      prisma.order.findFirst.mockResolvedValue(anOrder({ status: 'paid' }));
       prisma.order.findUniqueOrThrow.mockResolvedValue(
         anOrderWithDetail({ ...anOrder({ status: 'processing' }) }),
       );
 
-      const order = await service.setOrderStatus(AS_MANAGER, 501, {
-        status: 'processing',
-      });
+      const order = await service.setOrderStatus(
+        AS_MANAGER,
+        MANAGER_ABILITY,
+        501,
+        {
+          status: 'processing',
+        },
+      );
 
       const call = nthArg(prisma.order.findFirst) as { where: unknown };
-      expect(call.where).toEqual({ id: 501 });
+      expect(call.where).toEqual({ id: 501, AND: [{}] });
       expect(order.status).toBe('processing');
       expect(order.customer).toBeDefined();
     });

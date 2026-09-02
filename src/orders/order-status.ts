@@ -16,19 +16,22 @@ export const REQUESTABLE_STATUSES = [
 export type RequestableStatus = (typeof REQUESTABLE_STATUSES)[number];
 
 /**
- * What a requested move is, before anything is written.
+ * What a requested move is, given the order's current status.
  *
  * - `ok`: write it.
- * - `forbidden`: the caller's role may not send this status at all. A client
- *   may only cancel. 403.
  * - `not-cancellable`: a cancel after the order shipped. 409 with the
  *   `order-not-cancellable` problem type, the one 409 the contract names here.
  * - `illegal`: the current status does not allow this move. 409.
+ *
+ * Who may ask is not this table's business. The ability decides that before
+ * the table is consulted: a client may cancel their own order and a manager
+ * may advance any, and the service answers 403 from the ability, then 409
+ * from here.
  */
-export type MoveVerdict = 'ok' | 'forbidden' | 'not-cancellable' | 'illegal';
+export type MoveVerdict = 'ok' | 'not-cancellable' | 'illegal';
 
-/** The one forward step a manager may take from each status. */
-const MANAGER_ADVANCES: Partial<Record<OrderStatus, RequestableStatus>> = {
+/** The one forward step from each status. */
+const ADVANCES: Partial<Record<OrderStatus, RequestableStatus>> = {
   paid: 'processing',
   processing: 'shipped',
 };
@@ -50,17 +53,12 @@ const SHIPPED_OR_LATER: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
  * The status flow, as one pure function the service asks before it writes.
  *
  * The brief's core flow is `pending, paid, processing, shipped`, with
- * `cancelled` reachable before `shipped`. A manager advances from `paid`, not
+ * `cancelled` reachable before `shipped`. An advance goes from `paid`, not
  * from `pending`: an unpaid order has nothing to process, and the webhook is
  * the only writer of `paid`, so `pending` to `processing` is illegal rather
  * than a shortcut. `cancelled` and `delivered` are terminal.
- *
- * The role check comes first for anything but a cancel, so a client sending
- * `shipped` reads 403 whatever the order's status, and never learns from a 409
- * which moves the order would have allowed a manager.
  */
 export function nextStatus(
-  role: string,
   from: OrderStatus,
   to: RequestableStatus,
 ): MoveVerdict {
@@ -69,6 +67,5 @@ export function nextStatus(
     if (SHIPPED_OR_LATER.has(from)) return 'not-cancellable';
     return 'illegal';
   }
-  if (role !== 'manager') return 'forbidden';
-  return MANAGER_ADVANCES[from] === to ? 'ok' : 'illegal';
+  return ADVANCES[from] === to ? 'ok' : 'illegal';
 }

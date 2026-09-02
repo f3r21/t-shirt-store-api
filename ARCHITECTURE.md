@@ -100,9 +100,10 @@ already taken. DECISIONS 24 records the rest.
 **A replayed webhook, before the list**, because Stripe retries, and a replayed `payment_intent.succeeded`
 that lowered the stock twice would be silent: the event id is the primary key of `stripe_events`,
 inserted first in the paying transaction, and the suite replays a signed event and asserts that
-the stock moved once. **A01, broken access control, first on the list**, because the roles guard is
-global, denies by default, and is the only thing standing there: CASL, which the challenge requires, is a dependency at
-`package.json:35` that no file in `src` imports. **A07 second**: `argon2.hash` takes no options, so
+the stock moved once. **A01, broken access control, first on the list**, because one global guard is
+the only thing standing there. It is CASL now: an ability per caller, a policy on every handler,
+deny by default, and the ownership conditions turned into the where clauses the services read
+with, so another client's order is a 404 by construction and not by a branch somebody remembers. **A07 second**: `argon2.hash` takes no options, so
 its cost is inherited rather than chosen, and reuse detection accepts a spent token for ten seconds
 after rotation without raising the alarm, the hole DECISIONS 2 prices. **API4 third**, three tiers
 by route, and the last paragraph below is why it does not hold in production.

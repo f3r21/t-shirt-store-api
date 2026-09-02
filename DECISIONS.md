@@ -638,3 +638,54 @@ expires, so `expiresAt` is never sent. The link's order is deleted if Stripe fai
 written, which is a compensation and not a transaction, and a crash between the two leaves a
 `pending` order with no link, the same shape of gap the architecture page already admits for the
 queue.
+
+## 25. CASL decides at the controller, and the where clause comes from the ability
+
+DECISIONS 18 named `RolesGuard` as the seam CASL would replace and warned that the swap reaches
+the services. This is the swap, and the warning was right in one more place than it named.
+
+**The abilities are one factory with three callers.** Anyone reads the catalog, with the product
+rule carrying the shopper's visibility condition. A signed-in caller manages their own cart,
+creates orders, and reads, cancels and pays their own; the delivery person has exactly that until
+the optional delivery feature exists, because the contract gives the role nothing else. A manager
+writes the catalog, reads every product that is not deleted, and manages every order. Two verbs
+are the brief's and not CASL's: `cancel` and `pay`, so that a client's two rights over an order are
+not spelled `update`, which is the manager's advance. `manage Order` is what makes "view all
+orders" expressible next to "read my orders": a CASL check for `manage` passes only a `manage`
+rule, where a check for `read` passes the client's conditional rule too.
+
+**The check at the controller is on the subject type, because that is what a guard can know.**
+`@CheckPolicies` names one or more questions, the guard builds the ability from the token and
+requires every answer to be yes, and a handler with no policy is 403 for everyone, the loud
+failure the previous guard was built around. The condition, "own", cannot be checked before the
+row is read, so it becomes the `where`: `accessibleBy(ability).Order` is the rule's own condition
+as a Prisma clause, `{ userId }` for a client and nothing for a manager, and `getOrder`,
+`setOrderStatus` and `createPaymentIntent` resolve through it. Another client's order and a
+missing order are the same 404 by construction, which is what the contract asks and what the
+old `ownedBy` did by hand. The catalog reads do the same: `accessibleBy(ability).Product` is the
+visibility rule, and the manager's list adds `isActive: true` when the flag was not set.
+
+**The one decision that was in a service moved to the guard.** Asking for the inactive products
+answers 401 for nobody and 403 for a client, and `listProducts` used to produce that pair
+itself. The policy reads the raw query flag and the guard answers 401 when there is no user and
+403 when there is, so the service has no branch on who is asking, which is what "enforce at the
+controller level" means when taken literally. The status table lost its role parameter the same
+way: who may cancel or advance is the ability's answer, checked on the row with `subject()`
+because a Prisma row carries no class, and the table keeps what may follow what.
+
+**The document follows the marker.** `@Roles` composed `@ApiBearerAuth`, so the served document
+could not disagree with the guard; `@CheckPolicies` composes it now and `@OptionalAuth` keeps only
+the empty requirement, so an optional route is the pair and the drift suite reads it as it did.
+
+**Two things stayed where they were.** `visibleProductWhere` is still the predicate the cart and
+the checkout use for "on sale", and its docstring now says it is the anonymous ability's condition
+written out; deriving it from an ability the cart does not have would be a second factory call
+for the same clause. The `customer` member of an order stays on `isManager`, because whether a
+response carries the client is a presentation rule the contract states in terms of the caller
+being a manager, not an authorization decision.
+
+**Given up:** no field-level rules, so a manager who may update a product may update every
+column of it; the delivery role has no rule of its own; and `@casl/prisma` reads its types from
+`@prisma/client` by default, which the Prisma 7 generator no longer fills, so `casl-prisma.ts`
+is the wrapper the package's README gives for a generated client, and it is one more file that
+knows where the client lives.

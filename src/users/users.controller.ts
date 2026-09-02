@@ -19,8 +19,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { PASSWORD_THROTTLE } from '../auth/password-throttle';
 import { SIGN_IN_THROTTLE } from '../auth/sign-in-throttle';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { ROLE_NAMES } from './dto/user.dto';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
 
 @ApiTags('auth')
 @Controller('users')
@@ -84,7 +84,7 @@ export class UsersController {
    * reason the contract declares a 429 here.
    */
   @Throttle(PASSWORD_THROTTLE)
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('update', 'User'))
   @ApiOperation({ summary: 'Change the password of the signed-in account' })
   @ApiResponse({ status: 204, description: 'Password changed.' })
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })

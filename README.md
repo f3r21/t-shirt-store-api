@@ -137,7 +137,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Likes, images | Not built. The tables ship, the operations are week 4 |
 | End-to-end tests | Done, in ten suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | Cart, orders, order history | Not started |
-| CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
+| CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs

@@ -10,10 +10,13 @@ import {
 /**
  * Authorization, end to end, against the real guards.
  *
- * `RolesGuard` denies by default, and that is only worth anything if something
- * proves it. The guard is bound as an `APP_GUARD` beside `AccessTokenGuard`, so
- * two separate things need asserting and a unit test can reach neither: that the
- * two guards run in the right order, and that a manager still gets through.
+ * `PoliciesGuard` denies by default, and that is only worth anything if
+ * something proves it. The guard is bound as an `APP_GUARD` beside
+ * `AccessTokenGuard`, so two separate things need asserting and a unit test can
+ * reach neither: that the two guards run in the right order, and that a manager
+ * still gets through. The abilities behind the verdicts are CASL's, built per
+ * caller by `AbilityFactory`; the fourth test is the one route whose policy
+ * reads the request and answers 401 or 403 by who asked.
  *
  * The third test is the positive control and the reason the other two mean
  * anything. A guard that refused every caller would satisfy the 401 and the 403
@@ -51,7 +54,7 @@ describe('Authorization (e2e)', () => {
 
   /**
    * The regression `ARCHITECTURE.md` names. Before the guard denied by default,
-   * deleting `@Roles('manager')` from `createProduct` left this route open to
+   * deleting the policy marker from `createProduct` left this route open to
    * every signed-in customer and no test noticed.
    */
   it('refuses a signed-in client a manager-only write', async () => {
@@ -82,5 +85,27 @@ describe('Authorization (e2e)', () => {
 
     expect(res.body.name).toBe('Tee');
     expect(res.headers.location).toMatch(/^\/v1\/products\/\d+$/);
+  });
+
+  /**
+   * The one policy that reads the request. The contract answers a request for
+   * the inactive products with 401 for nobody and 403 for a client, and the
+   * decision used to live in the service; it is the guard's now, so the pair
+   * is asserted against the guard.
+   */
+  it('answers 401 to nobody and 403 to a client who asks for the inactive products', async () => {
+    await http()
+      .get('/v1/products')
+      .query({ includeInactive: true })
+      .expect(401);
+
+    const token = await signInAs(ctx, 'client@example.com');
+    const res = await http()
+      .get('/v1/products')
+      .query({ includeInactive: true })
+      .set('authorization', `Bearer ${token}`)
+      .expect(403);
+
+    expect(res.type).toBe('application/problem+json');
   });
 });

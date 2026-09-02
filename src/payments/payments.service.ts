@@ -9,7 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import type { PaymentMethod } from '../generated/prisma/enums';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { isManager, visibleProductWhere } from '../products/product-visibility';
+import { accessibleBy } from '@casl/prisma';
+import type { AppAbility } from '../authz/ability';
+import { visibleProductWhere } from '../products/product-visibility';
 import { insufficientStock } from '../common/problem/insufficient-stock';
 import { StripeGateway } from './stripe.gateway';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
@@ -76,11 +78,6 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly stripe: StripeGateway,
   ) {}
-
-  /** A manager sees every order; anyone else, their own. */
-  private ownedBy(viewer: AccessTokenPayload): Prisma.OrderWhereInput {
-    return isManager(viewer) ? {} : { userId: viewer.sub };
-  }
 
   /**
    * An order for one variant, and a Stripe page that sells it.
@@ -161,10 +158,13 @@ export class PaymentsService {
    */
   async createPaymentIntent(
     viewer: AccessTokenPayload,
+    ability: AppAbility,
     orderId: number,
   ): Promise<PaymentIntentDto> {
+    // The rows this caller may pay, from the ability: their own for a client,
+    // any for a manager. Another client's order is a 404 by construction.
     const order = await this.prisma.order.findFirst({
-      where: { id: orderId, ...this.ownedBy(viewer) },
+      where: { id: orderId, AND: [accessibleBy(ability, 'pay').Order] },
       include: { items: { select: { variantId: true, quantity: true } } },
     });
     if (order === null) {

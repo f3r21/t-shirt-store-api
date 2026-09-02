@@ -1,5 +1,5 @@
 import { applyDecorators, SetMetadata } from '@nestjs/common';
-import { ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
+import { ApiSecurity } from '@nestjs/swagger';
 
 export const IS_OPTIONAL_AUTH_KEY = 'isOptionalAuth';
 
@@ -15,16 +15,13 @@ export const IS_OPTIONAL_AUTH_KEY = 'isOptionalAuth';
  * handler would never learn who the caller is even when a token was sent. Here
  * a present token is still verified, and only its absence is forgiven.
  *
- * **The two swagger decorators reproduce the contract's spelling exactly.**
- * `@ApiSecurity({})` emits the empty requirement that means anonymous is
- * allowed, and `@ApiBearerAuth` emits the alternative beside it, so the served
- * operation carries `[{}, {bearerAuth: []}]` the way `openapi.yaml:511-513`
- * does. Emitting only one of the two would describe a route that is either
- * closed to shoppers or closed to managers, and both readings are wrong.
+ * **The document's spelling comes from two decorators on the handler.**
+ * `@ApiSecurity({})` here emits the empty requirement that means anonymous is
+ * allowed, and `@CheckPolicies`, which every non-public handler carries, emits
+ * the bearer alternative beside it, so the served operation carries
+ * `[{}, {bearerAuth: []}]` the way `openapi.yaml:511-513` does. An optional
+ * route is therefore always `@OptionalAuth()` with `@CheckPolicies(...)`, and
+ * the policies run against the anonymous ability when no token came.
  */
 export const OptionalAuth = () =>
-  applyDecorators(
-    SetMetadata(IS_OPTIONAL_AUTH_KEY, true),
-    ApiSecurity({}),
-    ApiBearerAuth('bearerAuth'),
-  );
+  applyDecorators(SetMetadata(IS_OPTIONAL_AUTH_KEY, true), ApiSecurity({}));

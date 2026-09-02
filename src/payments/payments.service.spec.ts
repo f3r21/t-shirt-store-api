@@ -9,6 +9,7 @@ import {
   PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER, aVariant } from '../products/products.fixtures';
+import { AbilityFactory } from '../authz/ability.factory';
 import { nthArg } from '../common/mock-args';
 import { Prisma } from '../generated/prisma/client';
 import { ProblemException } from '../common/problem/problem.exception';
@@ -19,6 +20,10 @@ const caught = (run: () => Promise<unknown>) =>
   run()
     .then(() => null)
     .catch((e: unknown) => e as ProblemException);
+
+const abilities = new AbilityFactory();
+const CLIENT_ABILITY = abilities.for(AS_CLIENT);
+const MANAGER_ABILITY = abilities.for(AS_MANAGER);
 
 /** A Stripe event carrying an order id, or none, in its object's metadata. */
 const anEvent = (
@@ -214,11 +219,11 @@ describe('PaymentsService', () => {
       prisma.order.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.createPaymentIntent(AS_CLIENT, 501),
+        service.createPaymentIntent(AS_CLIENT, CLIENT_ABILITY, 501),
       ).rejects.toMatchObject({ status: 404 });
 
       const call = nthArg(prisma.order.findFirst) as { where: unknown };
-      expect(call.where).toEqual({ id: 501, userId: 128 });
+      expect(call.where).toEqual({ id: 501, AND: [{ OR: [{ userId: 128 }] }] });
       expect(gateway.createPaymentIntent).not.toHaveBeenCalled();
     });
 
@@ -229,7 +234,7 @@ describe('PaymentsService', () => {
       });
 
       const err = await caught(() =>
-        service.createPaymentIntent(AS_CLIENT, 501),
+        service.createPaymentIntent(AS_CLIENT, CLIENT_ABILITY, 501),
       );
 
       expect(err?.getStatus()).toBe(409);
@@ -246,7 +251,7 @@ describe('PaymentsService', () => {
       ]);
 
       const err = await caught(() =>
-        service.createPaymentIntent(AS_CLIENT, 501),
+        service.createPaymentIntent(AS_CLIENT, CLIENT_ABILITY, 501),
       );
 
       expect(err?.type).toBe(ProblemType.InsufficientStock);
@@ -257,7 +262,11 @@ describe('PaymentsService', () => {
     });
 
     it("asks Stripe for the order's total and answers the client secret", async () => {
-      const result = await service.createPaymentIntent(AS_CLIENT, 501);
+      const result = await service.createPaymentIntent(
+        AS_CLIENT,
+        CLIENT_ABILITY,
+        501,
+      );
 
       expect(nthArg(gateway.createPaymentIntent)).toEqual({
         orderId: 501,
@@ -271,10 +280,10 @@ describe('PaymentsService', () => {
     });
 
     it('lets a manager pay any order', async () => {
-      await service.createPaymentIntent(AS_MANAGER, 501);
+      await service.createPaymentIntent(AS_MANAGER, MANAGER_ABILITY, 501);
 
       const call = nthArg(prisma.order.findFirst) as { where: unknown };
-      expect(call.where).toEqual({ id: 501 });
+      expect(call.where).toEqual({ id: 501, AND: [{}] });
     });
   });
 

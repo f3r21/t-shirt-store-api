@@ -14,19 +14,21 @@ import { CartService } from './cart.service';
 import { CartDto } from './dto/cart.dto';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { SetCartItemDto } from './dto/set-cart-item.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { ROLE_NAMES } from '../users/dto/user.dto';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
  * The cart of the signed-in user. See `openapi.yaml:1197-1374`.
  *
- * Every role may call every operation here: the contract declares no 403 on
- * any of the five, and a manager has a cart for the same reason a client
- * does. `@Roles(...ROLE_NAMES)` is how `changePassword` says "signed in, any
- * role", and the global guard denies by default without it.
+ * Every signed-in caller may call every operation here: the contract declares
+ * no 403 on any of the five, and a manager has a cart for the same reason a
+ * client does. The ability grants `manage CartItem` on the caller's own rows,
+ * the guard denies by default without a policy, and the rows are the caller's
+ * by construction because every read and write takes the user id from the
+ * token.
  *
  * Each handler is named after its contract operation id, because the served
  * document names operations from the method and the drift suite compares them.
@@ -36,7 +38,7 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
 export class CartController {
   constructor(private readonly cart: CartService) {}
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Get the cart of this user' })
   @ApiResponse({
     status: 200,
@@ -50,7 +52,7 @@ export class CartController {
     return this.cart.getCart(user.sub);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Empty the cart' })
   @ApiResponse({ status: 204, description: 'The cart is empty.' })
   @ApiResponse({ status: 401, description: 'The request has no valid token.' })
@@ -61,7 +63,7 @@ export class CartController {
     return this.cart.clearCart(user.sub);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Add a quantity of one variant to the cart' })
   @ApiResponse({
     status: 200,
@@ -88,7 +90,7 @@ export class CartController {
     return this.cart.addCartItem(user.sub, dto);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Set the quantity of one variant in the cart' })
   @ApiResponse({
     status: 200,
@@ -115,7 +117,7 @@ export class CartController {
     return this.cart.setCartItem(user.sub, variantId, dto);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Remove one variant from the cart' })
   @ApiResponse({
     status: 204,

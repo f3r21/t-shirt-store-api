@@ -22,6 +22,13 @@ export const NOT_DELETED = { deletedAt: null } as const;
  * predicate has to hold on the list and on the detail read, and two copies
  * would drift.
  *
+ * Since CASL landed, the catalog reads take this rule from the caller's
+ * ability instead, through `accessibleBy(ability).Product`, and the anonymous
+ * ability's condition is exactly what this function answers for a shopper.
+ * The cart and the checkout still call it for "on sale", because they have no
+ * viewer to build an ability for: a product is bought under the shopper's
+ * view whoever holds the cart. DECISIONS 25.
+ *
  * The writes do not call this. `updateProduct` and `deleteProduct` are manager
  * only and resolve through `assertProductExists`, which filters on
  * `NOT_DELETED` alone, so a manager can still update a product they disabled.

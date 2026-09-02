@@ -16,7 +16,8 @@ import { CreateVariantDto } from './dto/create-variant.dto';
 import { UpdateVariantDto } from './dto/update-variant.dto';
 import { SetVariantStockDto } from './dto/set-variant-stock.dto';
 import { ProductVariantDto } from './dto/product-variant.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 
@@ -32,7 +33,7 @@ import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 export class ProductVariantsController {
   constructor(private readonly variants: VariantsService) {}
 
-  @Roles('manager')
+  @CheckPolicies(can('manage', 'ProductVariant'))
   @ApiOperation({ summary: 'Create a variant' })
   @ApiResponse({
     status: 201,
@@ -69,7 +70,7 @@ export class ProductVariantsController {
 export class VariantsController {
   constructor(private readonly variants: VariantsService) {}
 
-  @Roles('manager')
+  @CheckPolicies(can('manage', 'ProductVariant'))
   @ApiOperation({ summary: 'Update a variant' })
   @ApiResponse({
     status: 200,
@@ -90,7 +91,7 @@ export class VariantsController {
     return this.variants.updateVariant(id, dto);
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('manage', 'ProductVariant'))
   @ApiOperation({ summary: 'Remove a variant' })
   @ApiResponse({ status: 204, description: 'The variant is removed.' })
   @ApiResponse({ status: 401, description: 'The request has no valid token.' })
@@ -104,7 +105,7 @@ export class VariantsController {
     return this.variants.deleteVariant(id);
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('manage', 'ProductVariant'))
   @ApiOperation({ summary: 'Set the stock of a variant' })
   @ApiResponse({
     status: 200,

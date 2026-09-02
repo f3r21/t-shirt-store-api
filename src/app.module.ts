@@ -18,6 +18,7 @@ import { VariantsModule } from './variants/variants.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
+import { AuthzModule } from './authz/authz.module';
 import { ProblemFilter } from './common/problem/problem.filter';
 
 @Module({
@@ -75,6 +76,7 @@ import { ProblemFilter } from './common/problem/problem.filter';
     }),
     PrismaModule,
     MailModule,
+    AuthzModule,
     AuthModule,
     UsersModule,
     CategoriesModule,

@@ -1,24 +1,16 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { accessibleBy } from '@casl/prisma';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
 import { CategoriesService } from '../categories/categories.service';
-import { AccessTokenPayload } from '../auth/access-token-payload';
+import type { AppAbility } from '../authz/ability';
 import { PageMetaDto } from '../common/dto/page-meta.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductDto } from './dto/product.dto';
 import { ProductSummaryDto } from './dto/product-summary.dto';
-import {
-  isManager,
-  NOT_DELETED,
-  visibleProductWhere,
-} from './product-visibility';
+import { NOT_DELETED } from './product-visibility';
 import {
   PRODUCT_DETAIL_INCLUDE,
   toProductDto,
@@ -43,23 +35,17 @@ export class ProductsService {
    * who they are.
    */
   async listProducts(
-    viewer: AccessTokenPayload | undefined,
+    ability: AppAbility,
     query: ListProductsQueryDto,
   ): Promise<{ data: ProductSummaryDto[]; meta: PageMetaDto }> {
-    if (query.includeInactive) {
-      if (viewer === undefined) {
-        throw new UnauthorizedException({
-          title: 'Unauthorized',
-          detail: 'This operation needs a bearer token.',
-        });
-      }
-      if (!isManager(viewer)) {
-        throw new ForbiddenException();
-      }
-    }
-
+    // The visibility rule is the ability's own condition: a shopper's reads
+    // active products that are not deleted, a manager's every product that is
+    // not deleted. A manager who did not ask for the inactive ones gets the
+    // shopper's view of their own rule. Who may ask was decided at the
+    // controller, by the policy that reads the flag.
     const where: Prisma.ProductWhereInput = {
-      ...visibleProductWhere(viewer, query.includeInactive),
+      AND: [accessibleBy(ability).Product],
+      ...(query.includeInactive ? {} : { isActive: true }),
     };
     if (query.categoryId !== undefined) {
       where.categories = { some: { categoryId: query.categoryId } };
@@ -169,12 +155,9 @@ export class ProductsService {
    * this operation, so the manager's view is unconditional rather than
    * requested, which is why `includeInactive` is passed as true here.
    */
-  async getProduct(
-    viewer: AccessTokenPayload | undefined,
-    id: number,
-  ): Promise<ProductDto> {
+  async getProduct(ability: AppAbility, id: number): Promise<ProductDto> {
     const product = await this.prisma.product.findFirst({
-      where: { id, ...visibleProductWhere(viewer, true) },
+      where: { id, AND: [accessibleBy(ability).Product] },
       include: PRODUCT_DETAIL_INCLUDE,
     });
     if (product === null) {

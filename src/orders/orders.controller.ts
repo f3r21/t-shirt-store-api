@@ -18,28 +18,33 @@ import { OrderSummaryDto } from './dto/order-summary.dto';
 import { OrderHistoryQueryDto } from './dto/order-history-query.dto';
 import { ListAllOrdersQueryDto } from './dto/list-all-orders-query.dto';
 import { SetOrderStatusDto } from './dto/set-order-status.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can, updateOrCancelOrder } from '../authz/policies';
+import { CurrentAbility } from '../authz/current-ability.decorator';
+import type { AppAbility } from '../authz/ability';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { ROLE_NAMES } from '../users/dto/user.dto';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 import { ApiPageResponse } from '../common/dto/api-page-response';
 
 /**
  * Orders under `/orders`. See `openapi.yaml:1375-1586`.
  *
- * Only the manager's list carries `@Roles('manager')`, because it is the one
- * operation the contract gives a 403. The three that resolve one order carry
- * every role and leave the ownership rule to the service, which answers 404
- * and not 403 for another client's order. Each handler is named after its
- * contract operation id, which the drift suite compares.
+ * The policies are type-level, which is what a guard can know before the row
+ * is read: `manage Order` opens the manager's list, the one operation the
+ * contract gives a 403, and a client's `read Order` on their own rows passes
+ * the same check because some orders are theirs. The three that resolve one
+ * order hand the ability to the service, which turns the rule's condition
+ * into the `where`, so another client's order is 404 and not 403, as the
+ * contract asks. Each handler is named after its contract operation id, which
+ * the drift suite compares.
  */
 @ApiTags('orders')
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('create', 'Order'))
   @ApiOperation({ summary: 'Create an order from the cart' })
   @ApiResponse({
     status: 201,
@@ -69,7 +74,7 @@ export class OrdersController {
     return order;
   }
 
-  @Roles('manager')
+  @CheckPolicies(can('manage', 'Order'))
   @ApiOperation({ summary: 'List every order' })
   @ApiPageResponse(OrderSummaryDto, 'One page of orders.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
@@ -84,7 +89,7 @@ export class OrdersController {
     return this.orders.listAllOrders(user, query);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('read', 'Order'))
   @ApiOperation({ summary: 'Get one order' })
   @ApiResponse({ status: 200, description: 'The order.', type: OrderDto })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
@@ -97,12 +102,13 @@ export class OrdersController {
   @Get(':id')
   getOrder(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentAbility() ability: AppAbility,
     @Param('id', ParseIdPipe) id: number,
   ): Promise<OrderDto> {
-    return this.orders.getOrder(user, id);
+    return this.orders.getOrder(user, ability, id);
   }
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(updateOrCancelOrder)
   @ApiOperation({ summary: 'Move an order to another status' })
   @ApiResponse({
     status: 200,
@@ -127,10 +133,11 @@ export class OrdersController {
   @Patch(':id/status')
   setOrderStatus(
     @CurrentUser() user: AccessTokenPayload,
+    @CurrentAbility() ability: AppAbility,
     @Param('id', ParseIdPipe) id: number,
     @Body() dto: SetOrderStatusDto,
   ): Promise<OrderDto> {
-    return this.orders.setOrderStatus(user, id, dto);
+    return this.orders.setOrderStatus(user, ability, id, dto);
   }
 }
 
@@ -140,7 +147,7 @@ export class OrdersController {
 export class MyOrdersController {
   constructor(private readonly orders: OrdersService) {}
 
-  @Roles(...ROLE_NAMES)
+  @CheckPolicies(can('read', 'Order'))
   @ApiOperation({ summary: 'List the orders of this user' })
   @ApiPageResponse(OrderSummaryDto, 'One page of orders.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
