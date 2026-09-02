@@ -53,6 +53,13 @@ Parameters:
     Description: 0 until the first image is pushed and migrated, then 1. One task fits one host.
   MailFrom:
     Type: String
+  MailTransport:
+    Type: String
+    Default: smtp
+    AllowedValues: [smtp, ses]
+    Description: >-
+      How the tasks send mail. smtp reads the Smtp* parameters below. ses sends through
+      Amazon SES from the task role, with MailFrom as an address SES has verified.
   SmtpHost:
     Type: String
     Default: localhost
@@ -324,6 +331,15 @@ Resources:
                   - s3:DeleteObject
                   - s3:GetObject
                 Resource: !Sub ${ImagesBucket.Arn}/*
+        - PolicyName: send-the-mail
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
 
   # ---- the two task definitions ------------------------------------------
   # The API and the worker from one image, the page's "same image, different entrypoint".
@@ -369,6 +385,8 @@ Resources:
               Value: !Sub https://${Distribution.DomainName}
             - Name: TRUST_PROXY_HOPS
               Value: '1'
+            - Name: MAIL_TRANSPORT
+              Value: !Ref MailTransport
             - Name: SMTP_HOST
               Value: !Ref SmtpHost
             - Name: SMTP_PORT
@@ -431,6 +449,8 @@ Resources:
               Value: !Sub https://${Distribution.DomainName}
             - Name: TRUST_PROXY_HOPS
               Value: '1'
+            - Name: MAIL_TRANSPORT
+              Value: !Ref MailTransport
             - Name: SMTP_HOST
               Value: !Ref SmtpHost
             - Name: SMTP_PORT

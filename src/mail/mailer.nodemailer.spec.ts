@@ -1,3 +1,4 @@
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport } from 'nodemailer';
@@ -24,6 +25,8 @@ const createTransportMock = createTransport as jest.Mock;
  */
 describe('NodemailerMailer', () => {
   const ENV: Record<string, unknown> = {
+    MAIL_TRANSPORT: 'smtp',
+    AWS_REGION: 'us-east-2',
     SMTP_HOST: 'localhost',
     SMTP_PORT: 1025,
     SMTP_SECURE: false,
@@ -109,6 +112,41 @@ describe('NodemailerMailer', () => {
       expect(
         build({ SMTP_USER: 'apikey', SMTP_PASS: 'secret' }).options,
       ).toMatchObject({ auth: { user: 'apikey', pass: 'secret' } });
+    });
+
+    /**
+     * `ses` hands nodemailer a client for the schema's region and the command
+     * class, and nothing else: the credentials are the environment's, the task
+     * role in the container, so no relay password exists to leak. The region
+     * is asserted against a value that is not the client's own default, so
+     * this stays red if the schema's region stops being handed over.
+     */
+    it('sends through SES in the schema region when MAIL_TRANSPORT is ses', async () => {
+      const { options } = build({
+        MAIL_TRANSPORT: 'ses',
+        AWS_REGION: 'eu-west-1',
+      });
+      const ses = options.SES as {
+        sesClient: SESv2Client;
+        SendEmailCommand: unknown;
+      };
+
+      expect(ses.sesClient).toBeInstanceOf(SESv2Client);
+      await expect(ses.sesClient.config.region()).resolves.toBe('eu-west-1');
+      expect(ses.SendEmailCommand).toBe(SendEmailCommand);
+    });
+
+    it('carries no relay when it sends through SES', () => {
+      const { options } = build({ MAIL_TRANSPORT: 'ses' });
+
+      expect(options).not.toHaveProperty('host');
+      expect(options).not.toHaveProperty('port');
+      expect(options).not.toHaveProperty('auth');
+    });
+
+    it('carries no SES client when it sends through a relay', () => {
+      expect(build().options).not.toHaveProperty('SES');
+      expect(build().options).toMatchObject({ host: 'localhost', port: 1025 });
     });
   });
 

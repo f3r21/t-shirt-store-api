@@ -995,3 +995,46 @@ that way; the demo accounts with the published password stay out of production a
 
 **Given up:** no image resizing or format conversion, the bytes are stored as sent; no limit on
 how many images a product carries; and the edge TTL above.
+
+## 32. Mail leaves through SES from the task role, Stripe delivers to the distribution, and main is the release
+
+The last checkpoint of the AWS block. Production until now mailed to `localhost:1025`, where
+nothing listened, and held placeholder Stripe keys, so a password reset answered 202 and nobody
+received a link, a low-stock job ended in the failed set, and no real event could verify. This
+is the cutover.
+
+**SES, with no credential anywhere.** `MAIL_TRANSPORT=ses` makes the one mailer build
+nodemailer's SES transport over an `SESv2Client` for `AWS_REGION`, and the task role gains
+`ses:SendEmail` and `ses:SendRawEmail` on the account's identities. Everything above the
+transport is unchanged: the same text, the same html, the same throwing `deliver` for the worker
+and swallowing `send` for the password mails, so the branch is a dozen lines in one constructor
+and not a second class. I rejected SES's SMTP interface, which needs an IAM user and a long-lived
+key in SSM one day after the release stopped storing keys, and a third party, which sends to
+anyone today but puts a personal account outside AWS in the path of a store that runs on AWS.
+The default stays `smtp`, which is Mailpit on a laptop and in CI, and the two are one variable
+apart.
+
+**The sandbox is stated, not hidden.** The account has no domain, so the sender is one address
+verified as an SES identity, and until AWS grants production access only verified addresses
+receive. A reviewer who signs up with an unverified address and asks for a reset gets 202 and no
+mail, the same silence as before, but for a reason this ledger and the README name. The request
+is one command, answered in about a day; it is optional today because nothing in the review
+depends on an unverified inbox.
+
+**The Stripe endpoint is the distribution's URL, and the stack does not change for it.** The
+default behaviour caches nothing and forwards every viewer header but `Host`, so the body and
+`stripe-signature` reach the origin as sent, and the check over the raw body is the same check
+the e2e suite runs. The endpoint is registered in the dashboard for the two events the service
+reads, and its signing secret and the real test key overwrite the two placeholders in SSM. ECS
+reads a secret at task start, so the change lands on the next roll, which is the same roll that
+flips the mail transport: one by-hand deploy with two parameter overrides, and both take effect
+together.
+
+**Merged to main, and main is the release.** The job trusts both branches since AWS-2, so the
+merge is one more push: the images rebuilt from the merge commit, the migrations run, the tag
+rolled, the running task proven. The PR body is rewritten to the final scope first, since the
+one open since Week 3 described nineteen operations of thirty-seven.
+
+**Given up:** `SMTP_PASS` is still read from SSM by a task that does not use it under `ses`,
+because removing a secret from the task definition is a change I did not make on the last day;
+no bounce or complaint handling, SES's notifications go nowhere; and the sandbox above.

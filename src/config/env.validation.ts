@@ -36,6 +36,13 @@ export const LOG_LEVELS = [
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
 /**
+ * How mail leaves the process: a relay the `SMTP_*` variables describe, or
+ * Amazon SES with whatever credentials the environment carries.
+ */
+export const MAIL_TRANSPORTS = ['smtp', 'ses'] as const;
+export type MailTransport = (typeof MAIL_TRANSPORTS)[number];
+
+/**
  * Every numeric property carries an explicit `: number`.
  *
  * Without the annotation `emitDecoratorMetadata` writes `design:type = Object`,
@@ -261,6 +268,16 @@ export class EnvironmentVariables {
    */
   @IsString()
   APP_URL: string = 'http://localhost:3000';
+
+  /**
+   * How mail leaves the process. `smtp` reads the `SMTP_*` variables below,
+   * which is Mailpit on a laptop and in CI. `ses` sends through Amazon SES in
+   * `AWS_REGION` with the credentials of the environment, the task role in the
+   * container, so no relay password exists anywhere. The sender is `MAIL_FROM`
+   * either way, and SES accepts only an address it has verified.
+   */
+  @IsIn(MAIL_TRANSPORTS)
+  MAIL_TRANSPORT: MailTransport = 'smtp';
 
   @IsString()
   SMTP_HOST: string = 'localhost';

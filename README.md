@@ -57,7 +57,9 @@ blank because they are secrets and the boot refuses without them. `STRIPE_SECRET
 `STRIPE_WEBHOOK_SECRET` are blank for the same reason, and the next section says where they come
 from. `CORS_ORIGINS` is blank because empty is its real default and it means no cross-origin
 browser may call this service. `SMTP_USER` and `SMTP_PASS` are blank because Mailpit wants no
-credentials, and the mailer sends none unless both are set. `DATABASE_SSL_CA` is blank because
+credentials, and the mailer sends none unless both are set. `MAIL_TRANSPORT` is `smtp` here and
+`ses` in the deployed task, which then reads no `SMTP_*` at all and sends from the task role.
+`DATABASE_SSL_CA` is blank because
 the compose container speaks no TLS; the deployed task points it at the RDS certificate bundle
 the image carries. `REDIS_URL` is filled in and required: the stock notification queue opens it
 at boot, and the compose file's Redis answers it.
@@ -95,6 +97,13 @@ stripe payment_intents confirm pi_...   --payment-method pm_card_visa
 The end-to-end suite never reaches Stripe. It replaces the two API calls with a stub and signs
 its own events with the same secret the server verifies, so the signature check is the production
 code path.
+
+In production the endpoint is the distribution's URL,
+`https://daat4q77vztp7.cloudfront.net/v1/webhooks/stripe`, added in the Stripe dashboard in test
+mode for `checkout.session.completed` and `payment_intent.succeeded`. Its signing secret and the
+`sk_test_` key replace the two placeholders in SSM, in the Deploy section below, and the tasks
+read them at their next start. The distribution forwards the body and the `stripe-signature`
+header unchanged, so the same check runs there.
 
 ## Check it
 
@@ -141,7 +150,7 @@ aws ssm put-parameter --profile tshirt --region us-east-2 --type SecureString --
 ```
 
 The five names are `JWT_SECRET`, `REFRESH_TOKEN_PEPPER`, `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`.
+`STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`, which only the `smtp` transport reads.
 
 **Every push to `feat/week-3-auth` or `main` is a release**, once the checks pass. The `deploy`
 job in `.github/workflows/ci.yml` builds both images on an arm runner, pushes them tagged with
@@ -156,7 +165,7 @@ The first deploy, and a rescue when the job cannot run, is the same release by h
 clean checkout, with `<sha>` as the short commit id:
 
 1. Create the stack with the service at zero:
-   `aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --parameter-overrides DbPassword="$(openssl rand -hex 16)" MailFrom=no-reply@tshirt.store DesiredCount=0`
+   `aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --parameter-overrides DbPassword="$(openssl rand -hex 16)" MailFrom=<your address> DesiredCount=0`
 2. Build the two images: `docker build -t api .` and `docker build --target migrate -t migrate .`
 3. Tag them `<ecr>:<sha>` and `<ecr>:<sha>-migrate`, log in with
    `aws ecr get-login-password`, and push both. The ECR address is a stack output.
@@ -171,7 +180,24 @@ clean checkout, with `<sha>` as the short commit id:
 7. Start the service: the deploy command again, with
    `--parameter-overrides ImageTag=<sha> DesiredCount=1`.
 
-The API answers at the `ApiUrl` stack output. Tear everything down with
+Mail and Stripe, once, after the first release:
+
+1. Verify the sender:
+   `aws sesv2 create-email-identity --profile tshirt --region us-east-2 --email-identity <your address>`,
+   then open the link in the mail AWS sends.
+2. Replace the two Stripe placeholders: the `put-parameter` command of the five secrets, with `--overwrite`,
+   `/tshirt/STRIPE_SECRET_KEY` with the `sk_test_` key and `/tshirt/STRIPE_WEBHOOK_SECRET` with
+   the signing secret of the endpoint from the Stripe section.
+3. Switch the transport: the deploy command again, with
+   `--parameter-overrides MailTransport=ses MailFrom=<your address>`. That roll also reads the
+   two new secrets.
+
+SES starts in its sandbox. Only verified addresses receive until AWS grants production access,
+which is one command, `aws sesv2 put-account-details`, answered in about a day.
+
+The API answers at the `ApiUrl` stack output. The review instance is
+`https://daat4q77vztp7.cloudfront.net/v1`: sign up there, and the operator's seed override
+makes one account the manager. Tear everything down with
 `aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`, and
 the trust with the same command on `tshirt-ci`.
 
@@ -186,7 +212,7 @@ It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing
 | Refresh token rotation and reuse detection | Done, with unit tests |
 | Device session list, per-device sign out | Done, with unit tests |
 | Forgot password, reset password, change password | Done, with unit tests |
-| Mail on password change and password reset | Done, delivered through Mailpit locally |
+| Mail on password change and password reset | Done, through Mailpit locally and through SES from the task role in production |
 | RFC 9457 problem documents on every error | Done |
 | Structured JSON logs with a request id | Done, through pino. Every line carries the id, and no line carries a token |
 | Helmet, CORS, environment schema validation | Done |
@@ -195,7 +221,7 @@ It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
-| Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
+| Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock. The deployed endpoint receives Stripe's own test-mode events through the distribution |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
 | End-to-end tests | Done, in thirteen suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock notifications through the real queue and worker to the mail, product images with the store in memory, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
@@ -274,3 +300,5 @@ Stated here rather than discovered later. The longer list, with the reasoning, i
   alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
   and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
+- Production mail goes through SES in its sandbox. Only verified addresses receive until AWS
+  grants production access, which takes about a day from the request.

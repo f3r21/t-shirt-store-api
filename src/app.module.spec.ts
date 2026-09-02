@@ -117,6 +117,23 @@ describe('AppModule', () => {
   });
 
   /**
+   * `MAIL_TRANSPORT` is a word from a fixed list. A word outside it has to stop
+   * the boot, because the mailer branches on it and an unknown word would fall
+   * through to one branch or the other and send somewhere nobody chose.
+   */
+  it('refuses an unknown MAIL_TRANSPORT, and reads the two it knows', () => {
+    expect(() =>
+      validateEnv({ ...REQUIRED, MAIL_TRANSPORT: 'carrier-pigeon' }),
+    ).toThrow(/MAIL_TRANSPORT/);
+    expect(() =>
+      validateEnv({ ...REQUIRED, MAIL_TRANSPORT: 'ses' }),
+    ).not.toThrow();
+    expect(() =>
+      validateEnv({ ...REQUIRED, MAIL_TRANSPORT: 'smtp' }),
+    ).not.toThrow();
+  });
+
+  /**
    * **No numeric variable may accept a present but empty value, and the list of
    * them is discovered rather than written down.**
    *

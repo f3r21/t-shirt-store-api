@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { createTransport, Transporter } from 'nodemailer';
 import { LowStockMail, Mailer } from './mailer';
-import { EnvironmentVariables } from '../config/env.validation';
+import {
+  EnvironmentVariables,
+  type MailTransport,
+} from '../config/env.validation';
 
 /** The five characters HTML reads as markup, for a name a manager typed. */
 function escapeHtml(text: string): string {
@@ -55,20 +59,39 @@ export class NodemailerMailer implements Mailer {
     // `user !== undefined` is safe only because `ConfigModule` runs with
     // `skipProcessEnv`. Without it a pair the shell exported empty arrived
     // here as `''` and became a request to authenticate with no credentials.
-    const secure = this.config.get<boolean>('SMTP_SECURE');
-    const requireTLS = this.config.get<boolean>('SMTP_REQUIRE_TLS');
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASS');
+    //
+    // The SES branch is here and not a second class because everything above
+    // the transport is the same message: nodemailer builds the same MIME from
+    // the same fields and hands it to SES's `SendEmail` as raw content. The
+    // credentials are whatever the environment carries, the task role in the
+    // container, so no relay password exists to store or to leak. The region
+    // is the schema's rather than the client's own default, so the one the
+    // boot validated is the one that sends.
+    if (this.config.get<MailTransport>('MAIL_TRANSPORT') === 'ses') {
+      this.transporter = createTransport({
+        SES: {
+          sesClient: new SESv2Client({
+            region: this.config.getOrThrow<string>('AWS_REGION'),
+          }),
+          SendEmailCommand,
+        },
+      });
+    } else {
+      const secure = this.config.get<boolean>('SMTP_SECURE');
+      const requireTLS = this.config.get<boolean>('SMTP_REQUIRE_TLS');
+      const user = this.config.get<string>('SMTP_USER');
+      const pass = this.config.get<string>('SMTP_PASS');
 
-    this.transporter = createTransport({
-      host: this.config.getOrThrow<string>('SMTP_HOST'),
-      port: this.config.getOrThrow<number>('SMTP_PORT'),
-      secure,
-      requireTLS,
-      ...(user !== undefined && pass !== undefined
-        ? { auth: { user, pass } }
-        : {}),
-    });
+      this.transporter = createTransport({
+        host: this.config.getOrThrow<string>('SMTP_HOST'),
+        port: this.config.getOrThrow<number>('SMTP_PORT'),
+        secure,
+        requireTLS,
+        ...(user !== undefined && pass !== undefined
+          ? { auth: { user, pass } }
+          : {}),
+      });
+    }
     this.from = this.config.getOrThrow<string>('MAIL_FROM');
     this.appUrl = this.config.getOrThrow<string>('APP_URL');
   }

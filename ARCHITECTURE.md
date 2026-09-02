@@ -15,7 +15,7 @@ flowchart TB
     pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>pool of 10 per process,<br/>97 usable, so 9 replicas")]
     casl["CASL abilities<br/>a dependency, not a guard"]
     store[("Object storage<br/>product images")]
-    smtp["Email provider"]
+    smtp["SES<br/>from the task role"]
     stripe["Stripe"]
     redis[("Redis<br/>stock queue")]
     worker["Worker<br/>same image,<br/>different entrypoint"]
@@ -73,7 +73,8 @@ HTTPS, a managed Postgres, a managed Valkey, and an object store. Not serverless
 invocation multiplies connections by concurrency until the database refuses them. CI runs the
 typecheck, the linter, the formatter, both suites and a `docker build` on every push. The
 release, registry then `prisma migrate deploy` as a one-off task then the tag rolled, is a job
-per push that assumes a role through GitHub's OIDC token and stores no key.
+per push that assumes a role through GitHub's OIDC token and stores no key. Mail goes out
+through SES from the same task role, so no relay password exists either.
 
 **Rollback is the image, never the schema**, so migrations are forward-only and additive. Seven of
 the eight are. The second drops `users.reset_token` in the same statement that adds
