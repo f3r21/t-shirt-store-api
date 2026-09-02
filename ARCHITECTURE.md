@@ -7,7 +7,7 @@ takes the style of the node it touches.
 %%{init: {"flowchart": {"nodeSpacing": 70, "rankSpacing": 70}}}%%
 flowchart TB
     code["Commit<br/>pre-commit hook"]
-    ci["CI, every push<br/>typecheck, lint, format,<br/>unit, e2e, image build"]
+    ci["CI, every push<br/>typecheck, lint, format,<br/>unit, e2e, image, deploy"]
     citest[("postgres:16-alpine<br/>e2e service container")]
     deploy["Deploy<br/>registry, migrate,<br/>then roll the tag"]
 
@@ -39,7 +39,7 @@ flowchart TB
     worker -->|"low-stock mail"| smtp
 
     classDef planned stroke-dasharray:5 3
-    class deploy,store planned
+    class store planned
 ```
 
 **The shared ceiling is Postgres.** `prisma.service.ts` builds `PrismaPg` without a pool size,
@@ -72,12 +72,12 @@ build is a transactional outbox.
 
 ## How it deploys
 
-One CloudFormation stack in `infra/`: the image on one arm64 ECS instance behind CloudFront, which
-is HTTPS without a domain, a managed Postgres, a managed Valkey, and an object store. Not
-serverless: a pool per invocation multiplies connections by concurrency until the database refuses
-them. CI runs the typecheck, the linter, the formatter, both suites and a `docker build` on every
-push. The release is registry, `prisma migrate deploy` as a one-off task from the image's migrate
-stage, then the tag rolled, by hand today; the job is next.
+One CloudFormation stack in `infra/`: the image on one arm64 ECS instance behind CloudFront for
+HTTPS, a managed Postgres, a managed Valkey, and an object store. Not serverless: a pool per
+invocation multiplies connections by concurrency until the database refuses them. CI runs the
+typecheck, the linter, the formatter, both suites and a `docker build` on every push. The
+release, registry then `prisma migrate deploy` as a one-off task then the tag rolled, is a job
+per push that assumes a role through GitHub's OIDC token and stores no key.
 
 **Rollback is the image, never the schema**, so migrations are forward-only and additive. Seven of
 the eight are. The second drops `users.reset_token` in the same statement that adds

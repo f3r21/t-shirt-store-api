@@ -141,23 +141,35 @@ aws ssm put-parameter --profile tshirt --region us-east-2 --type SecureString --
 The five names are `JWT_SECRET`, `REFRESH_TOKEN_PEPPER`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`.
 
-Then deploy, from a clean checkout, with `<sha>` as the short commit id:
+**Every push to `feat/week-3-auth` or `main` is a release**, once the checks pass. The `deploy`
+job in `.github/workflows/ci.yml` builds both images on an arm runner, pushes them tagged with
+the commit, points the migrate task at the commit, runs the migrations, rolls the service, and
+proves the running task carries the tag of that commit. No key is stored in GitHub: the run's OIDC
+token assumes `tshirt-deploy`, a role `infra/ci.yml` creates, and the stack is changed through
+`tshirt-cloudformation`, a role only CloudFormation can assume. The one-time setup is that
+template as the stack `tshirt-ci`, and its two outputs as the repository variables
+`AWS_DEPLOY_ROLE_ARN` and `AWS_STACK_ROLE_ARN`. DECISIONS 30 says why this shape.
+
+The first deploy, and a rescue when the job cannot run, is the same release by hand. From a
+clean checkout, with `<sha>` as the short commit id:
 
 1. Create the stack with the service at zero:
    `aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --parameter-overrides DbPassword="$(openssl rand -hex 16)" MailFrom=no-reply@tshirt.store DesiredCount=0`
 2. Build the two images: `docker build -t api .` and `docker build --target migrate -t migrate .`
 3. Tag them `<ecr>:<sha>` and `<ecr>:<sha>-migrate`, log in with
    `aws ecr get-login-password`, and push both. The ECR address is a stack output.
-4. Point the tasks at the tag: the deploy command again, with `--parameter-overrides ImageTag=<sha>`.
+4. Point the migrate task at the tag: the deploy command again, with
+   `--parameter-overrides MigrateImageTag=<sha>`.
 5. Run the migrations once:
    `aws ecs run-task --profile tshirt --region us-east-2 --cluster tshirt --task-definition tshirt-migrate --launch-type EC2`
 6. Seed the roles once, with the same command and
    `--overrides '{"containerOverrides":[{"name":"migrate","command":["node","dist/prisma/seed.js"]}]}'`.
-7. Start the service: the deploy command again, with `--parameter-overrides DesiredCount=1`.
+7. Start the service: the deploy command again, with
+   `--parameter-overrides ImageTag=<sha> DesiredCount=1`.
 
-The API answers at the `ApiUrl` stack output. A later release repeats steps 2 to 5 and 7 with
-a new `<sha>`. Tear everything down with
-`aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`.
+The API answers at the `ApiUrl` stack output. Tear everything down with
+`aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`, and
+the trust with the same command on `tshirt-ci`.
 
 It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing lines DECISIONS
 29 records, and the account's credits carry that for the review.
@@ -186,7 +198,7 @@ It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
 | S3 uploads | Not started |
-| Deploy | Done, by hand from a laptop: one CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache. The deploy job is next |
+| Deploy | Done. One CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache; every push to the branch releases through a job that assumes a role by OIDC, with no key stored |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
 against a real database. Neither has a placeholder entry left. What is untested is what is

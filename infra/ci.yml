@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  t-shirt-store-api, the trust that lets a GitHub Actions run release the tshirt stack with no
+  stored key: GitHub's OIDC provider, the role the job assumes, and the role CloudFormation
+  assumes to update the stack. Deployed once, by a person. DECISIONS 30.
+
+Parameters:
+  Repository:
+    Type: String
+    Default: f3r21/t-shirt-store-api
+    Description: The one repository whose runs may assume the deploy role.
+  Branch:
+    Type: String
+    Default: feat/week-3-auth
+    Description: The working branch, whose pushes release.
+  DefaultBranch:
+    Type: String
+    Default: main
+  EnvironmentStack:
+    Type: String
+    Default: tshirt
+    Description: The stack in infra/stack.yml; the roles it creates are named after it.
+  RegistryName:
+    Type: String
+    Default: tshirt-store-api
+  ClusterName:
+    Type: String
+    Default: tshirt
+  LogGroupName:
+    Type: String
+    Default: /ecs/tshirt
+
+Resources:
+  # GitHub signs a short-lived token for every run. AWS verifies the signature against
+  # GitHub's published keys and its own trust store, so the provider carries no thumbprint.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  # What a run may do, and only a run of this repository on one of two refs: push the image,
+  # ask CloudFormation for a change set on the one stack, run the migrate task, read its log.
+  # Nothing here touches an instance, a database or a role directly.
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tshirt-deploy
+      Description: Assumed by GitHub Actions through OIDC to release the tshirt stack
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${Repository}:ref:refs/heads/${Branch}
+                  - !Sub repo:${Repository}:ref:refs/heads/${DefaultBranch}
+      Policies:
+        - PolicyName: release-the-stack
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: RegistryLogin
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: RegistryPush
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:DescribeImages
+                Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RegistryName}
+              - Sid: StackChangeSets
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStackResources
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${EnvironmentStack}/*
+              # The CLI summarises the template body before it makes a change set, and
+              # that call is not scoped to a stack.
+              - Sid: TemplateSummary
+                Effect: Allow
+                Action: cloudformation:GetTemplateSummary
+                Resource: '*'
+              - Sid: HandTheStackToItsRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt StackRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+              - Sid: RunTheMigrateTask
+                Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${EnvironmentStack}-migrate:*
+                Condition:
+                  ArnEquals:
+                    ecs:cluster: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              - Sid: HandTheTaskItsRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${EnvironmentStack}-*
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+              - Sid: WatchTasksAndServices
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                Resource: '*'
+              - Sid: ReadTheMigrateLog
+                Effect: Allow
+                Action:
+                  - logs:GetLogEvents
+                  - logs:DescribeLogStreams
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}:*
+
+  # What CloudFormation may do when it executes a change set on the stack: everything the
+  # stack manages, which is most of what an administrator did on the first release, plus the
+  # stack's own roles and instance profile in IAM and nothing else there. Only CloudFormation
+  # in this account can assume it, and the job can only pass it to a change set on the one
+  # stack. Powerful on purpose, and reachable through the stack alone.
+  StackRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: tshirt-cloudformation
+      Description: Assumed by CloudFormation to create and update the tshirt stack's resources
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: manage-the-stacks-own-roles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:UpdateRoleDescription
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${EnvironmentStack}-*
+              - Effect: Allow
+                Action:
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:TagInstanceProfile
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/${EnvironmentStack}-*
+
+Outputs:
+  DeployRoleArn:
+    Description: Set as the repository variable AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn
+  StackRoleArn:
+    Description: Set as the repository variable AWS_STACK_ROLE_ARN
+    Value: !GetAtt StackRole.Arn

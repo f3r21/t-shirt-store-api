@@ -897,3 +897,50 @@ no SSH, the shell is Session Manager through the instance role; one task at a ti
 port 80 admits one, so a deployment is a few seconds of 504 from CloudFront; and the tag rolled
 this once is the commit the work started from plus this checkpoint's changes, which the job
 makes exact from AWS-2 on.
+
+## 30. Every push releases through a role GitHub assumes, and the stack changes through a role of its own
+
+DECISIONS 29 released once by hand and recorded a stale image reaching the registry that way.
+This is the job that makes a push the release, and the trust it runs on.
+
+**No key in GitHub.** A run presents GitHub's short-lived OIDC token to STS and gets the role
+`tshirt-deploy` for an hour, and the role's trust names one repository and two refs, the working
+branch and `main`, so a token from any other repository or branch is refused before any
+permission is checked. Nothing is stored: no access key in a secret, nothing to rotate, nothing
+to leak from a fork. `infra/ci.yml` is that trust, deployed once by a person, and the two role
+ARNs it outputs are repository variables rather than literals, so the account id stays out of a
+public file.
+
+**The job holds the small permissions and the stack holds the large ones.** `tshirt-deploy` may
+push to one registry, ask CloudFormation for a change set on one stack, run one task definition
+on one cluster, pass the task's two roles to ECS, and read one log group. It cannot touch an
+instance, a database, a cache or a role. The change set executes as `tshirt-cloudformation`, a
+role only CloudFormation in this account can assume, with `PowerUserAccess` and an IAM policy
+limited to the stack's own `tshirt-*` roles and instance profile. That role is powerful on
+purpose: it stands in for the administrator who ran the first release, and the only way to use
+it is a change set on this stack from a run that already passed the trust above.
+
+**Two tags, two updates.** The template gained `MigrateImageTag` beside `ImageTag`. A release
+sets the migrate tag first, which changes one task definition and no service, runs the
+migrations from the new image, and only then sets `ImageTag`, which rolls the service. With one
+parameter the service would roll before the migrations ran, which is the order the page forbids.
+
+**The tag is the commit, and the run proves it.** The job builds both images from the checkout
+on GitHub's arm64 runner, the instance's architecture and the laptop's, so nothing is emulated,
+and its last step reads the running task's image back and fails unless it carries the commit's
+tag; then `GET /v1` through CloudFront. The by-hand release could not make that claim.
+
+**A release is never cancelled.** The workflow cancels an older run when a newer push arrives,
+except on the two releasing refs, where a run in flight finishes: a cancelled job between the
+migrations and the roll would leave the next run to repeat both, and a cancelled change set
+completes on its own anyway.
+
+**The AMI is pinned.** The first template resolved the ECS image from AWS's SSM path at every
+update, which would have replaced the instance on whichever release followed AWS's next weekly
+publication. It is a fixed id now, bumped on purpose.
+
+**Given up:** the release runs from a feature branch, which is where the graded work lives, and
+`main` inherits it at the merge; no environment protection rule or approval gate, because the
+tests are the gate; no rollback beyond the circuit breaker, which returns a service that never
+became healthy to the previous task definition; and a service role wider than the stack
+strictly needs, bounded by who can assume it rather than by what it can do.

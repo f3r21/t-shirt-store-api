@@ -10,11 +10,12 @@ on:
 permissions:
   contents: read
 
-# A newer push makes an older run obsolete, except on main, where the run is the
-# record of what that commit passed.
+# A newer push makes an older run obsolete, except where a run may be releasing:
+# on main and on the working branch the run is the record of what that commit
+# passed, and a release in flight is never cancelled halfway.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ !contains(fromJSON('["refs/heads/main", "refs/heads/feat/week-3-auth"]'), github.ref) }}
 
 jobs:
   verify:
@@ -166,7 +167,98 @@ jobs:
           filter_mode: nofilter
           fail_on_error: true
 
-# The deploy leg is designed and not built. It would push this image to a
-# registry, run `prisma migrate deploy` as a release step before the new
-# container takes traffic, and roll back by redeploying the previous tag. It is
-# absent because there is no environment to deploy to.
+  # The release, on every push to the two refs, once the checks above are green:
+  # build on an arm runner (the instance is arm64), push both images, point the
+  # migrate task at this commit, run the migrations as a one-off task, roll the
+  # service to the tag, and prove the running task carries this commit. The
+  # credentials are a short-lived OIDC token exchanged for the deploy role, so
+  # no key is stored anywhere; the stack itself is changed through its own
+  # service role, so this job never holds a permission on an instance, a
+  # database or a role. infra/ci.yml is the trust, DECISIONS 30 the reasons.
+  deploy:
+    name: Deploy
+    needs: [verify, image]
+    if: github.ref == 'refs/heads/feat/week-3-auth' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-2
+      STACK: tshirt
+      CLUSTER: tshirt
+      REGISTRY_NAME: tshirt-store-api
+      LOG_GROUP: /ecs/tshirt
+      # The two role ARNs carry the account id, which is why they are repository
+      # variables and not literals in a public file.
+      DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      STACK_ROLE_ARN: ${{ vars.AWS_STACK_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # The tag is the commit, so the registry says what runs and a stale local
+      # image can never be pushed by hand, which DECISIONS 29 records happening.
+      - name: Name the tag after the commit
+        run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Log in to the registry
+        run: |
+          REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+          echo "REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
+
+      - name: Build both images from this commit
+        run: |
+          docker build --tag "$REGISTRY/$REGISTRY_NAME:$TAG" .
+          docker build --target migrate --tag "$REGISTRY/$REGISTRY_NAME:$TAG-migrate" .
+
+      - name: Push both images
+        run: |
+          docker push "$REGISTRY/$REGISTRY_NAME:$TAG"
+          docker push "$REGISTRY/$REGISTRY_NAME:$TAG-migrate"
+
+      # Registry, then migrate, then roll the tag. This update changes one task
+      # definition and no service, so the migrations run from the new image
+      # before any container of it takes traffic.
+      - name: Point the migrate task at this commit
+        run: |
+          aws cloudformation deploy --stack-name "$STACK" --template-file infra/stack.yml \
+            --capabilities CAPABILITY_IAM --role-arn "$STACK_ROLE_ARN" \
+            --no-fail-on-empty-changeset --parameter-overrides "MigrateImageTag=$TAG"
+
+      - name: Run the migrations
+        run: |
+          OUT=$(aws ecs run-task --cluster "$CLUSTER" --task-definition "$STACK-migrate" --launch-type EC2 --output json)
+          TASK=$(jq -r '.tasks[0].taskArn // empty' <<<"$OUT")
+          if [ -z "$TASK" ]; then echo 'The task was not placed:'; jq '.failures' <<<"$OUT"; exit 1; fi
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+          aws logs get-log-events --log-group-name "$LOG_GROUP" --log-stream-name "migrate/migrate/${TASK##*/}" \
+            --query 'events[].message' --output text | tr '\t' '\n'
+          EXIT=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode' --output text)
+          test "$EXIT" = "0"
+
+      - name: Roll the service to this commit
+        run: |
+          aws cloudformation deploy --stack-name "$STACK" --template-file infra/stack.yml \
+            --capabilities CAPABILITY_IAM --role-arn "$STACK_ROLE_ARN" \
+            --no-fail-on-empty-changeset --parameter-overrides "ImageTag=$TAG"
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$STACK-app"
+
+      # The proof the by-hand release lacked: the task that runs carries this
+      # commit's tag, and the API answers through CloudFront.
+      - name: Prove the running task is this commit
+        run: |
+          TASK=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$STACK-app" --query 'taskArns[0]' --output text)
+          IMAGE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[?name==`api`].image' --output text)
+          echo "running: $IMAGE"
+          case "$IMAGE" in *":$TAG") ;; *) echo "expected the tag $TAG"; exit 1 ;; esac
+          URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+          curl -fsS --max-time 30 "$URL/v1"

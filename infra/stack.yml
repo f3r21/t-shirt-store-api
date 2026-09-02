@@ -13,9 +13,13 @@ Parameters:
     Default: t4g.micro
     Description: arm64 by default, because the laptop and the CI runner build arm64 natively.
   AmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id
-    Description: The ECS-optimized image for the instance type above, resolved at deploy time.
+    Type: AWS::EC2::Image::Id
+    Default: ami-0a4e17e19b87f7763
+    Description: >-
+      The ECS-optimized Amazon Linux 2023 image for arm64, pinned. Read from the SSM path
+      /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id on
+      2026-09-02, and bumped on purpose: a change here replaces the instance, and an SSM
+      parameter type would do that on whatever release followed AWS's next publication.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Default: vpc-0d4ed7e3163b081a1
@@ -32,7 +36,15 @@ Parameters:
   ImageTag:
     Type: String
     Default: bootstrap
-    Description: The tag of the image the service runs; the migrate task runs <tag>-migrate.
+    Description: The tag of the image the service runs.
+  MigrateImageTag:
+    Type: String
+    Default: bootstrap
+    Description: >-
+      The tag whose <tag>-migrate image the release step runs. Separate from ImageTag on
+      purpose: a release sets this one first, which changes one task definition and no
+      service, runs the migrations, and only then sets ImageTag, which rolls the service.
+      One parameter would roll the service before the migrations ran.
   DesiredCount:
     Type: Number
     Default: 0
@@ -451,7 +463,7 @@ Resources:
       ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
       ContainerDefinitions:
         - Name: migrate
-          Image: !Sub ${Repository.RepositoryUri}:${ImageTag}-migrate
+          Image: !Sub ${Repository.RepositoryUri}:${MigrateImageTag}-migrate
           Essential: true
           # It runs beside the live task, which reserves 448 of the host's 916 MiB, so it must
           # fit in what is left; 512 did not, the first release proved it.
