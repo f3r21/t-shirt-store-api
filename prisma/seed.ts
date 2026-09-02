@@ -2,8 +2,12 @@ import 'dotenv/config';
 import * as argon2 from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { databaseSsl } from '../src/prisma/database-ssl';
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+  ssl: databaseSsl(process.env.DATABASE_SSL_CA),
+});
 const prisma = new PrismaClient({ adapter });
 
 /**

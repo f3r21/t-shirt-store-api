@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
 import { EnvironmentVariables } from '../config/env.validation';
+import { databaseSsl } from './database-ssl';
 
 @Injectable()
 export class PrismaService
@@ -13,6 +14,7 @@ export class PrismaService
     super({
       adapter: new PrismaPg({
         connectionString: config.get('DATABASE_URL', { infer: true }),
+        ssl: databaseSsl(config.get('DATABASE_SSL_CA', { infer: true })),
       }),
     });
   }

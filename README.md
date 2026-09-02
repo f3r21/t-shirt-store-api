@@ -50,13 +50,15 @@ when `NODE_ENV` is `production`, and seeds only the roles and categories there.
 `.env.example` names every variable the schema declares, and
 `src/app.module.spec.ts` fails if one is missing rather than leaving that sentence to rot.
 
-Seven are blank and four of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
+Eight are blank and four of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
 blank because they are secrets and the boot refuses without them. `STRIPE_SECRET_KEY` and
 `STRIPE_WEBHOOK_SECRET` are blank for the same reason, and the next section says where they come
 from. `CORS_ORIGINS` is blank because empty is its real default and it means no cross-origin
 browser may call this service. `SMTP_USER` and `SMTP_PASS` are blank because Mailpit wants no
-credentials, and the mailer sends none unless both are set. `REDIS_URL` is filled in and
-required: the stock notification queue opens it at boot, and the compose file's Redis answers it.
+credentials, and the mailer sends none unless both are set. `DATABASE_SSL_CA` is blank because
+the compose container speaks no TLS; the deployed task points it at the RDS certificate bundle
+the image carries. `REDIS_URL` is filled in and required: the stock notification queue opens it
+at boot, and the compose file's Redis answers it.
 
 Only the two signing secrets need at least 32 characters:
 
@@ -122,6 +124,44 @@ evidence that the generated Prisma client matches the schema**: every file under
 `src/generated/` carries `// @ts-nocheck` and the directory is ignored by ESLint. Run
 `npm run db:generate` after editing `prisma/schema.prisma`.
 
+## Deploy
+
+One environment, one template. `infra/stack.yml` describes ECS on one arm64 instance behind
+CloudFront for HTTPS, an RDS Postgres 16 database, an ElastiCache Valkey 9 node, an ECR repository
+and the images bucket. The AWS profile is `tshirt` in `us-east-2`. DECISIONS 29 says why this
+shape. Nothing under `infra/` holds a secret.
+
+Write the five secrets the tasks read once, before the first deploy. Each command has the same
+shape:
+
+```bash
+aws ssm put-parameter --profile tshirt --region us-east-2 --type SecureString --name /tshirt/JWT_SECRET --value "$(openssl rand -hex 32)"
+```
+
+The five names are `JWT_SECRET`, `REFRESH_TOKEN_PEPPER`, `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`.
+
+Then deploy, from a clean checkout, with `<sha>` as the short commit id:
+
+1. Create the stack with the service at zero:
+   `aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --parameter-overrides DbPassword="$(openssl rand -hex 16)" MailFrom=no-reply@tshirt.store DesiredCount=0`
+2. Build the two images: `docker build -t api .` and `docker build --target migrate -t migrate .`
+3. Tag them `<ecr>:<sha>` and `<ecr>:<sha>-migrate`, log in with
+   `aws ecr get-login-password`, and push both. The ECR address is a stack output.
+4. Point the tasks at the tag: the deploy command again, with `--parameter-overrides ImageTag=<sha>`.
+5. Run the migrations once:
+   `aws ecs run-task --profile tshirt --region us-east-2 --cluster tshirt --task-definition tshirt-migrate --launch-type EC2`
+6. Seed the roles once, with the same command and
+   `--overrides '{"containerOverrides":[{"name":"migrate","command":["node","dist/prisma/seed.js"]}]}'`.
+7. Start the service: the deploy command again, with `--parameter-overrides DesiredCount=1`.
+
+The API answers at the `ApiUrl` stack output. A later release repeats steps 2 to 5 and 7 with
+a new `<sha>`. Tear everything down with
+`aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`.
+
+It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing lines DECISIONS
+29 records, and the account's credits carry that for the review.
+
 ## What is implemented
 
 | Area | State |
@@ -146,6 +186,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
 | S3 uploads | Not started |
+| Deploy | Done, by hand from a laptop: one CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache. The deploy job is next |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
 against a real database. Neither has a placeholder entry left. What is untested is what is

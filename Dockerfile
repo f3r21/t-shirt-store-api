@@ -5,6 +5,11 @@
 #   docker run --rm -p 3000:3000 --env-file .env t-shirt-store-api
 #   docker run --rm --env-file .env t-shirt-store-api node dist/src/worker.js
 #
+# The release step is a third target, built from the stage that still holds the Prisma CLI:
+#
+#   docker build --target migrate -t t-shirt-store-api:migrate .
+#   docker run --rm --env-file .env t-shirt-store-api:migrate
+#
 # Configuration arrives through the process environment. This image ships no .env,
 # and env.validation.ts stops the boot when a required variable is missing.
 # Migrations do not run here. They are a release step before the new image takes
@@ -39,12 +44,28 @@ COPY src ./src
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
 RUN npm run build
 
+# RDS refuses a plaintext connection, and the driver verifies the server against this
+# bundle when DATABASE_SSL_CA names it (src/prisma/database-ssl.ts). Fetched here once and
+# copied to the runtime stage, so both entrypoints and the release step carry it.
+RUN wget -qO /app/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+
+# ---- migrate: the release step -------------------------------------------
+# `prisma migrate deploy` needs the CLI and prisma/migrations, which the runtime stage leaves
+# behind on purpose, so the step is this stage with one command: the build stage, run once as
+# a one-off task before a new tag takes traffic (infra/stack.yml, MigrateTaskDefinition). The
+# build-time DATABASE_URL is emptied here, so a run that forgot to pass one fails at once
+# rather than dialling the placeholder.
+FROM build AS migrate
+ENV DATABASE_URL=""
+CMD ["npx", "prisma", "migrate", "deploy"]
+
 # ---- runtime ---------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist/src ./dist/src
+COPY --from=build /app/rds-global-bundle.pem ./rds-global-bundle.pem
 COPY package.json ./
 USER node
 EXPOSE 3000

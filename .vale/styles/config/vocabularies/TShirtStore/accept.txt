@@ -8,6 +8,7 @@ Mailpit
 BullMQ
 RabbitMQ
 Redis
+Valkey
 Stripe
 OWASP
 argon2

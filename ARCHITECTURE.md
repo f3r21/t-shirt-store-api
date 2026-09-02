@@ -42,8 +42,8 @@ flowchart TB
     class deploy,store planned
 ```
 
-**The shared ceiling is Postgres.** `prisma.service.ts:14` builds `PrismaPg` from a connection
-string and nothing else, so the pool is `pg`'s default of ten per process and the ceiling is
+**The shared ceiling is Postgres.** `prisma.service.ts` builds `PrismaPg` without a pool size,
+so the pool is `pg`'s default of ten per process and the ceiling is
 replicas times ten. Postgres here reports `max_connections=100` with three reserved for the
 superuser, so nine replicas fit inside the 97 usable and a tenth does not. That ten is inherited
 rather than chosen, and it belongs in the environment beside the replica count.
@@ -51,8 +51,8 @@ rather than chosen, and it belongs in the environment beside the replica count.
 ## What comes off the request path
 
 One thing is queued: when a variant's stock reaches three, everyone who liked it and has not bought
-it gets an email, which is one write and then unbounded calls to a mail provider. Nothing else fans
-out. The enqueue waits for the commit, so a mail outage cannot fail a paid order, and retries are
+it gets an email, which is one write and then unbounded calls to a mail provider. The enqueue
+waits for the commit, so a mail outage cannot fail a paid order, and retries are
 per recipient, because BullMQ is at-least-once and a job dying mid-list resends everything before
 it.
 
@@ -72,14 +72,15 @@ build is a transactional outbox.
 
 ## How it deploys
 
-A container image, a managed Postgres, a managed Redis, an object store. Not serverless: a pool per
-invocation multiplies connections by concurrency until the database refuses them. CI runs the
-typecheck, the linter, the formatter, both suites and a `docker build` on every push. It does not
-tag the image, push it, run `prisma migrate deploy` before any container takes traffic, or roll the
-tag, and that is absent because there is no environment to deploy to.
+One CloudFormation stack in `infra/`: the image on one arm64 ECS instance behind CloudFront, which
+is HTTPS without a domain, a managed Postgres, a managed Valkey, and an object store. Not
+serverless: a pool per invocation multiplies connections by concurrency until the database refuses
+them. CI runs the typecheck, the linter, the formatter, both suites and a `docker build` on every
+push. The release is registry, `prisma migrate deploy` as a one-off task from the image's migrate
+stage, then the tag rolled, by hand today; the job is next.
 
-**Rollback is the image, never the schema**, so migrations are forward-only and additive. Six of
-the seven are. The second drops `users.reset_token` in the same statement that adds
+**Rollback is the image, never the schema**, so migrations are forward-only and additive. Seven of
+the eight are. The second drops `users.reset_token` in the same statement that adds
 `reset_token_hash`, so a replica still on the previous image breaks mid-rollout. That rename needed
 expand and contract.
 
@@ -113,7 +114,7 @@ by route, and the last paragraph below is why it does not hold in production.
 Per route: request rate, 4xx against 5xx, p95 latency, and saturation as pool usage and event loop
 lag. Then what no infrastructure metric shows: checkout conversion, webhook lag, the failed set's
 size, and stock going negative, which pages. Logs are pino JSON on stdout. Every line carries the
-request id, which a caller may set with `X-Request-Id` and reads back on the response, and the
+request id, which a caller may set with `X-Request-Id` and reads back, and the
 filter writes one line per failure with the event, the status, the problem type, and the user id
 once a token verified, never a token. The job carries no request id: the enqueue line names both,
 and none of the metrics in this section exist yet.

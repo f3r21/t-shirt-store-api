@@ -833,3 +833,67 @@ a person, on purpose, after the mail provider is back.
 lines, the enqueue line with the job ids and the worker's line with the job id; and the `P2003`
 path, a person or a variant deleted between the enqueue and the send, is a warning and a skip
 rather than a failure, because nothing can be sent to a row that is gone.
+
+## 29. One CloudFormation stack: ECS on one instance behind CloudFront, with the managed parts managed
+
+The brief requires a deploy, the mentor's scope message of 2026-09-01 says a cloud rebuild is out
+of it, and the page promised a container image, a managed Postgres, a managed Redis and an object
+store. `infra/stack.yml` is that, deployed and torn down with one command each, and this entry is
+what it chose and what the first release taught.
+
+**ECS on one EC2 instance, not Fargate.** Fargate needs a load balancer for a stable origin and
+pays for a public address per task, and on this account those two lines would outspend the
+compute. One `t4g.micro` with an Elastic IP is the origin, the two containers are one ECS service
+on it, and the managed parts stay managed: RDS Postgres 16 and an ElastiCache Valkey 9 node,
+each answering the instance's security group and nothing else. Priced with
+`aws pricing get-products` against "US East (Ohio)", on demand: the instance 0.0084 USD an hour,
+the database 0.0160, the cache 0.0128, the address 0.0050, so about 31 USD a month plus 20 GB of
+gp3 storage at 0.115 USD per GB-month. The account's 120 USD of credits carry that for about
+three and a half months, which is longer than the review.
+
+**CloudFront is the HTTPS front, and no domain was bought.** A distribution gives the API a
+public HTTPS name for free, caches nothing, passes every method and every header but `Host`
+through, and forwards the caller's address so `TRUST_PROXY_HOPS=1` makes the rate limit per
+client again. The instance admits port 80 from CloudFront's origin-facing addresses only, which
+the smoke test proves by timing out on the Elastic IP. The origin's name is the instance's public
+DNS composed from the address, because the address is the one thing that survives an instance
+replacement. Stripe's rule that a webhook endpoint be HTTPS is met by the distribution's domain.
+
+**arm64, because both builders are.** The laptop builds arm64 natively, GitHub's free
+`ubuntu-24.04-arm` runner does too, and `t4g.micro` is the cheapest instance offered; nothing
+emulates anything. The instance type and the AMI are parameters, so x86 is one override away.
+
+**Secrets in two stores, on purpose.** The five values a person types live in SSM Parameter
+Store as SecureStrings, which cost nothing, and the task reads them at start. The one value
+CloudFormation composes, `DATABASE_URL` from the database's endpoint and the password, lives in
+Secrets Manager, because CloudFormation cannot write a SecureString and the application reads one
+URL, not parts. No secret is in the template, the task definition or a log line.
+
+**The release is registry, migrate, roll, from a third image stage.** `prisma migrate deploy`
+needs the CLI and `prisma/migrations`, which the runtime stage leaves behind on purpose, so the
+Dockerfile gained a `migrate` target: the build stage with one command, run as a one-off ECS task
+before the new tag takes traffic. The seed runs from the same stage with one override.
+
+**What the first release taught, and what changed because of it.**
+
+- ElastiCache creates Valkey only as a replication group; a cache cluster refuses the engine.
+- The default parameter group evicts keys under memory pressure, and BullMQ warns on every
+  connection that a queue must never do that. The stack carries its own group with `noeviction`.
+- RDS Postgres 16 refuses a plaintext connection, `rds.force_ssl` is 1 by default. The Prisma
+  CLI negotiates TLS on its own, so the migrations applied, and the driver the application and
+  the seed use sends plaintext, so the seed was refused with `P1010`. `DATABASE_SSL_CA` names the
+  RDS certificate bundle the image now carries, and the driver verifies the server against it,
+  hostname included; on a laptop the variable is blank and the compose container is plain.
+- The seed command rebuilt the project inside a 512 MiB container and ran out of heap; the
+  compiled seed is already in the image, so the task runs `node dist/prisma/seed.js`.
+- A one-off task runs beside the live one, which reserves 448 of the host's 916 MiB, so the
+  migrate task asks for 384 and not 512.
+- A tag pushed from a laptop can be a stale image: the first push carried a runtime image built
+  five days earlier, because the local tag had never been rebuilt. Caught by the image's date
+  before the tag rolled. The deploy job builds from the commit, which is why it is next.
+
+**Given up:** no Auto Scaling group, so a dead instance is a stack update and not a self-heal;
+no SSH, the shell is Session Manager through the instance role; one task at a time, because host
+port 80 admits one, so a deployment is a few seconds of 504 from CloudFront; and the tag rolled
+this once is the commit the work started from plus this checkpoint's changes, which the job
+makes exact from AWS-2 on.

@@ -69,6 +69,16 @@ export class EnvironmentVariables {
   DATABASE_URL!: string;
 
   /**
+   * The path of a certificate bundle the database connection is verified
+   * against. Set in the deployed environment, where RDS refuses plaintext and
+   * the image carries the RDS bundle; absent on a laptop, where the compose
+   * container speaks no TLS. `database-ssl.ts` reads it.
+   */
+  @IsOptional()
+  @IsString()
+  DATABASE_SSL_CA?: string;
+
+  /**
    * Required, because the stock notification queue opens it.
    *
    * It was optional for a while: nothing in `src` read it, so every deployment
