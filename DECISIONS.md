@@ -909,7 +909,11 @@ branch and `main`, so a token from any other repository or branch is refused bef
 permission is checked. Nothing is stored: no access key in a secret, nothing to rotate, nothing
 to leak from a fork. `infra/ci.yml` is that trust, deployed once by a person, and the two role
 ARNs it outputs are repository variables rather than literals, so the account id stays out of a
-public file.
+public file. The subject the trust names carries GitHub's numeric ids,
+`repo:f3r21@31838677/t-shirt-store-api@1347606623:ref:...`, because that is the immutable form
+the token carries now: the first run named the repository by its names alone, STS answered "not
+authorized", and CloudTrail's record of the refused call showed the ids. The ids survive a
+rename and are never reissued, which makes them the better key.
 
 **The job holds the small permissions and the stack holds the large ones.** `tshirt-deploy` may
 push to one registry, ask CloudFormation for a change set on one stack, run one task definition

@@ -7,8 +7,13 @@ Description: >-
 Parameters:
   Repository:
     Type: String
-    Default: f3r21/t-shirt-store-api
-    Description: The one repository whose runs may assume the deploy role.
+    Default: f3r21@31838677/t-shirt-store-api@1347606623
+    Description: >-
+      The one repository whose runs may assume the deploy role, in the form GitHub's token
+      carries it: owner@ownerId/repo@repoId, the immutable subject. The first run named the
+      repository by its names alone and STS refused it; CloudTrail showed the ids. A rename
+      of the repository or of the account changes nothing here, and a new repository under
+      the same name gets a new id and no trust.
   Branch:
     Type: String
     Default: feat/week-3-auth
