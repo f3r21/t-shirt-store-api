@@ -106,6 +106,24 @@ describe('OpenAPI document against the contract (e2e)', () => {
       'POST /users/me/cart/items body.variantId.maximum=2147483647',
       'POST /users/me/cart/items body.variantId.minimum=1',
       'PUT /users/me/cart/items/{variantId} body.quantity.maximum=2147483647',
+      // The two order lists, twelve entries, the same decision. `total_cents`
+      // and `user_id` are `int4`, an id below one names no row, and `offset`
+      // is the ceiling the three older lists carry. The two `minimum=0` on
+      // the price filters are what the contract's `Money` states, reached
+      // through an `allOf` this check does not follow, so they are served-only
+      // by the check's spelling and not by the server's promise.
+      'GET /orders q.maxTotal.maximum=2147483647',
+      'GET /orders q.maxTotal.minimum=0',
+      'GET /orders q.minTotal.maximum=2147483647',
+      'GET /orders q.minTotal.minimum=0',
+      'GET /orders q.offset.maximum=2147483647',
+      'GET /orders q.userId.maximum=2147483647',
+      'GET /orders q.userId.minimum=1',
+      'GET /users/me/orders q.maxTotal.maximum=2147483647',
+      'GET /users/me/orders q.maxTotal.minimum=0',
+      'GET /users/me/orders q.minTotal.maximum=2147483647',
+      'GET /users/me/orders q.minTotal.minimum=0',
+      'GET /users/me/orders q.offset.maximum=2147483647',
       'PATCH /variants/{id} body.price.maximum=2147483647',
       'PATCH /variants/{id} body.price.minimum=0',
       'PATCH /variants/{id}/stock body.stock.maximum=2147483647',
@@ -262,8 +280,8 @@ describe('OpenAPI document against the contract (e2e)', () => {
     // Not an assertion that nothing is missing: 18 operations are Week 4 work.
     // It pins the counts, so finishing one without updating the contract, or
     // deleting one by accident, shows up here as a number that moved.
-    expect(implemented).toHaveLength(24);
-    expect(missing).toHaveLength(13);
+    expect(implemented).toHaveLength(29);
+    expect(missing).toHaveLength(8);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,
     );

@@ -108,8 +108,9 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Products, variants, categories | Done, with unit tests |
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
-| Likes, images, orders, payments | Not built. The tables ship, the operations are week 4 |
-| End-to-end tests | Done, in eight suites against a real database: authentication, catalog reads, catalog authorization, the cart, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
+| Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
+| Likes, images, payments | Not built. The tables ship, the operations are week 4 |
+| End-to-end tests | Done, in ten suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout and the status flow, order history for two clients and a manager, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | Cart, orders, order history | Not started |
 | CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |

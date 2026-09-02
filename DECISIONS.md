@@ -545,3 +545,41 @@ honestly through `stock`, and which the contract's own `CartItem` description an
 
 **Given up:** no promo code, no tax, no delivery charge, so `subtotal` is the sum of the lines and
 nothing else, which is what the contract says it is.
+
+## 23. An order is placed by emptying the cart first, and moved by a conditional write
+
+Two writes in this block could race with themselves, and the fix for each is the order of the
+statements rather than a lock.
+
+**Checkout deletes before it inserts.** Inside one transaction the service reads the cart's lines,
+checks each against the stock, deletes exactly those lines, and only then creates the order. The
+delete has to remove as many rows as the read returned, or the transaction ends in a 409. That
+count is the whole concurrency story: two checkouts of one cart both read the lines, the second
+blocks on the first's delete under read committed, then deletes nothing and rolls back, so a
+double submit places one order and answers the other with "the cart changed". The alternative, a
+`SELECT ... FOR UPDATE` through raw SQL, buys the same guarantee with a statement Prisma cannot
+type. A second delete clears the rows the read did not show, the withdrawn lines of DECISIONS 22,
+because the contract says the cart is emptied, and a line that reappears when a product is
+re-enabled after an order would be a surprise.
+
+**The snapshots are copied from what the check saw.** Name, size, colour and price go into
+`order_items` from the rows the stock check ran against, so the order records the price the client
+was shown at that instant, and a reprice between two statements of one transaction is impossible
+by construction rather than by care.
+
+**Stock is read and never written here.** The contract says an unpaid order reserves nothing and
+the webhook lowers the stock, so the 409 for a line above stock is a courtesy at checkout too, the
+same standing the cart's check has. What that means: between checkout and payment the shelf can
+move, and the webhook's transaction is where the number is final.
+
+**A status move is `updateMany` with the old status in its `where`.** The table in
+`order-status.ts` says whether the move is legal for this caller and this status, and the write
+then happens only if the status is still the one the table saw; zero rows is a 409. Without that, a
+client's cancel and a manager's ship on the same order could both pass the table, and the second
+write would overwrite the first, turning a shipped order into a cancelled one. The history row is
+written in the same transaction, so the column and the history cannot disagree.
+
+**Given up:** `pending` to `processing` is illegal even for a manager, because the brief advances
+from `paid` and nothing pays an order yet, so until block 3 a manager cannot exercise the forward
+path through the API, and the e2e suite sets `paid` by hand and says so. No promo code, so
+`subtotal` equals `total`.

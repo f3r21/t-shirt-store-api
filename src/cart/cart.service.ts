@@ -1,7 +1,6 @@
-import { HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProblemException } from '../common/problem/problem.exception';
-import { ProblemType } from '../common/problem/problem-type';
+import { insufficientStock } from '../common/problem/insufficient-stock';
 import { visibleProductWhere } from '../products/product-visibility';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { SetCartItemDto } from './dto/set-cart-item.dto';
@@ -32,19 +31,6 @@ import { CART_LINE_INCLUDE, toCartDto } from './cart.mapper';
 @Injectable()
 export class CartService {
   constructor(private readonly prisma: PrismaService) {}
-
-  /**
-   * The resulting quantity is above the units on hand. Title and detail follow
-   * the contract's own example at `openapi.yaml:2561-2567`.
-   */
-  private insufficientStock(stock: number, asked: number): ProblemException {
-    return new ProblemException(
-      ProblemType.InsufficientStock,
-      'Not enough stock',
-      HttpStatus.CONFLICT,
-      `This variant has ${stock} units on hand and the request asks for ${asked}.`,
-    );
-  }
 
   /** Resolve a variant whose product is on sale, or 404. */
   private async findSellableVariantOr404(id: number) {
@@ -109,7 +95,7 @@ export class CartService {
     });
     const quantity = (line?.quantity ?? 0) + dto.quantity;
     if (quantity > variant.stock) {
-      throw this.insufficientStock(variant.stock, quantity);
+      throw insufficientStock(variant.stock, quantity);
     }
 
     await this.upsertLine(userId, variant.id, quantity);
@@ -129,7 +115,7 @@ export class CartService {
   ): Promise<CartDto> {
     const variant = await this.findSellableVariantOr404(variantId);
     if (dto.quantity > variant.stock) {
-      throw this.insufficientStock(variant.stock, dto.quantity);
+      throw insufficientStock(variant.stock, dto.quantity);
     }
 
     await this.upsertLine(userId, variant.id, dto.quantity);

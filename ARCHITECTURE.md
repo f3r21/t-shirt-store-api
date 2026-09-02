@@ -89,8 +89,9 @@ The seam is the payment webhook, because Stripe holds half the state. It is the 
 `paid`, and stock comes down inside the transaction that sets it, so a disagreement is one
 transaction failing rather than two systems drifting. The Stripe event id is the primary key of
 `stripe_events`, inserted first in that transaction, so a retry is a unique violation. The handler
-is not built: the only file in `src` that touches those tables is `variants.service.ts:176`,
-counting `order_items` for a 409.
+is not built. `orders.service.ts` now places an order from the cart and moves it through its
+statuses, reading the stock and never writing it, so nothing under `src` writes `paid` or the
+stock yet, and the seam is still one transaction that does not exist.
 
 ## Where the security risks are
 

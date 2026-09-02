@@ -79,6 +79,19 @@ export interface PrismaMock {
   orderItem: {
     count: jest.Mock;
   };
+  // The five order operations. `updateMany` is the conditional status write,
+  // `findUniqueOrThrow` the read back after it, inside one transaction.
+  order: {
+    create: jest.Mock;
+    findFirst: jest.Mock;
+    findMany: jest.Mock;
+    findUniqueOrThrow: jest.Mock;
+    count: jest.Mock;
+    updateMany: jest.Mock;
+  };
+  orderStatusChange: {
+    create: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -167,6 +180,17 @@ export function createPrismaMock(): PrismaMock {
     // path it means to test. A spec that does care says so.
     orderItem: {
       count: jest.fn().mockResolvedValue(0),
+    },
+    order: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      findUniqueOrThrow: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    orderStatusChange: {
+      create: jest.fn(),
     },
     $transaction: jest.fn(),
   };

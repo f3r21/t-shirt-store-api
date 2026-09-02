@@ -16,6 +16,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { ProductsModule } from './products/products.module';
 import { VariantsModule } from './variants/variants.module';
 import { CartModule } from './cart/cart.module';
+import { OrdersModule } from './orders/orders.module';
 import { ProblemFilter } from './common/problem/problem.filter';
 
 @Module({
@@ -79,6 +80,7 @@ import { ProblemFilter } from './common/problem/problem.filter';
     ProductsModule,
     VariantsModule,
     CartModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [
