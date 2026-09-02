@@ -787,3 +787,49 @@ id through the logger and the job ids as its payload, so a mail is traced back t
 that line and not through the job. And the audience query runs inside the request, one per
 crossing: a variant with ten thousand likers would enqueue ten thousand jobs inside the webhook's
 response time, which is the day the producer itself becomes a job.
+
+## 28. The worker writes the row before the mail, and a failed send takes the row back
+
+The consumer half of Feature 8: one job, one person, one mail, once. DECISIONS 27 decided who
+and when; this is how the mail goes out and how it does not go out twice.
+
+**The row first, then the mail, and the row removed when the mail fails.** `stock_notifications`
+is keyed on the pair, and the processor inserts it before it sends, so two workers holding the
+same pair, two crossings before either ran, or a retry of a job whose worker died after sending,
+meet the primary key and only one sends. The other order, mail then row, would let both send in
+that window, and the row exists to close exactly that window; the schema comment said so before
+the worker existed. What the insert-first order costs is a send that fails after the row: the
+retry would find the row and count the person as told. So a rejected send deletes the row and
+rethrows, the job fails its attempt, and the next attempt inserts and sends again. A crash between
+the row and the mail loses that one mail, the same class of gap the page accepts between the
+commit and the enqueue, and a `P2002` on the insert is the "already told" answer with no mail.
+
+**A mail method that throws, beside two that swallow.** `sendPasswordReset` and
+`sendPasswordChanged` swallow a failed send on purpose, and their docstring says why: their
+callers are requests that have already committed or must answer 202 unconditionally. The
+low-stock mail's caller is a job, and a job's attempts are the retry, so a swallowed failure would
+count as delivered. `sendLowStock` calls the throwing half, `deliver`, which the other two wrap in
+their catch. The mail carries the product's image as an `img` in an HTML body, with the text body
+naming the same URL, because the brief says "include the product's image in the email" and a
+client that blocks remote images still gets the words. The name a manager typed is escaped.
+
+**A second entrypoint, not a flag.** `src/worker.ts` boots `WorkerModule` as an application
+context: the same configuration, logger, database and mailer as the API, no port, no controllers,
+no guards. The page promised "same image, different entrypoint", and the reason holds: the API and
+the worker scale apart, and a slow mail provider never holds a request. The Dockerfile's one image
+runs either as `node dist/src/main.js` or `node dist/src/worker.js`. Concurrency is five, because
+the bound is the mail provider's rate and not Postgres, and five in flight is what a provider's
+free tier tolerates.
+
+**The failed set is the alert, and it is proven once.** Three attempts with an exponential backoff
+from one second, completed jobs removed, failed jobs kept. The e2e suite boots the worker beside
+the API with the mail spy shared, and shows the four outcomes against the real queue: the mail with
+the image and one row; a send that fails once and arrives on the second attempt; a pair already
+told, no mail and the row kept; and a send that fails every attempt, no row, no mail, and one job in
+the failed set. The last is the page's "failed set's size" made observable. What clears the set is
+a person, on purpose, after the mail provider is back.
+
+**Given up:** the job carries no request id, so a mail traces back to its write through two log
+lines, the enqueue line with the job ids and the worker's line with the job id; and the `P2003`
+path, a person or a variant deleted between the enqueue and the send, is a warning and a skip
+rather than a failure, because nothing can be sent to a row that is gone.

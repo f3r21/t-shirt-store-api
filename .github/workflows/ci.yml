@@ -1,8 +1,8 @@
 name: CI
 
-# Every branch. `main` has never taken a merge and the repository has never had a
-# pull request, so a `branches: [main]` plus `pull_request` pair would fire zero
-# times on the way this repository is actually worked.
+# Every branch, on push. `main` has never taken a merge and the one pull request
+# is the working branch itself, so a `push` plus `pull_request` pair would run
+# every job twice on every push to it.
 on:
   push:
     branches: ['**']

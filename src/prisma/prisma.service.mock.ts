@@ -112,6 +112,12 @@ export interface PrismaMock {
     findUnique: jest.Mock;
     create: jest.Mock;
   };
+  // The worker's dedup row: written before the mail, removed when the send
+  // fails so the retry can send.
+  stockNotification: {
+    create: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -227,6 +233,10 @@ export function createPrismaMock(): PrismaMock {
     stripeEvent: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
+    },
+    stockNotification: {
+      create: jest.fn(),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn(),
   };

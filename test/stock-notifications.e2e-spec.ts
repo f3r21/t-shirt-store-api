@@ -1,5 +1,8 @@
 import request from 'supertest';
 import { Queue } from 'bullmq';
+import { Test, TestingModule } from '@nestjs/testing';
+import { MAILER } from '../src/mail/mailer';
+import { WorkerModule } from '../src/stock-notifications/worker.module';
 import {
   CatalogFixture,
   createTestApp,
@@ -233,5 +236,149 @@ describe('Stock notifications, the producer (e2e)', () => {
     expect((await jobs()).map((job) => job.id)).toEqual([
       `low-stock:${fixture.variantId}:${anaId}`,
     ]);
+  });
+
+  /**
+   * The consumer, booted beside the API in this process from `WorkerModule`
+   * with the same mail spy, so a job enqueued by the API above is processed
+   * here and its mail is readable. The spy is the only double: the queue, the
+   * worker, the database and the row are real.
+   *
+   * Each case waits on the outcome with a bounded poll rather than on the
+   * worker's events, so the assertion is on the effect and not on BullMQ's
+   * event order.
+   */
+  describe('the worker', () => {
+    const IMAGE = 'https://cdn.example/products/front.jpg';
+    let worker: TestingModule;
+
+    const until = async (
+      condition: () => boolean | Promise<boolean>,
+      ms = 6000,
+    ): Promise<boolean> => {
+      const deadline = Date.now() + ms;
+      while (Date.now() < deadline) {
+        if (await condition()) {
+          return true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return condition();
+    };
+
+    const mails = () => ctx.mail.sent.filter((m) => m.kind === 'low-stock');
+    const rows = () => ctx.prisma.stockNotification.count();
+    const counts = () =>
+      inspect.getJobCounts(
+        'waiting',
+        'delayed',
+        'active',
+        'completed',
+        'failed',
+      );
+    const settled = () =>
+      until(async () => {
+        const c = await counts();
+        return c.waiting === 0 && c.delayed === 0 && c.active === 0;
+      });
+
+    beforeAll(async () => {
+      worker = await Test.createTestingModule({ imports: [WorkerModule] })
+        .overrideProvider(MAILER)
+        .useValue(ctx.mail)
+        .compile();
+      await worker.init();
+    });
+
+    afterAll(async () => {
+      await worker.close();
+    });
+
+    beforeEach(() => {
+      ctx.mail.clear();
+    });
+
+    it('mails the one liker with the product, the count and the image, writes the row once, and leaves no failed job', async () => {
+      fixture = await seedProductWithVariant(ctx.prisma, {
+        stock: 4,
+        images: [{ url: IMAGE, isPrimary: true }],
+      });
+      const ana = await signInAs(ctx, 'ana@example.com');
+      const eve = await signInAs(ctx, 'eve@example.com');
+      await like(ana, fixture.variantId).expect(204);
+
+      await buy(eve, 1);
+
+      expect(await until(() => mails().length === 1)).toBe(true);
+      expect(mails()[0]).toEqual({
+        kind: 'low-stock',
+        to: 'ana@example.com',
+        mail: {
+          productId: fixture.productId,
+          productName: 'Fixture Tee',
+          size: 'M',
+          color: 'black',
+          stock: 3,
+          imageUrl: IMAGE,
+        },
+      });
+      expect(await rows()).toBe(1);
+      expect(await settled()).toBe(true);
+      // Completed jobs are removed by the queue's defaults; a failed one stays.
+      expect(await counts()).toMatchObject({ completed: 0, failed: 0 });
+    });
+
+    it('retries a send that failed once, and the mail arrives on the second attempt', async () => {
+      fixture = await seedProductWithVariant(ctx.prisma, { stock: 4 });
+      const ana = await signInAs(ctx, 'ana@example.com');
+      const eve = await signInAs(ctx, 'eve@example.com');
+      await like(ana, fixture.variantId).expect(204);
+      ctx.mail.failNextSends(1);
+
+      await buy(eve, 1);
+
+      expect(await until(() => mails().length === 1)).toBe(true);
+      expect(mails()[0]).toMatchObject({ to: 'ana@example.com' });
+      expect(await rows()).toBe(1);
+      expect(await settled()).toBe(true);
+      expect(await counts()).toMatchObject({ failed: 0 });
+    }, 10000);
+
+    it('mails nobody for a pair already told, and keeps the row', async () => {
+      fixture = await seedProductWithVariant(ctx.prisma, { stock: 4 });
+      await signInAs(ctx, 'ana@example.com');
+      const anaId = await idOf('ana@example.com');
+      await told('ana@example.com', fixture.variantId);
+
+      // Straight into the queue: the producer would not enqueue this pair,
+      // and the worker has to hold its own when a row appears in between.
+      await inspect.add(
+        'low-stock',
+        { variantId: fixture.variantId, userId: anaId },
+        { jobId: `low-stock:${fixture.variantId}:${anaId}` },
+      );
+
+      expect(await until(async () => (await counts()).completed === 1)).toBe(
+        true,
+      );
+      expect(mails()).toEqual([]);
+      expect(await rows()).toBe(1);
+    });
+
+    it('leaves a job in the failed set, no row and no mail, when the send fails on every attempt', async () => {
+      fixture = await seedProductWithVariant(ctx.prisma, { stock: 4 });
+      const ana = await signInAs(ctx, 'ana@example.com');
+      const eve = await signInAs(ctx, 'eve@example.com');
+      await like(ana, fixture.variantId).expect(204);
+      ctx.mail.failNextSends(3);
+
+      await buy(eve, 1);
+
+      expect(
+        await until(async () => (await counts()).failed === 1, 12000),
+      ).toBe(true);
+      expect(mails()).toEqual([]);
+      expect(await rows()).toBe(0);
+    }, 15000);
   });
 });

@@ -1,7 +1,9 @@
-# One image, two entry points: the API today, and the queue worker once it exists.
+# One image, two entry points: the API, and the queue worker that mails the
+# low-stock notifications.
 #
 #   docker build -t t-shirt-store-api .
 #   docker run --rm -p 3000:3000 --env-file .env t-shirt-store-api
+#   docker run --rm --env-file .env t-shirt-store-api node dist/src/worker.js
 #
 # Configuration arrives through the process environment. This image ships no .env,
 # and env.validation.ts stops the boot when a required variable is missing.

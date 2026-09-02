@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createTransport } from 'nodemailer';
 import { NodemailerMailer } from './mailer.nodemailer';
 import { EnvironmentVariables } from '../config/env.validation';
+import { nthArg } from '../common/mock-args';
 
 // `jest.spyOn` cannot reach this one: nodemailer's exports are non-configurable
 // getters, so redefining `createTransport` throws before any assertion runs.
@@ -108,6 +109,68 @@ describe('NodemailerMailer', () => {
       expect(
         build({ SMTP_USER: 'apikey', SMTP_PASS: 'secret' }).options,
       ).toMatchObject({ auth: { user: 'apikey', pass: 'secret' } });
+    });
+  });
+
+  describe('the low-stock mail', () => {
+    const IMAGE = 'https://cdn.example/products/12/front.jpg';
+    const mail = {
+      productId: 12,
+      productName: 'Ringspun <Tee>',
+      size: 'M',
+      color: 'black',
+      stock: 3,
+    };
+
+    const sentMessage = (sendMail: jest.Mock) =>
+      nthArg(sendMail) as {
+        to: string;
+        subject: string;
+        text: string;
+        html: string;
+      };
+
+    it('names the variant, the count, the link and the image, with the name escaped in the html', async () => {
+      const { mailer, sendMail } = build();
+
+      await mailer.sendLowStock('ana@example.com', {
+        ...mail,
+        imageUrl: IMAGE,
+      });
+
+      const message = sentMessage(sendMail);
+      expect(message.to).toBe('ana@example.com');
+      expect(message.subject).toBe('Only 3 left: Ringspun <Tee>, M black');
+      expect(message.text).toContain('is down to 3 units');
+      expect(message.text).toContain('http://localhost:3000/products/12');
+      expect(message.text).toContain(IMAGE);
+      expect(message.html).toContain(`<img src="${IMAGE}"`);
+      expect(message.html).toContain('Ringspun &lt;Tee&gt;, M black');
+      expect(message.html).not.toContain('<Tee>');
+    });
+
+    it('carries no image tag when the product has no image', async () => {
+      const { mailer, sendMail } = build();
+
+      await mailer.sendLowStock('ana@example.com', mail);
+
+      const message = sentMessage(sendMail);
+      expect(message.html).not.toContain('<img');
+      expect(message.text).toContain('is down to 3 units');
+    });
+
+    /**
+     * The one send that must throw. Its caller is a queue job, and a failed
+     * job is what the queue retries; a swallowed failure would count as done.
+     * The password mails below are the control: they still resolve.
+     */
+    it('rejects when the relay refuses, so the job can be retried', async () => {
+      const { mailer, sendMail } = build();
+      sendMail.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      await expect(
+        mailer.sendLowStock('ana@example.com', mail),
+      ).rejects.toThrow('ECONNREFUSED');
     });
   });
 

@@ -35,11 +35,11 @@ flowchart TB
     api -->|"create intent or link"| stripe
     api -->|"after the commit,<br/>one job per recipient"| redis
     stripe -->|"signed webhook"| api
-    redis -.-> worker
-    worker -.->|"low-stock mail"| smtp
+    redis --> worker
+    worker -->|"low-stock mail"| smtp
 
     classDef planned stroke-dasharray:5 3
-    class deploy,store,worker planned
+    class deploy,store planned
 ```
 
 **The shared ceiling is Postgres.** `prisma.service.ts:14` builds `PrismaPg` from a connection
@@ -115,8 +115,8 @@ lag. Then what no infrastructure metric shows: checkout conversion, webhook lag,
 size, and stock going negative, which pages. Logs are pino JSON on stdout. Every line carries the
 request id, which a caller may set with `X-Request-Id` and reads back on the response, and the
 filter writes one line per failure with the event, the status, the problem type, and the user id
-once a token verified, never a token. The id does not reach the job yet, because the job does not
-exist, and none of the metrics in this section exist either.
+once a token verified, never a token. The job carries no request id: the enqueue line names both,
+and none of the metrics in this section exist yet.
 
 **One regression would reach production unnoticed, and it is now a setting rather than a bug.**
 `ThrottlerGuard` keys the limit on `req.ip` (`app.module.ts:71`, no `getTracker` override). With

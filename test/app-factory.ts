@@ -6,7 +6,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import Stripe from 'stripe';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { MAILER, Mailer } from '../src/mail/mailer';
+import { LowStockMail, MAILER, Mailer } from '../src/mail/mailer';
 import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
 
 /**
@@ -17,13 +17,15 @@ import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
  * instead, which is the behaviour the contract actually states.
  */
 export interface CapturedMail {
-  kind: 'reset' | 'changed';
+  kind: 'reset' | 'changed' | 'low-stock';
   to: string;
   token?: string;
+  mail?: LowStockMail;
 }
 
 export class MailerSpy implements Mailer {
   readonly sent: CapturedMail[] = [];
+  private failures = 0;
 
   sendPasswordReset(to: string, token: string): Promise<void> {
     this.sent.push({ kind: 'reset', to, token });
@@ -35,8 +37,27 @@ export class MailerSpy implements Mailer {
     return Promise.resolve();
   }
 
+  /**
+   * The one send that rejects the way the real one does, so the queue's retry
+   * can be watched: `failNextSends(n)` makes the next `n` calls reject and
+   * record nothing.
+   */
+  sendLowStock(to: string, mail: LowStockMail): Promise<void> {
+    if (this.failures > 0) {
+      this.failures -= 1;
+      return Promise.reject(new Error('mail relay down, on purpose'));
+    }
+    this.sent.push({ kind: 'low-stock', to, mail });
+    return Promise.resolve();
+  }
+
+  failNextSends(n: number): void {
+    this.failures = n;
+  }
+
   clear(): void {
     this.sent.length = 0;
+    this.failures = 0;
   }
 }
 

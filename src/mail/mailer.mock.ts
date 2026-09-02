@@ -10,6 +10,7 @@ import { MAILER, Mailer } from './mailer';
 export interface MailerMock {
   sendPasswordReset: jest.Mock;
   sendPasswordChanged: jest.Mock;
+  sendLowStock: jest.Mock;
 }
 
 /**
@@ -23,6 +24,7 @@ export function createMailerMock(): MailerMock {
   return {
     sendPasswordReset: jest.fn().mockResolvedValue(undefined),
     sendPasswordChanged: jest.fn().mockResolvedValue(undefined),
+    sendLowStock: jest.fn().mockResolvedValue(undefined),
   };
 }
 

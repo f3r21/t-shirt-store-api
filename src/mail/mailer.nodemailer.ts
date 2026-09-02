@@ -1,8 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
-import { Mailer } from './mailer';
+import { LowStockMail, Mailer } from './mailer';
 import { EnvironmentVariables } from '../config/env.validation';
+
+/** The five characters HTML reads as markup, for a name a manager typed. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 /**
  * The production binding for the `MAILER` token.
@@ -94,6 +104,45 @@ export class NodemailerMailer implements Mailer {
   }
 
   /**
+   * The low-stock mail, with the product's image when there is one.
+   *
+   * The one method here that throws. The caller is a queue job, the job's
+   * attempts are the retry, and a send that failed quietly would count as
+   * done. So this calls `deliver` and not `send`, and the processor deletes
+   * the row it wrote when this rejects.
+   *
+   * The name is escaped because a manager typed it, and the image is a plain
+   * `img` so a client that blocks remote images still shows the text.
+   */
+  async sendLowStock(to: string, mail: LowStockMail): Promise<void> {
+    const options = [mail.size, mail.color].filter((o) => o !== '').join(' ');
+    const name =
+      options === '' ? mail.productName : `${mail.productName}, ${options}`;
+    const units = mail.stock === 1 ? 'unit' : 'units';
+    const link = `${this.appUrl}/products/${mail.productId}`;
+
+    await this.deliver({
+      to,
+      subject: `Only ${mail.stock} left: ${name}`,
+      text: [
+        `${name} is down to ${mail.stock} ${units}.`,
+        '',
+        `You liked it. If you want it, it is here: ${link}`,
+        ...(mail.imageUrl === undefined ? [] : ['', mail.imageUrl]),
+      ].join('\n'),
+      html: [
+        `<p>${escapeHtml(name)} is down to ${mail.stock} ${units}.</p>`,
+        ...(mail.imageUrl === undefined
+          ? []
+          : [
+              `<p><img src="${escapeHtml(mail.imageUrl)}" alt="${escapeHtml(mail.productName)}"></p>`,
+            ]),
+        `<p>You liked it. If you want it, it is here: <a href="${link}">${link}</a></p>`,
+      ].join('\n'),
+    });
+  }
+
+  /**
    * A failed send is logged and never thrown, and the two callers need that for
    * two different reasons.
    *
@@ -118,15 +167,23 @@ export class NodemailerMailer implements Mailer {
    * `ARCHITECTURE.md` describes and nothing has built. Until then, a send
    * failure is a line in a log somebody has to be watching.
    */
-  private async send(message: {
-    to: string;
-    subject: string;
-    text: string;
-  }): Promise<void> {
+  private async send(message: OutgoingMessage): Promise<void> {
     try {
-      await this.transporter.sendMail({ from: this.from, ...message });
+      await this.deliver(message);
     } catch (err) {
       this.logger.error(`Could not send "${message.subject}"`, err);
     }
   }
+
+  /** The send itself, which rejects the way the transport does. */
+  private async deliver(message: OutgoingMessage): Promise<void> {
+    await this.transporter.sendMail({ from: this.from, ...message });
+  }
+}
+
+interface OutgoingMessage {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
 }

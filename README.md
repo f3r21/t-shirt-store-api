@@ -9,7 +9,7 @@ disagree, the document is right and the code is wrong.
 
 ## Run it
 
-Six commands, in this order. Two of them carry a trap, noted below.
+Seven commands, in this order. Two of them carry a trap, noted below.
 
 ```bash
 npm install
@@ -18,10 +18,15 @@ npm run docker:up         # Postgres, Redis and Mailpit
 npm run db:migrate        # applies the migrations
 npm run db:seed           # NOT optional, see below
 npm run start:dev
+npm run start:worker:dev  # in a second terminal, see below
 ```
 
 The API is then on `http://localhost:3000/v1`. Mailpit's web interface, where every message
-this API sends can be read, is on `http://localhost:8025`.
+the API and the worker send can be read, is on `http://localhost:8025`.
+
+**The worker is a second process, not a flag.** It consumes the low-stock queue and sends the
+mails, from the same code and the same image as the API, so the two scale apart and a slow mail
+provider never holds a request. Without it the jobs wait in Redis and nothing is lost.
 
 **Postgres is published on 5433, not 5432.** The compose file avoids a clash with a
 container from week 1 of the programme. A default `DATABASE_URL` gets connection refused.
@@ -137,9 +142,9 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Not built. The table ships, and the upload and the delete wait on object storage |
-| End-to-end tests | Done, in twelve suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock producer through the real queue, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
+| End-to-end tests | Done, in twelve suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock notifications through the real queue and worker to the mail, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
-| Stock notifications | The producer is done: when a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike. The worker and the mail are next. See `ARCHITECTURE.md` for the queue rationale |
+| Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
 | S3 uploads | Not started |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
