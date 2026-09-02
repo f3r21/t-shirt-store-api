@@ -301,4 +301,5 @@ Stated here rather than discovered later. The longer list, with the reasoning, i
   and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
 - Production mail goes through SES in its sandbox. Only verified addresses receive until AWS
-  grants production access, which takes about a day from the request.
+  grants production access, which takes about a day from the request. The mails land in spam,
+  because the sender is a personal address SES cannot sign for. A domain with DKIM fixes that.

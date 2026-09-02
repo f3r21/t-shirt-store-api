@@ -1037,4 +1037,6 @@ one open since Week 3 described nineteen operations of thirty-seven.
 
 **Given up:** `SMTP_PASS` is still read from SSM by a task that does not use it under `ses`,
 because removing a secret from the task definition is a change I did not make on the last day;
-no bounce or complaint handling, SES's notifications go nowhere; and the sandbox above.
+no bounce or complaint handling, SES's notifications go nowhere; the mails land in spam, because
+the sender is a personal address SES cannot sign for, which a domain with DKIM fixes; and the
+sandbox above.
