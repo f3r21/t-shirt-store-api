@@ -1,0 +1,468 @@
+import request from 'supertest';
+import {
+  createTestApp,
+  ensureCategory,
+  ensureRoles,
+  seedProductWithVariant,
+  signInAs,
+  truncateAll,
+  TestApp,
+} from './app-factory';
+
+/**
+ * Reading the catalog, against a real database.
+ *
+ * The unit tests for these paths assert the `where` object the service hands a
+ * mocked Prisma client. That proves the service composed a filter. It cannot
+ * prove the filter filters, because no row ever exists. This file is the half
+ * that does, and it is the half the challenge asks for by name at line 46,
+ * "Search products by category".
+ */
+describe('Catalog reads (e2e)', () => {
+  let ctx: TestApp;
+  let tees: number;
+  let mugs: number;
+
+  const http = () => request(ctx.app.getHttpServer());
+
+  interface Page {
+    data: { id: number; name: string }[];
+    meta: { total: number; limit: number; offset: number };
+  }
+
+  beforeAll(async () => {
+    ctx = await createTestApp();
+    await ensureRoles(ctx.prisma);
+    tees = await ensureCategory(ctx.prisma, 'e2e-tees');
+    mugs = await ensureCategory(ctx.prisma, 'e2e-mugs');
+  });
+
+  afterAll(async () => {
+    await ctx.app.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAll(ctx.prisma);
+  });
+
+  describe('filtering by category', () => {
+    beforeEach(async () => {
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'A tee',
+        categoryIds: [tees],
+      });
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'A mug',
+        categoryIds: [mugs],
+      });
+    });
+
+    it('returns only the products in the category asked for', async () => {
+      const res = await http()
+        .get('/v1/products')
+        .query({ categoryId: tees })
+        .expect(200);
+
+      const page = res.body as Page;
+      expect(page.data.map((p) => p.name)).toEqual(['A tee']);
+    });
+
+    /**
+     * The total drives the client's pager, and it is computed by a second query
+     * that has to carry the same filter. Filtering the rows while counting the
+     * whole catalog looks correct on page one and hands the caller empty pages
+     * after it.
+     */
+    it('counts only the filtered products', async () => {
+      const res = await http()
+        .get('/v1/products')
+        .query({ categoryId: tees })
+        .expect(200);
+
+      expect((res.body as Page).meta.total).toBe(1);
+    });
+
+    it('returns the whole catalog when no category is named', async () => {
+      const res = await http().get('/v1/products').expect(200);
+
+      const page = res.body as Page;
+      expect(page.meta.total).toBe(2);
+      expect(page.data).toHaveLength(2);
+    });
+
+    /**
+     * A product belongs to several categories at once, so the filter has to ask
+     * whether the product is in this category and not whether it is in only this
+     * category.
+     */
+    it('finds a product that sits in more than one category', async () => {
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'A tee shaped mug',
+        categoryIds: [tees, mugs],
+      });
+
+      const res = await http()
+        .get('/v1/products')
+        .query({ categoryId: mugs })
+        .expect(200);
+
+      const names = (res.body as Page).data.map((p) => p.name);
+      expect(names).toContain('A tee shaped mug');
+      expect(names).toContain('A mug');
+      expect(names).not.toContain('A tee');
+    });
+
+    it('returns an empty page for a category that holds nothing', async () => {
+      const empty = await ensureCategory(ctx.prisma, 'e2e-empty');
+
+      const res = await http()
+        .get('/v1/products')
+        .query({ categoryId: empty })
+        .expect(200);
+
+      const page = res.body as Page;
+      expect(page.data).toEqual([]);
+      expect(page.meta.total).toBe(0);
+    });
+  });
+
+  /**
+   * The storefront stays open to a caller with no token.
+   *
+   * Both reads carry `@OptionalAuth()` and nothing asserted it. Delete either
+   * decorator and the handler carries no marker at all: the token guard demands
+   * a token and the roles guard denies by default, so the whole catalog closes
+   * to every shopper who has not signed in. The break is loud in production and
+   * was silent in CI.
+   */
+  describe('visibility, which is three states and not two', () => {
+    it('serves the list with no token at all', async () => {
+      await seedProductWithVariant(ctx.prisma, { name: 'On sale' });
+
+      const res = await http().get('/v1/products').expect(200);
+
+      expect((res.body as Page).data.map((p) => p.name)).toEqual(['On sale']);
+    });
+
+    it('serves the detail with no token at all', async () => {
+      const { productId } = await seedProductWithVariant(ctx.prisma, {
+        name: 'On sale',
+      });
+
+      const res = await http().get(`/v1/products/${productId}`).expect(200);
+
+      expect(res.body).toMatchObject({ id: productId, name: 'On sale' });
+    });
+
+    /**
+     * The regression `ARCHITECTURE.md:131-139` names as the largest gap left,
+     * written the way that section asks for it. The 21 product unit tests assert
+     * the `where` object handed to a mocked client, so they prove the service
+     * composed a filter and not that a disabled row stays hidden from a real
+     * request against a real database.
+     */
+    /**
+     * A header that is present and unusable is not the same as no header.
+     *
+     * `GET /products` is the optional-auth route, so an anonymous call is a
+     * 200. That made a broken `Authorization` header a 200 as well, because
+     * the guard could not tell "sent nothing" from "sent something I cannot
+     * read": both arrived as an undefined token.
+     *
+     * The reader this hurt is a manager whose client mangles the header. They
+     * asked for the catalog as themselves, got the anonymous one, and nothing
+     * in the response said so.
+     *
+     * The last row is the control. Without it four 401s would also pass on a
+     * guard that had started refusing every anonymous read, which is the
+     * opposite failure and a worse one.
+     */
+    it.each([
+      ['a scheme that is not Bearer', 'Basic abc', 401],
+      ['a bare scheme', 'Bearer', 401],
+      ['a scheme with an empty token', 'Bearer ', 401],
+      ['a scheme nobody defines', 'Token xyz', 401],
+      ['a scheme that merely starts with bearer', 'bearerish abc', 401],
+      ['no header at all', undefined, 200],
+    ])(
+      'answers %s with %i on an optional-auth route',
+      async (_l, h, status) => {
+        const call = http().get('/v1/products');
+        if (h !== undefined) call.set('authorization', h);
+        await call.expect(status);
+      },
+    );
+
+    it('hides a disabled product from an anonymous caller', async () => {
+      await seedProductWithVariant(ctx.prisma, { name: 'Live' });
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'Withdrawn',
+        isActive: false,
+      });
+
+      const res = await http().get('/v1/products').expect(200);
+
+      const page = res.body as Page;
+      expect(page.data.map((p) => p.name)).toEqual(['Live']);
+      expect(page.meta.total).toBe(1);
+    });
+
+    /**
+     * The positive control, and the reason the decorator is `@OptionalAuth` and
+     * not `@Public`. `@Public` returns before any token work, so the manager
+     * would arrive unrecognised and see the anonymous view of their own catalog.
+     */
+    it('shows the disabled product to a manager who asks for it', async () => {
+      await seedProductWithVariant(ctx.prisma, { name: 'Live' });
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'Withdrawn',
+        isActive: false,
+      });
+      const token = await signInAs(ctx, 'manager@example.com', 'manager');
+
+      const res = await http()
+        .get('/v1/products')
+        .query({ includeInactive: true })
+        .set('authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const names = (res.body as Page).data.map((p) => p.name);
+      expect(names).toContain('Withdrawn');
+      expect(names).toContain('Live');
+    });
+
+    /**
+     * The detail read is asymmetric with the list on purpose, and the service
+     * comment at `products.service.ts:118-124` says why: there is no flag on
+     * this operation, so a manager's view is unconditional rather than asked
+     * for. A test is the only thing that stops that asymmetry being tidied away.
+     */
+    it('answers 404 on the detail of a disabled product, and 200 to a manager', async () => {
+      const { productId } = await seedProductWithVariant(ctx.prisma, {
+        name: 'Withdrawn',
+        isActive: false,
+      });
+
+      await http().get(`/v1/products/${productId}`).expect(404);
+
+      const token = await signInAs(ctx, 'manager@example.com', 'manager');
+      const res = await http()
+        .get(`/v1/products/${productId}`)
+        .set('authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(res.body).toMatchObject({ id: productId, isActive: false });
+    });
+
+    /**
+     * A malformed id and an impossible id are different answers, at run time.
+     *
+     * `ParseIdPipe` draws that line and its docstring argues it: `abc` is a bad
+     * request, while an integer above the `int4` ceiling is a lookup that finds
+     * nothing, which is what a negative id and a zero id already answer. Both
+     * documents now declare the 400, and **a document is not a response**.
+     * `openapi-contract.e2e-spec.ts` compares two descriptions of this API and
+     * never calls it, so the two could agree with each other and disagree with
+     * the server. This is the test that calls it.
+     *
+     * The two 404 rows are the control. Without them a 400 on every input would
+     * pass the first two lines, and the distinction the pipe exists to draw
+     * would be untested.
+     */
+    it.each([
+      ['a segment that is not a number', 'abc', 400],
+      ['a segment that is not an integer', '1.5', 400],
+      ['an integer above the int4 ceiling', '2147483648', 404],
+      ['an integer below the int4 floor', '-2147483649', 404],
+      ['a well formed id that matches no row', '2147483647', 404],
+    ])('answers %s with %i', async (_label, segment, status) => {
+      await http().get(`/v1/products/${segment}`).expect(status);
+    });
+
+    /**
+     * `NOT_DELETED` is never relaxed, for any caller. Order history points at
+     * the variants of products that may since have been withdrawn, so the row
+     * survives while the catalog stops showing it to everyone, the manager
+     * included.
+     */
+    it('hides a deleted product from the manager as well', async () => {
+      const { productId } = await seedProductWithVariant(ctx.prisma, {
+        name: 'Gone',
+      });
+      await ctx.prisma.product.update({
+        where: { id: productId },
+        data: { deletedAt: new Date() },
+      });
+      const token = await signInAs(ctx, 'manager@example.com', 'manager');
+
+      await http()
+        .get(`/v1/products/${productId}`)
+        .set('authorization', `Bearer ${token}`)
+        .expect(404);
+
+      const res = await http()
+        .get('/v1/products')
+        .query({ includeInactive: true })
+        .set('authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect((res.body as Page).meta.total).toBe(0);
+    });
+  });
+
+  /**
+   * `GET /categories` had no e2e request at all. The audit names it beside the
+   * password change as the two served operations the suite never drives. The
+   * controller's own comment says why the marker matters: without `@Public()`
+   * the global guard answers 401 and a shopper cannot browse before signing
+   * in. This is the test that goes red when that happens.
+   *
+   * `truncateAll` leaves `categories` alone, so rows from other suites may
+   * exist; the assertion is containment by name, not equality.
+   */
+  describe('the category list', () => {
+    interface CategoryPage {
+      data: { id: number; name: string }[];
+      meta: { total: number; limit: number; offset: number };
+    }
+
+    it('returns one page with the envelope, to a caller with no token', async () => {
+      const res = await http().get('/v1/categories').expect(200);
+
+      const page = res.body as CategoryPage;
+      expect(page.data.map((c) => c.name)).toEqual(
+        expect.arrayContaining(['e2e-tees', 'e2e-mugs']),
+      );
+      expect(Object.keys(page.data[0]).sort()).toEqual(['id', 'name']);
+      expect(page.meta).toMatchObject({ limit: 20, offset: 0 });
+      expect(page.meta.total).toBeGreaterThanOrEqual(2);
+    });
+
+    it('answers 400 for a limit above the contract ceiling of 100', async () => {
+      await http().get('/v1/categories').query({ limit: 101 }).expect(400);
+      // The control: the ceiling itself is accepted.
+      await http().get('/v1/categories').query({ limit: 100 }).expect(200);
+    });
+  });
+
+  /**
+   * Images come from `product_images`, which exists and which nothing writes
+   * until the upload operation lands. The mapper answered `[]` under a comment
+   * saying the table did not exist, so a row in it was invisible and the list's
+   * `primaryImageUrl` was never set. The rows here are seeded straight into the
+   * table, the way `seedOrderLineFor` seeds an order line, because no operation
+   * can create one yet.
+   *
+   * The primary is seeded second, so it has the higher id. The first assertion
+   * passes only if the order is primary first and not by id.
+   */
+  describe('images, from a table nothing writes yet', () => {
+    interface Detail {
+      images: { id: number; url: string; isPrimary: boolean }[];
+    }
+    interface Listing {
+      data: { name: string; primaryImageUrl?: string }[];
+    }
+
+    it('returns the images of a product, primary first', async () => {
+      const { productId } = await seedProductWithVariant(ctx.prisma, {
+        name: 'Pictured',
+        images: [
+          { url: 'https://cdn.example/back.jpg' },
+          { url: 'https://cdn.example/front.jpg', isPrimary: true },
+        ],
+      });
+
+      const res = await http().get(`/v1/products/${productId}`).expect(200);
+
+      const { images } = res.body as Detail;
+      expect(images.map((image) => image.url)).toEqual([
+        'https://cdn.example/front.jpg',
+        'https://cdn.example/back.jpg',
+      ]);
+      expect(images[0].isPrimary).toBe(true);
+      // Three fields and no `productId`, per the contract's `ProductImage`.
+      expect(Object.keys(images[0]).sort()).toEqual(['id', 'isPrimary', 'url']);
+    });
+
+    it('carries primaryImageUrl on the list, and no key for a product with no image', async () => {
+      await seedProductWithVariant(ctx.prisma, {
+        name: 'Pictured',
+        images: [{ url: 'https://cdn.example/front.jpg', isPrimary: true }],
+      });
+      await seedProductWithVariant(ctx.prisma, { name: 'Plain' });
+
+      const res = await http().get('/v1/products').expect(200);
+
+      const byName = new Map(
+        (res.body as Listing).data.map((entry) => [entry.name, entry]),
+      );
+      expect(byName.get('Pictured')?.primaryImageUrl).toBe(
+        'https://cdn.example/front.jpg',
+      );
+      expect(byName.get('Plain')).not.toHaveProperty('primaryImageUrl');
+    });
+  });
+
+  /**
+   * An integer the column cannot hold, on the two routes that need no token.
+   *
+   * These are unit tested at `src/common/dto/catalog-validation.spec.ts` and
+   * `src/common/parse-id.pipe.spec.ts`, which prove the DTO and the pipe refuse
+   * the value. Neither can prove what the caller receives, because the defect
+   * was never in the validators. It was that the value passed them, reached
+   * Postgres, came back as `P2020`, and fell through the exception filter as a
+   * 500. Only a real request through the whole pipeline shows that.
+   *
+   * Measured before the bounds existed, both without a token:
+   *
+   *     GET /v1/products?categoryId=2147483648   500
+   *     GET /v1/products/-2147483649             500
+   */
+  describe('an id past the int4 bounds, with no token', () => {
+    beforeEach(async () => {
+      await seedProductWithVariant(ctx.prisma, { name: 'In stock' });
+    });
+
+    /**
+     * `limit` has carried a ceiling since it was written and `offset` did not,
+     * so a value the contract admits reached Prisma's `skip`, which refuses it
+     * with a validation error nothing maps, and this public route answered 500.
+     *
+     * The last row is the control. Without it a 400 on every offset would pass
+     * the first two lines, and the bound would be indistinguishable from a
+     * parameter that stopped working.
+     */
+    it.each([
+      ['above the int4 ceiling', '2147483648', 400],
+      ['far above it', '99999999999999999999', 400],
+      ['at the ceiling', '2147483647', 200],
+      ['a page nobody asked for but the column can hold', '5000', 200],
+    ])('answers an offset %s with %i', async (_label, offset, status) => {
+      await http().get('/v1/products').query({ offset }).expect(status);
+    });
+
+    it('answers 400 for a categoryId above the ceiling', async () => {
+      await http()
+        .get('/v1/products')
+        .query({ categoryId: '2147483648' })
+        .expect(400);
+    });
+
+    it('answers 404 for a path id below the floor', async () => {
+      await http().get('/v1/products/-2147483649').expect(404);
+    });
+
+    it.each([
+      ['categoryId at the ceiling', '2147483647'],
+      ['an ordinary categoryId', '1'],
+    ])('still answers 200 for %s, which is the control', async (_n, value) => {
+      // Without these the fix could pass by refusing every request.
+      await http().get('/v1/products').query({ categoryId: value }).expect(200);
+    });
+
+    it('still answers 404 for an in-range id that names no row', async () => {
+      await http().get('/v1/products/2147483647').expect(404);
+    });
+  });
+});

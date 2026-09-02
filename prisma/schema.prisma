@@ -4,11 +4,471 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model Role {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  email               String    @unique @db.Citext
+  passwordHash        String    @map("password_hash")
+  firstName           String    @map("first_name")
+  lastName            String    @map("last_name")
+  roleId              Int       @map("role_id")
+  resetTokenHash      String?   @unique @map("reset_token_hash")
+  resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role Role @relation(fields: [roleId], references: [id])
+
+  refreshTokens  RefreshToken[]
+  consumedTokens ConsumedRefreshToken[]
+  likes          ProductLike[]
+  stockAlerts   StockNotification[]
+  orders        Order[]
+  cartItems     CartItem[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @map("user_id")
+  tokenHash         String   @unique @map("token_hash")
+  previousTokenHash String?  @map("previous_token_hash")
+  deviceName        String?  @map("device_name")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // When the row last rotated, which is what the grace window is measured from.
+  // Neither existing column could carry it: `created_at` is the start of the
+  // device session and never moves, and `expires_at` is rewritten on every
+  // rotation, so deriving the moment as `expires_at` minus the TTL would tie the
+  // window to a configuration value and break in silence the day that value
+  // changes.
+  //
+  // Nullable, so the migration is additive and a rollback to the previous image
+  // still runs. A row that has never rotated has nothing to be inside the window
+  // of, and the grace branch requires a value, so null reads as "not eligible"
+  // rather than as "eligible forever".
+  rotatedAt         DateTime? @map("rotated_at") @db.Timestamptz(6)
+
+  // The device session this row belongs to, named by the id of the row that
+  // started it.
+  //
+  // **A device is a family, not a row.** One row per device could not hold two
+  // live tokens, and two live tokens are exactly what two browser tabs
+  // refreshing in the same moment need. The grace path now adds a row to the
+  // family instead of overwriting the one the winner is holding.
+  //
+  // **An `Int` rather than a uuid, and that is not cosmetic.** `sid` in the
+  // access token is typed `number` (`access-token-payload.ts:20`) and
+  // `auth.controller.ts` hands it to `deleteCurrentSession`. Naming the family
+  // by its founding row keeps `sid` the same type and the same value, so the
+  // contract's promise that "the session id does not change" survives.
+  //
+  // **Null means "I am the founder", and that is the whole reason it is
+  // nullable.** A row cannot reference its own id on insert, so a sign-in would
+  // otherwise need a second write to name its own family. It also makes the
+  // migration purely additive with no backfill: every row written before
+  // families reads as its own family under the same rule, and a rollback to the
+  // previous image still inserts, which the forward-only rule in
+  // `ARCHITECTURE.md` requires. `AuthService.familyOf` and `familyWhere` are the
+  // two places that encode it.
+  familyId          Int?      @map("family_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // `listSessions` filters by user_id and groups by family_id, and every delete
+  // of a session names a family. Prisma indexes no foreign key on its own, and
+  // the auth migration created neither.
+  //
+  // `previous_token_hash` keeps its index because the column is still here. It
+  // is dead: `consumed_refresh_tokens` replaced it as the memory of which
+  // tokens have been spent, because one column can only remember one
+  // generation and cannot remember when. Both come out together in a later
+  // release, with expand and contract, which is why neither is dropped now.
+  @@index([userId])
+  @@index([familyId])
+  @@index([previousTokenHash])
+  @@map("refresh_tokens")
+}
+
+/**
+ * Every refresh token this server has already spent.
+ *
+ * Rotation used to remember one generation, in `refresh_tokens.previous_token_hash`,
+ * and that column had to answer two questions it cannot answer at once: which
+ * token is still acceptable during the grace window, and which tokens have been
+ * used and must raise an alarm. Holding both in one slot is what made an honest
+ * second tab look like a thief.
+ *
+ * A row here is written when a token is spent and is never updated. `consumed_at`
+ * is what the grace window is measured against, so the window belongs to the
+ * token rather than to the row it came from, and no amount of racing extends it.
+ *
+ * `user_id` is stored rather than resolved through the family, because the reuse
+ * response deletes every row for the user and the family's rows may already be
+ * gone by the time that runs.
+ *
+ * **It grows with traffic and nothing prunes it yet.** One row per rotation per
+ * device. A sweep of rows older than the absolute session cap is safe by
+ * construction, since a token past that cap cannot rotate anything, and it is
+ * the first thing to add when this ships anywhere real.
+ */
+model ConsumedRefreshToken {
+  tokenHash  String   @id @map("token_hash")
+  familyId   Int      @map("family_id")
+  userId     Int      @map("user_id")
+  consumedAt DateTime @default(now()) @map("consumed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("consumed_refresh_tokens")
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Soft delete lives on this table alone. deleteProduct sets the column and
+  // keeps the row, because order history points at the variants of a product
+  // that may since have been withdrawn.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  variants   ProductVariant[]
+  categories ProductCategory[]
+  images     ProductImage[]
+  orderItems OrderItem[]
+
+  // No index beyond the primary key, and no unique on `name`. createProduct
+  // declares 400, 401, 403, 422 and 500 and no 409, so a repeated name is
+  // legal. `deleted_at IS NULL` matches nearly every row and `is_active` holds
+  // two values, so the planner would decline an index on either.
+  @@map("products")
+}
+
+model ProductVariant {
+  id        Int @id @default(autoincrement())
+  productId Int @map("product_id")
+
+  // The empty string is the stored spelling of "this variant has no size".
+  // PostgreSQL treats two NULLs in a unique index as distinct and Prisma 7.10
+  // cannot ask for NULLS NOT DISTINCT, so nullable columns would admit exactly
+  // the duplicate pair the contract answers with a 409. The mapper drops the
+  // empty string again on the way out, so the wire still shows absence.
+  size  String @default("")
+  color String @default("")
+
+  // Minor units, so 1999 means 19.99. Not numeric(10,2), which is what the ERD
+  // says: an integer needs no conversion inbound, outbound, or at Stripe, and
+  // Prisma hands a numeric back as a Decimal instance that serialises to a
+  // string. This is a deliberate departure from the ERD, recorded in
+  // DECISIONS.md.
+  priceCents Int @map("price_cents")
+
+  // No default on purpose. Prisma makes a defaulted field optional in the
+  // create input, and the contract makes stock required on createVariant, so
+  // the absence of a default is what turns a forgotten value into a type error.
+  stock Int
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product     Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  likes       ProductLike[]
+  stockAlerts StockNotification[]
+
+  // One index doing two jobs: it enforces the 409 on createVariant and
+  // updateVariant, and its leading column serves both the variants of one
+  // product and the `productId IN (...)` lookup behind priceFrom. A second
+  // @@index([productId]) would index the same leading column twice and slow
+  // every insert for nothing.
+  @@unique([productId, size, color])
+  @@map("product_variants")
+}
+
+model Category {
+  id Int @id @default(autoincrement())
+
+  // Unique so the seed can upsert on the name, the way the three role rows
+  // already do.
+  name String @unique
+
+  products ProductCategory[]
+
+  @@map("categories")
+}
+
+model ProductCategory {
+  productId  Int @map("product_id")
+  categoryId Int @map("category_id")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  // An explicit model rather than an implicit many-to-many, which would create
+  // a table named _CategoryToProduct with columns A and B, against both the ERD
+  // and this schema's rule that every model carries @@map.
+  //
+  // The composite key serves every product-first read. The categoryId filter on
+  // listProducts drives from the other side, and nothing leads with category_id
+  // without the second index.
+  @@id([productId, categoryId])
+  @@index([categoryId])
+  @@map("product_categories")
+}
+
+enum OrderStatus {
+  pending
+  paid
+  processing
+  shipped
+  delivered
+  cancelled
+
+  // The six members the ERD declares, in the lower case the contract uses.
+  // `paid` and `delivered` ship although no operation in scope writes either:
+  // the payment webhook sets `paid`, and `delivered` belongs to the delivery
+  // feature. The enum is the domain, not the list of legal moves.
+  @@map("order_status")
+}
+
+/// The Stripe flow that paid an order.
+///
+/// The contract declares exactly these two and no third, because feature 7 asks
+/// for both flows: a payment link buys one product, a payment intent buys a
+/// cart. It is absent until a payment succeeds, which is why the column on
+/// `Order` is nullable rather than defaulted.
+enum PaymentMethod {
+  payment_link
+  payment_intent
+
+  @@map("payment_method")
+}
+
+model CartItem {
+  userId    Int @map("user_id")
+  variantId Int @map("product_variant_id")
+  quantity  Int
+
+  // The only timestamp here, and it has a reader: this table has no id, so the
+  // cart's order needs a stable second key, and "the order the user added
+  // things in" is the one a user would not find arbitrary.
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  // No cart table and no surrogate id. The cart response carries items and a
+  // subtotal and nothing else, so no caller can observe a cart row, and "the
+  // cart exists because the user exists" becomes a fact about this key rather
+  // than a row that an upsert has to create first. This departs from the ERD's
+  // shopping_carts table, and the primary key is the stronger guarantee.
+  //
+  // One key, four operations: the list and the clear read the user_id prefix,
+  // the set upserts on the pair, the delete removes it.
+  @@id([userId, variantId])
+  @@map("cart_items")
+}
+
+model Order {
+  id     Int @id @default(autoincrement())
+  userId Int @map("user_id")
+
+  // A stored column rather than the last history row. Status is a filter on
+  // both list operations, and deriving it would make the commonest filter a
+  // correlated subquery on every page. No default, so createOrder has to say
+  // `pending` out loud.
+  status OrderStatus
+
+  // Minor units, for the reason recorded against price_cents. Both columns are
+  // real rather than one aliasing the other: the history filters on the total,
+  // so they diverge the day a discount exists.
+  subtotalCents Int @map("subtotal_cents")
+  totalCents    Int @map("total_cents")
+
+  // Nullable because the contract says so: absent until a payment succeeds. The
+  // webhook is the only writer, at the same moment it moves the status to
+  // `paid`, so a row with a method and a status of `pending` is a bug rather
+  // than a state.
+  //
+  // This is where the ERD's `order_payments` table would have gone. The contract
+  // exposes one field of it and nothing else, so a seven column table whose
+  // other six nothing reads would be a table built for a shape no operation
+  // asks for. The Stripe reference that table also carried lives on
+  // `StripeEvent`, where idempotency actually needs it. Same class of departure
+  // as the cart, recorded for the same reason.
+  paymentMethod PaymentMethod? @map("payment_method")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // No updatedAt, unlike products. The status history records every mutation
+  // with its own timestamp, so the column would be a second, lossier copy.
+
+  user          User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  statusHistory OrderStatusChange[]
+
+  // The client's own history, and a manager filtering by one client. The
+  // equality that is always present leads, then the range that is also the sort
+  // key, then the tiebreak. A btree scans backwards for free, so this ascending
+  // index serves a newest-first page with no sort step.
+  @@index([userId, createdAt, id])
+  // A manager's unfiltered page. No leading equality, so the composite above
+  // cannot serve it.
+  @@index([createdAt, id])
+  @@map("orders")
+}
+
+model OrderItem {
+  orderId   Int @map("order_id")
+  variantId Int @map("product_variant_id")
+
+  // Not a snapshot. A variant never moves between products, because the update
+  // operation accepts size, colour and price only. It is here so reading an
+  // order touches order_items alone.
+  productId Int @map("product_id")
+
+  // The four snapshots, copied when the order is placed and never read back
+  // from the catalog. A rename or a reprice must not rewrite history.
+  productName    String @map("product_name")
+  size           String
+  color          String
+  unitPriceCents Int    @map("unit_price_cents")
+
+  quantity Int
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // No surrogate id: an order line carries none on the wire, and the cart
+  // guarantees one line per variant.
+  @@id([orderId, variantId])
+  // Two jobs: counting the lines on a variant before deleting it, and giving
+  // RESTRICT an index to check rather than a sequential scan.
+  @@index([variantId])
+  @@map("order_items")
+}
+
+model OrderStatusChange {
+  id        Int         @id @default(autoincrement())
+  orderId   Int         @map("order_id")
+  status    OrderStatus
+  changedAt DateTime    @default(now()) @map("changed_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  // One order's history, oldest first. Equality then sort key. The id tiebreak
+  // stays in the query rather than the index, because two rows written in one
+  // transaction share an instant.
+  @@index([orderId, changedAt])
+  @@map("order_status_history")
+}
+
+/// A user's like on one variant. See `contract/openapi.yaml:756`.
+///
+/// Keyed on the variant and not the product, which was the mentor's single
+/// explicit schema correction in the week 2 review: a like says "tell me when
+/// this size in this colour runs low", and a product-level like cannot answer it.
+///
+/// No surrogate id and no timestamp. The pair is the whole fact, the contract
+/// exposes neither, and `PUT` and `DELETE` on the like are idempotent because
+/// the primary key makes them so.
+model ProductLike {
+  userId    Int @map("user_id")
+  variantId Int @map("product_variant_id")
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@id([userId, variantId])
+  // The queue reads this table the other way round: when stock reaches three it
+  // needs every user who liked one variant. The primary key leads on `user_id`,
+  // so it serves `GET /users/me/likes` and cannot serve that. This index is the
+  // stock notification producer's only lookup.
+  @@index([variantId])
+  @@map("product_likes")
+}
+
+/// One image of a product. See `contract/openapi.yaml:885`.
+///
+/// `url` holds the public address, not the object key. The API returns it
+/// verbatim and never signs it, because the contract's example is a plain CDN
+/// address and a signed URL would expire inside a cached response.
+model ProductImage {
+  id        Int     @id @default(autoincrement())
+  productId Int     @map("product_id")
+  url       String
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Every read of this table is "the images of one product", as an include on
+  // the product detail. Nothing lists images across products.
+  @@index([productId])
+  @@map("product_images")
+}
+
+/// One Stripe event this server has already applied.
+///
+/// Stripe retries a non-2xx for up to three days, so the handler will see the
+/// same event more than once and must apply it once. The unique constraint is
+/// what makes that true: the row is inserted inside the same transaction that
+/// moves the order to `paid`, so a retry becomes a unique violation the handler
+/// answers 200 to rather than a second stock decrement.
+///
+/// The id is Stripe's own event id and not a surrogate, because the thing being
+/// made unique is Stripe's identity for the event, not ours.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@map("stripe_events")
+}
+
+/// One low-stock mail already sent, so it is not sent twice.
+///
+/// Stock oscillating around the threshold, three to four to three, would mail
+/// the same person on every crossing. This row is written before the mail, so
+/// the database is the arbiter of that race rather than the worker.
+///
+/// The open question `ARCHITECTURE.md` records is the primary key: this shape
+/// tells a user once ever, and never again when the variant is restocked months
+/// later. The alternative carries a restock episode in the key. That decision is
+/// deliberately not made here, because it belongs to the review rather than to a
+/// migration.
+model StockNotification {
+  userId    Int      @map("user_id")
+  variantId Int      @map("product_variant_id")
+  sentAt    DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@id([userId, variantId])
+  @@map("stock_notifications")
 }

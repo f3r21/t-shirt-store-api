@@ -1,0 +1,184 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import type { Response } from 'express';
+import { AuthService } from './auth.service';
+import { CreateSessionDto } from './dto/create-session.dto';
+import { RefreshSessionDto } from './dto/refresh-session.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SessionTokensDto } from './dto/session-tokens.dto';
+import { Public } from './decorators/public.decorator';
+import { CurrentUser } from './decorators/current-user.decorator';
+import type { AccessTokenPayload } from './access-token-payload';
+import { PageQueryDto } from '../common/dto/page-query.dto';
+import { ApiPageResponse } from '../common/dto/api-page-response';
+import { SessionDto } from './dto/session.dto';
+import { PASSWORD_THROTTLE } from './password-throttle';
+import { CheckPolicies } from '../authz/check-policies.decorator';
+import { can } from '../authz/policies';
+import { SIGN_IN_THROTTLE } from './sign-in-throttle';
+import { ParseIdPipe } from '../common/parse-id.pipe';
+
+@ApiTags('auth')
+@Controller('auth')
+export class AuthController {
+  constructor(private readonly auth: AuthService) {}
+
+  /**
+   * Sign in. 201, because this creates a session in a collection of sessions.
+   *
+   * `Location` names the new session, so a client can sign this one device out
+   * later without listing them first.
+   */
+  @Public()
+  @Throttle(SIGN_IN_THROTTLE)
+  @ApiOperation({ summary: 'Create a session and get tokens' })
+  @ApiResponse({
+    status: 201,
+    description: 'The server created the session.',
+    type: SessionTokensDto,
+    headers: {
+      Location: {
+        description:
+          'The URL of the new session. Send a DELETE to that URL to sign this device out.',
+        schema: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'The request is not valid.' })
+  @ApiResponse({ status: 401, description: 'The credentials are wrong.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Post('sessions')
+  @HttpCode(HttpStatus.CREATED)
+  async createSession(
+    @Body() dto: CreateSessionDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<SessionTokensDto> {
+    const { sessionId, ...tokens } = await this.auth.createSession(dto);
+    res.setHeader('Location', `/v1/auth/sessions/${sessionId}`);
+    return tokens;
+  }
+
+  /** 200 and not 201, because rotation replaces a session rather than creating one. */
+  @Public()
+  @ApiOperation({ summary: 'Exchange a refresh token for new tokens' })
+  @ApiResponse({
+    status: 200,
+    description: 'The server rotated the tokens.',
+    type: SessionTokensDto,
+  })
+  @ApiResponse({ status: 400, description: 'The request is not valid.' })
+  @ApiResponse({ status: 401, description: 'The token is not valid.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  /**
+   * The sign-in tier, and this route was the only credential route without one.
+   *
+   * `createSession`, `POST /users`, `forgot-password` and `reset-password` all
+   * carry a tier. This carried `@Public()` alone, so it inherited the browse
+   * default of 100 a minute on the one route that both **hands out credentials**
+   * and **can delete every session for a user**. It is the multiplier behind
+   * both of the other findings in this unit: a replay loop is only a weapon at
+   * the rate the route allows.
+   */
+  @Throttle(SIGN_IN_THROTTLE)
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  refreshSession(@Body() dto: RefreshSessionDto): Promise<SessionTokensDto> {
+    return this.auth.refreshSession(dto);
+  }
+
+  @CheckPolicies(can('manage', 'RefreshToken'))
+  @ApiOperation({ summary: 'List the devices signed in to this account' })
+  @ApiPageResponse(SessionDto, 'The server sent the list.')
+  @ApiResponse({ status: 400, description: 'The query is not valid.' })
+  @ApiResponse({ status: 401, description: 'The token is not valid.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Get('sessions')
+  listSessions(
+    @CurrentUser() user: AccessTokenPayload,
+    @Query() query: PageQueryDto,
+  ) {
+    return this.auth.listSessions(user.sub, query);
+  }
+
+  /**
+   * Sign this device out.
+   *
+   * Declared before `sessions/:id`. Nest matches routes in declaration order,
+   * so the parameterised route would otherwise swallow this one and the handler
+   * would receive the literal string `current` as an id.
+   */
+  @CheckPolicies(can('manage', 'RefreshToken'))
+  @ApiOperation({ summary: 'Sign out this device' })
+  @ApiResponse({ status: 204, description: 'The device is signed out.' })
+  @ApiResponse({ status: 401, description: 'The token is not valid.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Delete('sessions/current')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteCurrentSession(@CurrentUser() user: AccessTokenPayload): Promise<void> {
+    return this.auth.deleteCurrentSession(user.sub, user.sid);
+  }
+
+  @CheckPolicies(can('manage', 'RefreshToken'))
+  @ApiOperation({ summary: 'Sign out another device' })
+  @ApiResponse({ status: 204, description: 'The device is signed out.' })
+  @ApiResponse({ status: 401, description: 'The token is not valid.' })
+  @ApiResponse({ status: 404, description: 'The session does not exist.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteSession(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id', ParseIdPipe) id: number,
+  ): Promise<void> {
+    return this.auth.deleteSession(user.sub, id);
+  }
+
+  /**
+   * 202, and the same 202 whether or not the address has an account.
+   *
+   * Rate limited because the endpoint sends mail to an address the caller
+   * chooses, and because an unlimited caller could probe the address space even
+   * though the answer never differs.
+   */
+  @Public()
+  @Throttle(PASSWORD_THROTTLE)
+  @ApiOperation({ summary: 'Request a password reset link' })
+  @ApiResponse({ status: 202, description: 'The request is accepted.' })
+  @ApiResponse({ status: 400, description: 'The request is not valid.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.ACCEPTED)
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto): Promise<void> {
+    return this.auth.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @Throttle(PASSWORD_THROTTLE)
+  @ApiOperation({ summary: 'Set a new password with a reset token' })
+  @ApiResponse({ status: 204, description: 'The password is changed.' })
+  @ApiResponse({ status: 400, description: 'The request is not valid.' })
+  @ApiResponse({ status: 422, description: 'The reset token is not valid.' })
+  @ApiResponse({ status: 429, description: 'Too many requests.' })
+  @ApiResponse({ status: 500, description: 'The server failed.' })
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
+    return this.auth.resetPassword(dto);
+  }
+}

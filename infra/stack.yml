@@ -1,0 +1,633 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  t-shirt-store-api, one environment: ECS on one EC2 instance behind CloudFront, a managed
+  Postgres, a managed Valkey cache, an image registry and an object bucket. DECISIONS 29.
+
+# Deployed and torn down with one command each, see README.md, "Deploy". Every value that is
+# a secret arrives through a NoEcho parameter or an SSM SecureString the operator wrote
+# beforehand; none is in this file.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t4g.micro
+    Description: arm64 by default, because the laptop and the CI runner build arm64 natively.
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0a4e17e19b87f7763
+    Description: >-
+      The ECS-optimized Amazon Linux 2023 image for arm64, pinned. Read from the SSM path
+      /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id on
+      2026-09-02, and bumped on purpose: a change here replaces the instance, and an SSM
+      parameter type would do that on whatever release followed AWS's next publication.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0d4ed7e3163b081a1
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-04ec96750662df723,subnet-08f7d5beaeb90b1e4,subnet-0fc4805623ff9b938
+    Description: The default VPC's three public subnets, one per availability zone.
+  DbPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    AllowedPattern: '[A-Za-z0-9]+'
+    Description: Letters and digits only, so the composed URL needs no escaping.
+  ImageTag:
+    Type: String
+    Default: bootstrap
+    Description: The tag of the image the service runs.
+  MigrateImageTag:
+    Type: String
+    Default: bootstrap
+    Description: >-
+      The tag whose <tag>-migrate image the release step runs. Separate from ImageTag on
+      purpose: a release sets this one first, which changes one task definition and no
+      service, runs the migrations, and only then sets ImageTag, which rolls the service.
+      One parameter would roll the service before the migrations ran.
+  DesiredCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1
+    Description: 0 until the first image is pushed and migrated, then 1. One task fits one host.
+  MailFrom:
+    Type: String
+  MailTransport:
+    Type: String
+    Default: smtp
+    AllowedValues: [smtp, ses]
+    Description: >-
+      How the tasks send mail. smtp reads the Smtp* parameters below. ses sends through
+      Amazon SES from the task role, with MailFrom as an address SES has verified.
+  SmtpHost:
+    Type: String
+    Default: localhost
+  SmtpPort:
+    Type: String
+    Default: '1025'
+  SmtpSecure:
+    Type: String
+    Default: 'false'
+  SmtpRequireTls:
+    Type: String
+    Default: 'false'
+  SmtpUser:
+    Type: String
+    Default: ''
+
+Resources:
+  # ---- registry and store -------------------------------------------------
+  # The image the API and the worker run from. Emptied on delete so a teardown is one command.
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: tshirt-store-api
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  # The product images. Public access blocked; CloudFront reads it through an OAC in AWS-3.
+  ImagesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub tshirt-images-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ---- network ------------------------------------------------------------
+  # Port 80 from CloudFront's origin-facing addresses only, so the API is reachable through
+  # the distribution and through nothing else. No 22: the shell is Session Manager.
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: tshirt ECS instance, HTTP from CloudFront only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: pl-b6a144df
+
+  # The database answers the instance's group and nobody else.
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: tshirt Postgres, from the ECS instance only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref InstanceSecurityGroup
+
+  # The cache answers the instance's group and nobody else.
+  CacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: tshirt Valkey, from the ECS instance only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref InstanceSecurityGroup
+
+  # A fixed address, so CloudFront's origin name survives an instance replacement.
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  # ---- database -----------------------------------------------------------
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: tshirt, the default VPC's subnets
+      SubnetIds: !Ref SubnetIds
+
+  # The same major as docker-compose.yml and CI. Single AZ, one day of backups, deleted with
+  # the stack: this is an environment for a review, not a store with customers.
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: postgres
+      EngineVersion: '16.15'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: tshirt_store
+      MasterUsername: tshirt
+      MasterUserPassword: !Ref DbPassword
+      MultiAZ: false
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 1
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DbSecurityGroup
+
+  # The one URL the application reads, composed here because CloudFormation cannot write an
+  # SSM SecureString and the app takes a URL, not parts. The task's execution role reads it.
+  DatabaseUrlSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: /tshirt/DATABASE_URL
+      Description: The full connection string for the tshirt database
+      SecretString: !Sub postgresql://tshirt:${DbPassword}@${Database.Endpoint.Address}:${Database.Endpoint.Port}/tshirt_store
+
+  # ---- cache --------------------------------------------------------------
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: tshirt, the default VPC's subnets
+      SubnetIds: !Ref SubnetIds
+
+  # A queue must never lose a job to memory pressure. The default policy evicts keys; BullMQ
+  # warns on every connection until it is `noeviction`, and the first deploy showed the line.
+  CacheParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: valkey9
+      Description: tshirt, no eviction because the cache is a queue
+      Properties:
+        maxmemory-policy: noeviction
+
+  # One node, no replica, no failover, no transit encryption: the environment schema admits
+  # redis:// only, and the cache answers the instance's security group and nothing else.
+  # A replication group and not a cache cluster, because ElastiCache creates Valkey only
+  # through the former; the first deploy proved it.
+  Cache:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: tshirt, the stock notification queue
+      Engine: valkey
+      EngineVersion: '9.1'
+      CacheNodeType: cache.t4g.micro
+      CacheParameterGroupName: !Ref CacheParameterGroup
+      NumCacheClusters: 1
+      AutomaticFailoverEnabled: false
+      MultiAZEnabled: false
+      TransitEncryptionEnabled: false
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds:
+        - !Ref CacheSecurityGroup
+
+  # ---- cluster and its one instance --------------------------------------
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: tshirt
+
+  # What the instance may do: register with ECS, and take a Session Manager shell.
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  # One instance and no Auto Scaling group: a stack update replaces it, and the Elastic IP
+  # keeps the origin name. The user data is the one line that joins the cluster.
+  Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: Cluster
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Select [0, !Ref SubnetIds]
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          echo ECS_CLUSTER=tshirt >> /etc/ecs/ecs.config
+      Tags:
+        - Key: Name
+          Value: tshirt-ecs
+
+  ElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref Instance
+
+  # ---- logs and roles for the tasks --------------------------------------
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: /ecs/tshirt
+      RetentionInDays: 7
+
+  # What ECS itself needs to start a task: pull the image, write the logs, read the secrets.
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: read-the-secrets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/*
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseUrlSecret
+
+  # What the application may do once it runs: write and remove product images. Nothing else.
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-the-images
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObject
+                Resource: !Sub ${ImagesBucket.Arn}/*
+        - PolicyName: send-the-mail
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+
+  # ---- the two task definitions ------------------------------------------
+  # The API and the worker from one image, the page's "same image, different entrypoint".
+  # The memory figures fit one t4g.micro beside the ECS agent. Every secret is read by ECS
+  # at start and never appears in the task definition.
+  AppTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: tshirt-app
+      RequiresCompatibilities:
+        - EC2
+      NetworkMode: bridge
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Sub ${Repository.RepositoryUri}:${ImageTag}
+          Essential: true
+          Memory: 448
+          MemoryReservation: 256
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 80
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: '3000'
+            - Name: LOG_LEVEL
+              Value: info
+            - Name: DATABASE_SSL_CA
+              Value: /app/rds-global-bundle.pem
+            - Name: S3_BUCKET
+              Value: !Ref ImagesBucket
+            - Name: IMAGES_BASE_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: REDIS_URL
+              Value: !Sub redis://${Cache.PrimaryEndPoint.Address}:${Cache.PrimaryEndPoint.Port}
+            - Name: APP_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: TRUST_PROXY_HOPS
+              Value: '1'
+            - Name: MAIL_TRANSPORT
+              Value: !Ref MailTransport
+            - Name: SMTP_HOST
+              Value: !Ref SmtpHost
+            - Name: SMTP_PORT
+              Value: !Ref SmtpPort
+            - Name: SMTP_SECURE
+              Value: !Ref SmtpSecure
+            - Name: SMTP_REQUIRE_TLS
+              Value: !Ref SmtpRequireTls
+            - Name: SMTP_USER
+              Value: !Ref SmtpUser
+            - Name: MAIL_FROM
+              Value: !Ref MailFrom
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Ref DatabaseUrlSecret
+            - Name: JWT_SECRET
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/JWT_SECRET
+            - Name: REFRESH_TOKEN_PEPPER
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/REFRESH_TOKEN_PEPPER
+            - Name: STRIPE_SECRET_KEY
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/STRIPE_SECRET_KEY
+            - Name: STRIPE_WEBHOOK_SECRET
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/STRIPE_WEBHOOK_SECRET
+            - Name: SMTP_PASS
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/SMTP_PASS
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: api
+        - Name: worker
+          Image: !Sub ${Repository.RepositoryUri}:${ImageTag}
+          Command:
+            - node
+            - dist/src/worker.js
+          Essential: true
+          Memory: 320
+          MemoryReservation: 192
+          # The same lists as the API's, written out because CloudFormation refuses YAML
+          # aliases. The environment schema requires every key, so the worker gets all.
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            - Name: PORT
+              Value: '3000'
+            - Name: LOG_LEVEL
+              Value: info
+            - Name: DATABASE_SSL_CA
+              Value: /app/rds-global-bundle.pem
+            - Name: S3_BUCKET
+              Value: !Ref ImagesBucket
+            - Name: IMAGES_BASE_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: REDIS_URL
+              Value: !Sub redis://${Cache.PrimaryEndPoint.Address}:${Cache.PrimaryEndPoint.Port}
+            - Name: APP_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: TRUST_PROXY_HOPS
+              Value: '1'
+            - Name: MAIL_TRANSPORT
+              Value: !Ref MailTransport
+            - Name: SMTP_HOST
+              Value: !Ref SmtpHost
+            - Name: SMTP_PORT
+              Value: !Ref SmtpPort
+            - Name: SMTP_SECURE
+              Value: !Ref SmtpSecure
+            - Name: SMTP_REQUIRE_TLS
+              Value: !Ref SmtpRequireTls
+            - Name: SMTP_USER
+              Value: !Ref SmtpUser
+            - Name: MAIL_FROM
+              Value: !Ref MailFrom
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Ref DatabaseUrlSecret
+            - Name: JWT_SECRET
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/JWT_SECRET
+            - Name: REFRESH_TOKEN_PEPPER
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/REFRESH_TOKEN_PEPPER
+            - Name: STRIPE_SECRET_KEY
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/STRIPE_SECRET_KEY
+            - Name: STRIPE_WEBHOOK_SECRET
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/STRIPE_WEBHOOK_SECRET
+            - Name: SMTP_PASS
+              ValueFrom: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/tshirt/SMTP_PASS
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: worker
+
+  # The release step the page names: `prisma migrate deploy` as a one-off task from the
+  # image's migrate stage, run before the new tag takes traffic. No ports, no worker.
+  MigrateTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: tshirt-migrate
+      RequiresCompatibilities:
+        - EC2
+      NetworkMode: bridge
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: migrate
+          Image: !Sub ${Repository.RepositoryUri}:${MigrateImageTag}-migrate
+          Essential: true
+          # It runs beside the live task, which reserves 448 of the host's 916 MiB, so it must
+          # fit in what is left; 512 did not, the first release proved it.
+          Memory: 384
+          Environment:
+            - Name: NODE_ENV
+              Value: production
+            # The seed runs here too, on the driver, so it needs the bundle the CLI does not.
+            - Name: DATABASE_SSL_CA
+              Value: /app/rds-global-bundle.pem
+          Secrets:
+            - Name: DATABASE_URL
+              ValueFrom: !Ref DatabaseUrlSecret
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migrate
+
+  # ---- the service ----------------------------------------------------------
+  # One task at a time, because host port 80 admits one: the old task stops, the new one
+  # starts, and the circuit breaker rolls a task that never becomes healthy back.
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ElasticIpAssociation
+    Properties:
+      ServiceName: tshirt-app
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref AppTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: EC2
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+
+  # ---- the images, through the same front ----------------------------------
+  # CloudFront reads the closed bucket by signing its requests; nothing else can.
+  ImagesOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-images
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # The bucket admits one reader, this distribution, for GetObject only.
+  ImagesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImagesBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${ImagesBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  # ---- the HTTPS front --------------------------------------------------------
+  # CloudFront is the public address: HTTPS on its own domain, no certificate to buy, and
+  # Stripe's webhook rule met without a domain. Nothing is cached and every method passes
+  # through with every header but Host, so a signed webhook body arrives untouched. The
+  # origin's name is the instance's public DNS, composed from the Elastic IP.
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: tshirt-store-api
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: api
+            DomainName: !Sub
+              - ec2-${Dashed}.${AWS::Region}.compute.amazonaws.com
+              - Dashed: !Join ['-', !Split ['.', !Ref ElasticIp]]
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+          # The images bucket, read through the origin access control above. Keys
+          # start with `images/`, which is the path the behaviour below matches.
+          - Id: images
+            DomainName: !GetAtt ImagesBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt ImagesOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        # Images are cached at the edge: every key is a uuid that never changes,
+        # and the object carries a one-year immutable cache header.
+        CacheBehaviors:
+          - PathPattern: images/*
+            TargetOriginId: images
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            Compress: true
+        DefaultCacheBehavior:
+          TargetOriginId: api
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachedMethods: [GET, HEAD]
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+          Compress: true
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${Distribution.DomainName}
+  DistributionId:
+    Value: !Ref Distribution
+  ElasticIp:
+    Value: !Ref ElasticIp
+  RepositoryUri:
+    Value: !GetAtt Repository.RepositoryUri
+  ImagesBucket:
+    Value: !Ref ImagesBucket
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceName:
+    Value: !GetAtt Service.Name
+  MigrateTaskDefinition:
+    Value: !Ref MigrateTaskDefinition
+  LogGroupName:
+    Value: !Ref LogGroup
+  DatabaseUrlSecretArn:
+    Value: !Ref DatabaseUrlSecret

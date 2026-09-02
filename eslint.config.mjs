@@ -32,4 +32,18 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // supertest types `Response.body` as `any`, so every assertion on a JSON
+    // body trips the unsafe-* rules. The alternative is a cast on each of about
+    // thirty assertions, which buys no safety: the body genuinely is unknown at
+    // compile time, and asserting on it is the whole point of the suite.
+    // Scoped to the end-to-end tests, so nothing under src/ is relaxed.
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+    },
+  },
 );

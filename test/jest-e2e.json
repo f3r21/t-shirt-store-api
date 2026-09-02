@@ -1,9 +1,38 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "moduleNameMapper": {
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
-  }
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "astTransformers": {
+          "before": [
+            {
+              "path": "<rootDir>/swagger-ast-transformer.js",
+              "options": {
+                "classValidatorShim": true,
+                "introspectComments": true,
+                "dtoFileNameSuffix": [
+                  ".dto.ts"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "setupFiles": [
+    "<rootDir>/setup-e2e.ts"
+  ],
+  "maxWorkers": 1
 }
