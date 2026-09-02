@@ -180,6 +180,21 @@ clean checkout, with `<sha>` as the short commit id:
 7. Start the service: the deploy command again, with
    `--parameter-overrides ImageTag=<sha> DesiredCount=1`.
 
+To restore the previous release, run the deploy command with the tag of the previous commit.
+Then wait for the service:
+
+```bash
+aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides ImageTag=<previous sha>
+aws ecs wait services-stable --profile tshirt --region us-east-2 --cluster tshirt --services tshirt-app
+```
+
+Then read the running task's image back, as the deploy job does in its last step. Two
+mechanisms exist. A task that never becomes healthy returns to the previous task definition on
+its own, through the service's circuit breaker. A release that became healthy and is wrong
+needs that command. Leave `MigrateImageTag` where it is: a migration is never reversed,
+so the previous image must read the current schema, which is why every migration is additive
+(`ARCHITECTURE.md` names the one that was not).
+
 Mail and Stripe, once, after the first release:
 
 1. Verify the sender:
