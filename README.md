@@ -77,6 +77,11 @@ npm run docs:lint    # vale, this file and ARCHITECTURE.md, reports and changes 
 and `npm run format` exist too and carry `--fix` and `--write`, so they edit the tree. Reach for
 those when you mean to change something, not when you mean to check it.
 
+Two git hooks run the same checks before the code leaves the machine. The pre-commit hook
+runs the lint and format fixes on the staged files, then the type checker and the unit suite.
+The pre-push hook runs the end-to-end suite, so it needs the database from
+`npm run docker:up`. Add `--no-verify` to skip either hook.
+
 `docs:lint` needs Vale on the machine (`brew install vale`) and, once, `vale sync` to fetch the
 Google style into `.vale/styles`. The rules it applies and the ones it deliberately does not are
 in `.vale.ini`; the project's own terms are in `.vale/styles/config/vocabularies`.
