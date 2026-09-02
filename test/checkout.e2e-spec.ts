@@ -339,6 +339,7 @@ describe('Checkout (e2e)', () => {
       type: string,
       orderId: number | string | undefined,
       id = 'evt_1',
+      object: Record<string, unknown> = {},
     ) =>
       JSON.stringify({
         id,
@@ -348,6 +349,11 @@ describe('Checkout (e2e)', () => {
           object: {
             id: 'obj_1',
             metadata: orderId === undefined ? {} : { orderId: String(orderId) },
+            // A session completes paid unless a case says otherwise.
+            ...(type === 'checkout.session.completed'
+              ? { payment_status: 'paid' }
+              : {}),
+            ...object,
           },
         },
       });
@@ -488,6 +494,30 @@ describe('Checkout (e2e)', () => {
       expect(await ctx.prisma.order.count()).toBe(0);
     });
 
+    // Written by hand against the handler, 2026-09-02. Stripe sends
+    // `checkout.session.completed` with `payment_status: "unpaid"` when the
+    // buyer chose a delayed payment method; the money arrives later, on
+    // `checkout.session.async_payment_succeeded`, or never.
+    it('does not pay a link order from a session that completed unpaid', async () => {
+      const link = await createLink(token, fixture.variantId, 2).expect(201);
+      const orderId = link.body.orderId as number;
+
+      const res = await deliver(
+        event('checkout.session.completed', orderId, 'evt_unpaid', {
+          payment_status: 'unpaid',
+        }),
+      );
+      const row = await orderRow(orderId);
+      const stock = await stockOf(fixture.variantId);
+      const recorded = await eventsRecorded();
+
+      expect(res.status).toBe(200);
+      expect(row.status).toBe('pending');
+      expect(row.paymentMethod).toBeNull();
+      expect(stock).toBe(7);
+      expect(recorded).toBe(1);
+    });
+
     it('a cancel that landed first wins: the payment does not reopen the order', async () => {
       const id = await placeOrder(token);
       await setStatus(token, id, 'cancelled').expect(200);
@@ -532,6 +562,21 @@ describe('Checkout (e2e)', () => {
 
       await createIntent(other, id).expect(404);
       expect(ctx.stripe.intents).toHaveLength(0);
+    });
+
+    // Written by hand against the ability, 2026-09-02. The contract says an
+    // order that belongs to another client returns 404, and says nothing about
+    // a manager; the manager's ability says `manage Order`, and this case
+    // decides that it stays so. DECISIONS 25.
+    it("lets a manager create an intent for a client's order, on purpose", async () => {
+      const id = await placeOrder(token);
+      const manager = await signInAs(ctx, 'manager@example.com', 'manager');
+
+      const res = await createIntent(manager, id);
+      const intents = ctx.stripe.intents.length;
+
+      expect(res.status).toBe(201);
+      expect(intents).toBe(1);
     });
 
     it('refuses an intent when a line is above the stock, before Stripe is asked', async () => {

@@ -26,17 +26,29 @@ const abilities = new AbilityFactory();
 const CLIENT_ABILITY = abilities.for(AS_CLIENT);
 const MANAGER_ABILITY = abilities.for(AS_MANAGER);
 
-/** A Stripe event carrying an order id, or none, in its object's metadata. */
+/**
+ * A Stripe event carrying an order id, or none, in its object's metadata. A
+ * session completes paid unless a case says otherwise.
+ */
 const anEvent = (
   type: string,
   metadata: Record<string, string> | null = { orderId: '501' },
   id = 'evt_1',
+  object: Record<string, unknown> = {},
 ): Stripe.Event =>
   ({
     id,
     object: 'event',
     type,
-    data: { object: { metadata } },
+    data: {
+      object: {
+        metadata,
+        ...(type === 'checkout.session.completed'
+          ? { payment_status: 'paid' }
+          : {}),
+        ...object,
+      },
+    },
   }) as unknown as Stripe.Event;
 
 const uniqueViolation = () =>
@@ -405,6 +417,25 @@ describe('PaymentsService', () => {
           event: 'payment.not-applied',
           orderId: 501,
           status: 'cancelled',
+        }),
+      );
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('keeps a session that completed unpaid off the order, keeps the event, and warns', async () => {
+      await service.applyEvent(
+        anEvent('checkout.session.completed', { orderId: '501' }, 'evt_1', {
+          payment_status: 'unpaid',
+        }),
+      );
+
+      expect(prisma.stripeEvent.create).toHaveBeenCalledTimes(1);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'payment.unpaid-session',
+          orderId: 501,
         }),
       );
       expect(notify).not.toHaveBeenCalled();

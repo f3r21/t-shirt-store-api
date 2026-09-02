@@ -91,8 +91,11 @@ test card. The tool prints the `payment_intent.succeeded` event as it forwards i
 turns `paid` with its stock lowered:
 
 ```bash
-stripe payment_intents confirm pi_...   --payment-method pm_card_visa
+stripe payment_intents confirm pi_... --payment-method pm_card_visa --return-url https://example.com/return
 ```
+
+The intent accepts every payment method the dashboard enables, and some of them redirect, so
+Stripe refuses a confirm with no return URL. The value is never visited for a card.
 
 The end-to-end suite never reaches Stripe. It replaces the two API calls with a stub and signs
 its own events with the same secret the server verifies, so the signature check is the production

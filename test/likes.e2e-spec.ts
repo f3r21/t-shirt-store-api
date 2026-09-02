@@ -105,6 +105,24 @@ describe('Likes (e2e)', () => {
     it('answers 404 for an id that names no variant', async () => {
       await unlike(999999).expect(404);
     });
+
+    // Written by hand against the service, 2026-09-02: the unlike must remove
+    // the caller's row and nobody else's.
+    it("removes only the caller's row, and another client's like survives", async () => {
+      await like(fixture.variantId).expect(204);
+      const bob = await signInAs(ctx, 'bob@example.com');
+      await like(fixture.variantId, bob).expect(204);
+
+      const res = await unlike(fixture.variantId);
+      const rows = await rowsFor(fixture.variantId);
+      const bobs = await list(bob);
+      const mine = await list();
+
+      expect(res.status).toBe(204);
+      expect(rows).toBe(1);
+      expect(bobs.body.data).toHaveLength(1);
+      expect(mine.body.data).toHaveLength(0);
+    });
   });
 
   describe('the list', () => {

@@ -646,6 +646,20 @@ written, which is a compensation and not a transaction, and a crash between the 
 `pending` order with no link, the same shape of gap the architecture page already admits for the
 queue.
 
+**Revised 2026-09-02, from a test written by hand.** A `checkout.session.completed` is not a
+payment. Stripe sends it with `payment_status` `paid`, `unpaid` or `no_payment_required`, and
+`unpaid` is what a buyer who chose a delayed method produces; the money arrives later on
+`checkout.session.async_payment_succeeded`, or never. The handler read only the order id, so an
+unpaid session paid the order and lowered the stock. The e2e case that says so was written by
+hand against the handler and went red first; the handler now pays a session only when
+`payment_status` is `paid`, keeps the event row so a replay is a duplicate, leaves the order
+`pending`, and warns `payment.unpaid-session`. The link is created with no
+`payment_method_types`, so the dashboard decides which methods a buyer sees, and the sandbox
+lists six; a delayed one among them is one dashboard toggle away, which is why the check is
+not academic. **Given up:** `checkout.session.async_payment_succeeded` is not handled, so a
+delayed payment that does arrive never pays the order; handling it is the day a delayed method
+is enabled on purpose, and it is one more event kind through the same transaction.
+
 ## 25. CASL decides at the controller, and the where clause comes from the ability
 
 DECISIONS 18 named `RolesGuard` as the seam CASL would replace and warned that the swap reaches
@@ -696,6 +710,15 @@ column of it; the delivery role has no rule of its own; and `@casl/prisma` reads
 `@prisma/client` by default, which the Prisma 7 generator no longer fills, so `casl-prisma.ts`
 is the wrapper the package's README gives for a generated client, and it is one more file that
 knows where the client lives.
+
+**Revised 2026-09-02, from a test written by hand.** A manager may create a payment intent for
+any client's order, and that is a decision and not an accident of `manage`. The contract says
+another client's order is 404 and says nothing about a manager; the e2e case that asks the
+question was written by hand with 201 as its answer, because a manager runs the store, the
+amount comes from the order and never from the caller, and an intent is a payment attempt
+that charges whoever confirms it. The alternative, `cannot('pay', 'Order')` after `manage`
+with the manager's own orders allowed back, is three lines; it was tried as the sabotage of
+that case and turned it red, which is the proof the case measures the rule.
 
 ## 26. A like needs a product on sale, an unlike needs only a variant, and the list is the product page
 

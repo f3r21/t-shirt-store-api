@@ -28,6 +28,7 @@ type Outcome =
   | { kind: 'duplicate' }
   | { kind: 'orphan'; orderId: number | null }
   | { kind: 'not-applied'; orderId: number; status: string }
+  | { kind: 'unpaid'; orderId: number }
   | {
       kind: 'applied';
       orderId: number;
@@ -222,20 +223,29 @@ export class PaymentsService {
     await this.applyEvent(event);
   }
 
-  /** Which flow an event belongs to, and the order it names, or nothing. */
+  /**
+   * Which flow an event belongs to, the order it names, or nothing, and
+   * whether money was taken. A session completes `unpaid` when the buyer chose
+   * a delayed payment method; the money arrives later, on
+   * `checkout.session.async_payment_succeeded`, or never, and this service
+   * does not handle that event. A succeeded intent is paid by definition.
+   * Found by a hand-written test, 2026-09-02; DECISIONS 24.
+   */
   private paymentOf(
     event: Stripe.Event,
-  ): { method: PaymentMethod; orderId: number | null } | null {
+  ): { method: PaymentMethod; orderId: number | null; paid: boolean } | null {
     if (event.type === 'checkout.session.completed') {
       return {
         method: 'payment_link',
         orderId: orderIdOf(event.data.object.metadata),
+        paid: event.data.object.payment_status === 'paid',
       };
     }
     if (event.type === 'payment_intent.succeeded') {
       return {
         method: 'payment_intent',
         orderId: orderIdOf(event.data.object.metadata),
+        paid: true,
       };
     }
     return null;
@@ -278,7 +288,12 @@ export class PaymentsService {
     const outcome: Outcome =
       seen !== null
         ? { kind: 'duplicate' }
-        : await this.apply(event, payment.method, payment.orderId);
+        : await this.apply(
+            event,
+            payment.method,
+            payment.orderId,
+            payment.paid,
+          );
 
     this.report(event, payment.method, outcome);
     if (outcome.kind === 'applied') {
@@ -290,6 +305,7 @@ export class PaymentsService {
     event: Stripe.Event,
     method: PaymentMethod,
     orderId: number | null,
+    paid: boolean,
   ): Promise<Outcome> {
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -298,6 +314,11 @@ export class PaymentsService {
         });
         if (orderId === null) {
           return { kind: 'orphan', orderId: null };
+        }
+        // The event is kept, so a replay of it is a duplicate; the order is
+        // not touched, because no money arrived.
+        if (!paid) {
+          return { kind: 'unpaid', orderId };
         }
 
         const moved = await tx.order.updateMany({
@@ -397,6 +418,14 @@ export class PaymentsService {
           event: 'payment.orphan',
           stripeEvent,
           type: event.type,
+          orderId: outcome.orderId,
+        });
+        return;
+      case 'unpaid':
+        this.logger.warn({
+          msg: 'session completed without payment, the order stays pending',
+          event: 'payment.unpaid-session',
+          stripeEvent,
           orderId: outcome.orderId,
         });
         return;
