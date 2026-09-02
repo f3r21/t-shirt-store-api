@@ -285,12 +285,11 @@ describe('OpenAPI document against the contract (e2e)', () => {
       (op) => !implemented.includes(op),
     );
 
-    // Not an assertion that nothing is missing: the two image operations wait
-    // on object storage. It pins the counts, so finishing one without updating
-    // the contract, or deleting one by accident, shows up here as a number
-    // that moved.
-    expect(implemented).toHaveLength(35);
-    expect(missing).toHaveLength(2);
+    // Every declared operation is served. The counts stay pinned, so an
+    // operation added to the contract without a handler, or a handler deleted
+    // by accident, shows up here as a number that moved.
+    expect(implemented).toHaveLength(37);
+    expect(missing).toHaveLength(0);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,
     );

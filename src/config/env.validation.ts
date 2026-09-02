@@ -79,6 +79,28 @@ export class EnvironmentVariables {
   DATABASE_SSL_CA?: string;
 
   /**
+   * Where product images are stored and where they are served from. Both
+   * required, the way the Stripe keys are: an upload that silently had
+   * nowhere to go would be worse than a boot that refuses. The values are
+   * the stack's outputs, `ImagesBucket` and `ApiUrl`; the SDK reads its
+   * credentials from the task role in the container and from `AWS_PROFILE`
+   * exported in the shell on a laptop, never from this file.
+   */
+  @IsString()
+  @MinLength(3)
+  S3_BUCKET!: string;
+
+  @IsUrl({
+    protocols: ['http', 'https'],
+    require_tld: false,
+    require_protocol: true,
+  })
+  IMAGES_BASE_URL!: string;
+
+  @IsString()
+  AWS_REGION: string = 'us-east-2';
+
+  /**
    * Required, because the stock notification queue opens it.
    *
    * It was optional for a while: nothing in `src` read it, so every deployment

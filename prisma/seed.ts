@@ -39,6 +39,25 @@ async function main() {
     });
   }
 
+  // One existing account can be made a manager by name, in any environment,
+  // so a deployed store has a manager without the demo accounts below ever
+  // reaching it. Idempotent: promoting a manager again changes nothing.
+  const promote = process.env.SEED_MANAGER_EMAIL;
+  if (promote !== undefined && promote !== '') {
+    const manager = await prisma.role.findUniqueOrThrow({
+      where: { name: 'manager' },
+    });
+    const promoted = await prisma.user.updateMany({
+      where: { email: promote },
+      data: { roleId: manager.id },
+    });
+    console.log(
+      promoted.count === 1
+        ? `promoted ${promote} to manager`
+        : `no account ${promote} to promote`,
+    );
+  }
+
   if (process.env.NODE_ENV === 'production') {
     console.log('seeded roles and categories only, NODE_ENV is production');
     return;

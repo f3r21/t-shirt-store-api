@@ -50,7 +50,9 @@ when `NODE_ENV` is `production`, and seeds only the roles and categories there.
 `.env.example` names every variable the schema declares, and
 `src/app.module.spec.ts` fails if one is missing rather than leaving that sentence to rot.
 
-Eight are blank and four of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
+Ten are blank and six of them need a value. `S3_BUCKET` and `IMAGES_BASE_URL` are the
+`ImagesBucket` and `ApiUrl` outputs of the deployed stack, and the credentials for the AWS SDK
+come from the shell, `AWS_PROFILE=tshirt npm run start:dev`, never from a file. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
 blank because they are secrets and the boot refuses without them. `STRIPE_SECRET_KEY` and
 `STRIPE_WEBHOOK_SECRET` are blank for the same reason, and the next section says where they come
 from. `CORS_ORIGINS` is blank because empty is its real default and it means no cross-origin
@@ -164,6 +166,8 @@ clean checkout, with `<sha>` as the short commit id:
    `aws ecs run-task --profile tshirt --region us-east-2 --cluster tshirt --task-definition tshirt-migrate --launch-type EC2`
 6. Seed the roles once, with the same command and
    `--overrides '{"containerOverrides":[{"name":"migrate","command":["node","dist/prisma/seed.js"]}]}'`.
+   Add `"environment":[{"name":"SEED_MANAGER_EMAIL","value":"<email>"}]` inside the override to
+   make an existing account the manager; the demo accounts never reach a deployed database.
 7. Start the service: the deploy command again, with
    `--parameter-overrides ImageTag=<sha> DesiredCount=1`.
 
@@ -193,11 +197,10 @@ It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
-| Images | Not built. The table ships, and the upload and the delete wait on object storage |
-| End-to-end tests | Done, in twelve suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock notifications through the real queue and worker to the mail, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
+| Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
+| End-to-end tests | Done, in thirteen suites against a real database and a real Redis: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, the low-stock notifications through the real queue and worker to the mail, product images with the store in memory, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
-| S3 uploads | Not started |
 | Deploy | Done. One CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache; every push to the branch releases through a job that assumes a role by OIDC, with no key stored |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs

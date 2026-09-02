@@ -1,7 +1,6 @@
 # Architecture
 
-Read the diagram first: solid is built and running, dashed is designed and not built, and an edge
-takes the style of the node it touches.
+Read the diagram first. Everything drawn is built and running.
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 70, "rankSpacing": 70}}}%%
@@ -30,16 +29,13 @@ flowchart TB
     api --> pg
     api -->|"who liked it"| pg
     api --> casl
-    api -.->|"images"| store
+    api -->|"images"| store
     api -->|"reset and changed mail"| smtp
     api -->|"create intent or link"| stripe
     api -->|"after the commit,<br/>one job per recipient"| redis
     stripe -->|"signed webhook"| api
     redis --> worker
     worker -->|"low-stock mail"| smtp
-
-    classDef planned stroke-dasharray:5 3
-    class store planned
 ```
 
 **The shared ceiling is Postgres.** `prisma.service.ts` builds `PrismaPg` without a pool size,

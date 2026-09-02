@@ -21,6 +21,10 @@ process.env.MAIL_FROM = 'no-reply@tshirt.store';
 // and the webhook signature is verified for real against this secret.
 process.env.STRIPE_SECRET_KEY = 'sk_test_e2e';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_e2e_secret';
+// The object store is replaced in `app-factory.ts`; the address is what an
+// image's URL is built from, and the suite asserts on it.
+process.env.S3_BUCKET = 'e2e-only-bucket';
+process.env.IMAGES_BASE_URL = 'https://images.e2e.example';
 // One allowed origin, so the suite can assert both halves: the echo for this
 // one and the silence for any other. An empty list would only prove the
 // refusal, and a permissive default is what this suite exists to catch.

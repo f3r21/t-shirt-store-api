@@ -62,6 +62,12 @@ export interface PrismaMock {
   };
   productImage: {
     findMany: jest.Mock;
+    // The two image operations: the row after the object, the primary flag
+    // cleared on the others, and the row read then removed on delete.
+    findUnique: jest.Mock;
+    create: jest.Mock;
+    updateMany: jest.Mock;
+    delete: jest.Mock;
   };
   // The five cart operations: the read, the two upserts, and the two deletes.
   // `findUnique` is the add path reading the existing line before it sums.
@@ -200,6 +206,10 @@ export function createPrismaMock(): PrismaMock {
     // is not about images should read as it did before the table was read.
     productImage: {
       findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      delete: jest.fn(),
     },
     category: {
       findMany: jest.fn(),

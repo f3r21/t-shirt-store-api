@@ -8,6 +8,7 @@ import Stripe from 'stripe';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LowStockMail, MAILER, Mailer } from '../src/mail/mailer';
 import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
+import { OBJECT_STORE, ObjectStore } from '../src/images/object-store';
 
 /**
  * Every message the application tried to send during a test.
@@ -108,11 +109,35 @@ export class StripeStub implements StripeClient {
   }
 }
 
+/**
+ * The object store in memory: what the image service put, by key, and the
+ * type it declared. The real binding is two S3 commands with a unit spec of
+ * their own; what the suite proves is everything around them.
+ */
+export class MemoryObjectStore implements ObjectStore {
+  readonly objects = new Map<string, { body: Buffer; contentType: string }>();
+
+  put(key: string, body: Buffer, contentType: string): Promise<void> {
+    this.objects.set(key, { body, contentType });
+    return Promise.resolve();
+  }
+
+  delete(key: string): Promise<void> {
+    this.objects.delete(key);
+    return Promise.resolve();
+  }
+
+  clear(): void {
+    this.objects.clear();
+  }
+}
+
 export interface TestApp {
   app: INestApplication;
   prisma: PrismaService;
   mail: MailerSpy;
   stripe: StripeStub;
+  objects: MemoryObjectStore;
 }
 
 /**
@@ -160,6 +185,7 @@ export async function createTestApp(
 ): Promise<TestApp> {
   const mail = new MailerSpy();
   const stripe = new StripeStub();
+  const objects = new MemoryObjectStore();
 
   let builder: TestingModuleBuilder = Test.createTestingModule({
     imports: [AppModule],
@@ -167,7 +193,9 @@ export async function createTestApp(
     .overrideProvider(MAILER)
     .useValue(mail)
     .overrideProvider(STRIPE_CLIENT)
-    .useValue(stripe);
+    .useValue(stripe)
+    .overrideProvider(OBJECT_STORE)
+    .useValue(objects);
 
   if (options.throttle !== true) {
     builder = builder
@@ -186,7 +214,7 @@ export async function createTestApp(
   );
   await app.init();
 
-  return { app, prisma: app.get(PrismaService), mail, stripe };
+  return { app, prisma: app.get(PrismaService), mail, stripe, objects };
 }
 
 /**

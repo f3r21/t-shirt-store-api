@@ -71,6 +71,8 @@ jobs:
       MAIL_FROM: ci@example.com
       STRIPE_SECRET_KEY: sk_test_ci-only-value
       STRIPE_WEBHOOK_SECRET: whsec_ci-only-value
+      S3_BUCKET: ci-only-bucket
+      IMAGES_BASE_URL: https://images.example
 
     steps:
       # Actions are pinned to a commit. A tag moves, and an action runs on the

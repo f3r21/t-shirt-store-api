@@ -357,6 +357,12 @@ Resources:
               Value: info
             - Name: DATABASE_SSL_CA
               Value: /app/rds-global-bundle.pem
+            - Name: S3_BUCKET
+              Value: !Ref ImagesBucket
+            - Name: IMAGES_BASE_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
             - Name: REDIS_URL
               Value: !Sub redis://${Cache.PrimaryEndPoint.Address}:${Cache.PrimaryEndPoint.Port}
             - Name: APP_URL
@@ -413,6 +419,12 @@ Resources:
               Value: info
             - Name: DATABASE_SSL_CA
               Value: /app/rds-global-bundle.pem
+            - Name: S3_BUCKET
+              Value: !Ref ImagesBucket
+            - Name: IMAGES_BASE_URL
+              Value: !Sub https://${Distribution.DomainName}
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
             - Name: REDIS_URL
               Value: !Sub redis://${Cache.PrimaryEndPoint.Address}:${Cache.PrimaryEndPoint.Port}
             - Name: APP_URL
@@ -503,6 +515,34 @@ Resources:
           Enable: true
           Rollback: true
 
+  # ---- the images, through the same front ----------------------------------
+  # CloudFront reads the closed bucket by signing its requests; nothing else can.
+  ImagesOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-images
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # The bucket admits one reader, this distribution, for GetObject only.
+  ImagesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ImagesBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${ImagesBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
   # ---- the HTTPS front --------------------------------------------------------
   # CloudFront is the public address: HTTPS on its own domain, no certificate to buy, and
   # Stripe's webhook rule met without a domain. Nothing is cached and every method passes
@@ -524,6 +564,23 @@ Resources:
             CustomOriginConfig:
               HTTPPort: 80
               OriginProtocolPolicy: http-only
+          # The images bucket, read through the origin access control above. Keys
+          # start with `images/`, which is the path the behaviour below matches.
+          - Id: images
+            DomainName: !GetAtt ImagesBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt ImagesOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        # Images are cached at the edge: every key is a uuid that never changes,
+        # and the object carries a one-year immutable cache header.
+        CacheBehaviors:
+          - PathPattern: images/*
+            TargetOriginId: images
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            Compress: true
         DefaultCacheBehavior:
           TargetOriginId: api
           ViewerProtocolPolicy: redirect-to-https

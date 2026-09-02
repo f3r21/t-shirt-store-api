@@ -948,3 +948,50 @@ publication. It is a fixed id now, bumped on purpose.
 tests are the gate; no rollback beyond the circuit breaker, which returns a service that never
 became healthy to the previous task definition; and a service role wider than the stack
 strictly needs, bounded by who can assume it rather than by what it can do.
+
+## 31. Images live in a closed bucket, are served through the distribution, and are what their bytes say
+
+The last two contract operations, and the brief's "S3 for static files". The schema comment on
+`product_images.url` promised a plain CDN address the API returns verbatim; this is how it is
+kept.
+
+**A closed bucket behind the same front.** Nothing reads the bucket but the distribution, which
+signs its requests through an origin access control, and the bucket policy admits that one
+distribution for `GetObject` alone. A behaviour on `images/*` caches with CloudFront's optimized
+policy, so an image's URL is `https://<distribution>/images/products/<id>/<uuid>.<ext>`: the
+same host the API answers on, no public bucket, no signed URL to expire inside a cached page.
+Every key is a uuid, so an object never changes under its URL and carries a one-year immutable
+cache header; a replaced image is a new key. The cost is on delete: an object removed from the
+bucket can be served from the edge until its TTL runs out, a day at most, and no invalidation is
+made, because the first thousand a month are free and the ones after are not, and a stale
+picture of a T-shirt for an afternoon is not worth a paid call per delete.
+
+**The type is read from the bytes.** PNG, JPEG, GIF and WebP by their signatures, in
+`image-type.ts`; a text file declared `image/png` is 415, which the e2e suite sends on purpose.
+The header the client declares is whatever the client chose. The size limit is 5 MiB, enforced
+by multer while the body streams, so a file above it is 413 before a byte of it is stored; the
+contract names the limit and leaves the number to the server.
+
+**The object first, then the row; the row first, then the object.** An upload writes the
+object, then in one transaction clears the previous primary when asked and creates the row,
+and a row that fails takes its object back down. A delete removes the row, then the object,
+and an object that will not go is logged as `image.orphaned` and left, because a URL the API
+still shows is worse than one object nobody references. A manager may add an image to a
+product they disabled, the way `updateProduct` lets them edit it.
+
+**The store is a token.** `OBJECT_STORE` with two methods, the `StripeClient` shape: the e2e
+suite keeps the whole application real and replaces the store with a map, the S3 binding has a
+unit spec that pins its two commands, and the credentials come from the task role in the
+container and from `AWS_PROFILE` exported in a laptop's shell, never from a file, because
+`ConfigModule` runs with `skipProcessEnv` and a value in `.env` would not reach the SDK anyway.
+
+**Two more required variables**, `S3_BUCKET` and `IMAGES_BASE_URL`, blank in the example file
+with the stack outputs named as their source, the Stripe keys' treatment: an upload that
+silently had nowhere to go would be worse than a boot that refuses.
+
+**A manager by name in the seed.** `SEED_MANAGER_EMAIL` promotes one existing account when the
+seed task runs with it, in any environment, idempotently. The deployed store gets its manager
+that way; the demo accounts with the published password stay out of production as before.
+
+**Given up:** no image resizing or format conversion, the bytes are stored as sent; no limit on
+how many images a product carries; and the edge TTL above.

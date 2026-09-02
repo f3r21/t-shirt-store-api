@@ -41,6 +41,10 @@ describe('AppModule', () => {
     // boot. Throwaway values; the signature check is exercised end to end.
     STRIPE_SECRET_KEY: 'sk_test_spec',
     STRIPE_WEBHOOK_SECRET: 'whsec_spec',
+    // Required since the image operations: the store and the address images
+    // are served from. Throwaway values; the e2e suite replaces the store.
+    S3_BUCKET: 'spec-only-bucket',
+    IMAGES_BASE_URL: 'https://images.example',
   };
 
   let saved: NodeJS.ProcessEnv;
