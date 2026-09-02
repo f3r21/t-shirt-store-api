@@ -33,6 +33,13 @@ for a low-entropy secret, so this is a small margin bought with real operational
 `JWT_SECRET` is deliberately not reused, because rotating the signing key would otherwise
 invalidate every stored hash at the same moment.
 
+**Switch, for the password hash:** the day the runtime cannot build the native module, an edge
+or serverless runtime with no compiler on the build path. Then Node's own `scrypt` from
+`node:crypto`, which is memory hard and ships with the runtime, and not bcrypt, which
+truncates at 72 bytes and has no memory cost. Nothing else moves argon2id: its cost is the
+defence, and the arm64 build already runs on the laptop, on GitHub's runner and on the
+instance.
+
 ## 2. A device is a family of refresh tokens, with a grace window over rotation
 
 `refreshSession` rotates with a single `updateManyAndReturn` whose `where` carries the
@@ -898,6 +905,18 @@ port 80 admits one, so a deployment is a few seconds of 504 from CloudFront; and
 this once is the commit the work started from plus this checkpoint's changes, which the job
 makes exact from AWS-2 on.
 
+**Switch, for CloudFormation:** the day a second environment stands beside production, a
+staging stack from the same template, because the template would then need `Conditions` and
+`Mappings` for every difference between the two and the CDK writes those as code; Terraform
+only for a second cloud. One environment is one file, no state to host, no build step and no
+bootstrap stack, which is why it is CloudFormation today.
+
+**Switch, for the managed pair:** the day the credits run out and the 10 USD budget is the
+ceiling. Postgres moves into a container on the instance and loses the backups,
+`rds.force_ssl` and the patching, and Valkey moves the same way. The pair is 21 of the 31 USD
+a month above, so the switch is a budget decision and not a technical one; Valkey stays the
+engine until BullMQ stops supporting it.
+
 ## 30. Every push releases through a role GitHub assumes, and the stack changes through a role of its own
 
 DECISIONS 29 released once by hand and recorded a stale image reaching the registry that way.
@@ -996,6 +1015,11 @@ that way; the demo accounts with the published password stay out of production a
 **Given up:** no image resizing or format conversion, the bytes are stored as sent; no limit on
 how many images a product carries; and the edge TTL above.
 
+**Switch:** signed URLs the day an image belongs to one person, a receipt or an upload only
+its owner may see, and an invalidation per delete the day a removed image has to vanish now,
+a takedown. Each costs a call per object, which a public catalog does not need, and the
+bucket policy and the behaviour already exist for either to sit beside.
+
 ## 32. Mail leaves through SES from the task role, Stripe delivers to the distribution, and main is the release
 
 The last checkpoint of the AWS block. Production until now mailed to `localhost:1025`, where
@@ -1040,3 +1064,45 @@ because removing a secret from the task definition is a change I did not make on
 no bounce or complaint handling, SES's notifications go nowhere; the mails land in spam, because
 the sender is a personal address SES cannot sign for, which a domain with DKIM fixes; and the
 sandbox above.
+
+**Switch:** a third party with an owned domain the day AWS refuses production access, and
+that case is open, or the day the store leaves AWS. The transport is one variable, so the
+switch is the provider's host and password in SSM and `MAIL_TRANSPORT=smtp`, with no code
+change; the `smtp` branch runs on every laptop and in CI today.
+
+## 33. The end-to-end suite truncates and reseeds on the real Postgres and Redis
+
+The Week page names the isolation choice as a decision with three answers, rollback per test,
+truncate and reseed, or a disposable database per run, and asks for one applied consistently.
+Nothing in this ledger recorded which one and why. This entry does.
+
+**Truncate and reseed, every test.** `truncateAll` in `test/app-factory.ts` empties every
+table the tests write to and leaves `roles` alone, because `users.role_id` is not null and the
+sign-up path reads the row by name; `RESTART IDENTITY` keeps ids small and `CASCADE` reaches
+the children, and the tables `CASCADE` would not reach, or would reach only as a side effect
+of another, are named on purpose. Fixtures come from helpers, `signInAs`,
+`seedProductWithVariant`, `seedOrderLineFor`, `ensureCategory`, so a test says what it needs
+and not how a row is made. The suites run one at a time, `maxWorkers: 1` in
+`test/jest-e2e.json`, because they share one database. Locally that is the compose Postgres 16
+and Redis 7; in CI the same two images run as service containers; and the suite keeps its own
+script, `test:e2e`, because its cadence is the push and not the save.
+
+**Why not rollback per test.** Checkout empties the cart and creates the order in one
+transaction, the status move is a conditional write with its history row in the same one, and
+the webhook's paying transaction is the design (DECISIONS 23, 24). A test-level transaction
+wrapped around code that opens its own would either nest, which Prisma does not do, or watch
+the code commit through it.
+
+**Why not Testcontainers.** The compose file and CI's service container already run
+`postgres:16-alpine`, and the deployed database is Postgres 16.15, so the suite already runs on
+the engine it ships against; the reading's argument, that an in-memory substitute lies, is met
+without it. A container per run would put a Docker dependency inside the test process for a
+suite that takes 42 seconds today, and a second place the Postgres version is written.
+
+**Switch:** the day the deployed major moves ahead of the compose file, or the day the suites
+have to run in parallel against isolated databases, which one shared database and truncation
+cannot give.
+
+**Given up:** the suite needs the compose services up before it runs, and a bare
+`npx jest --config ./test/jest-e2e.json` fails every suite without the script's
+`NODE_OPTIONS`; and one worker means the suite's wall clock is the sum of its suites.
