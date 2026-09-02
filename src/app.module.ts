@@ -18,6 +18,7 @@ import { VariantsModule } from './variants/variants.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
+import { LikesModule } from './likes/likes.module';
 import { AuthzModule } from './authz/authz.module';
 import { ProblemFilter } from './common/problem/problem.filter';
 
@@ -85,6 +86,7 @@ import { ProblemFilter } from './common/problem/problem.filter';
     CartModule,
     OrdersModule,
     PaymentsModule,
+    LikesModule,
   ],
   controllers: [AppController],
   providers: [

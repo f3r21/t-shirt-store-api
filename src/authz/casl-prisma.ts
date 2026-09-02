@@ -6,6 +6,7 @@ import type {
   Category,
   Order,
   Product,
+  ProductLike,
   ProductVariant,
   RefreshToken,
   User,
@@ -37,6 +38,7 @@ export type AppSubjects = Subjects<{
   ProductVariant: ProductVariant;
   Category: Category;
   CartItem: CartItem;
+  ProductLike: ProductLike;
   Order: Order;
   RefreshToken: RefreshToken;
   User: User;

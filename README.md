@@ -134,11 +134,11 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
-| Likes, images | Not built. The tables ship, the operations are week 4 |
-| End-to-end tests | Done, in ten suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
-| Cart, orders, order history | Not started |
+| Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
+| Images | Not built. The table ships, and the upload and the delete wait on object storage |
+| End-to-end tests | Done, in eleven suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, likes, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
-| Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
+| The notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite runs
 against a real database. Neither has a placeholder entry left. What is untested is what is

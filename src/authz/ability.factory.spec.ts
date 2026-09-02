@@ -1,6 +1,10 @@
 import { subject } from '@casl/ability';
 import { accessibleBy } from '@casl/prisma';
-import type { RefreshToken, User } from '../generated/prisma/client';
+import type {
+  ProductLike,
+  RefreshToken,
+  User,
+} from '../generated/prisma/client';
 import { AbilityFactory } from './ability.factory';
 import { AS_CLIENT, AS_MANAGER, aProduct } from '../products/products.fixtures';
 import { anOrder } from '../orders/orders.fixtures';
@@ -20,6 +24,9 @@ const aSession = (userId: number): RefreshToken => ({
   familyId: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
 });
+
+/** A like row: the pair is the whole fact, and only `userId` matters here. */
+const aLike = (userId: number): ProductLike => ({ userId, variantId: 340 });
 
 /** An account row, as the ability sees it: only `id` matters to the rules. */
 const anAccount = (id: number): User => ({
@@ -73,6 +80,7 @@ describe('AbilityFactory', () => {
     it('does nothing else', () => {
       expect(ability.can('create', 'Product')).toBe(false);
       expect(ability.can('manage', 'CartItem')).toBe(false);
+      expect(ability.can('manage', 'ProductLike')).toBe(false);
       expect(ability.can('create', 'Order')).toBe(false);
       expect(ability.can('read', 'Order')).toBe(false);
       expect(() => accessibleBy(ability).Order).toThrow();
@@ -92,6 +100,19 @@ describe('AbilityFactory', () => {
       expect(
         ability.can('read', subject('CartItem', aCartRow({ userId: 7 }))),
       ).toBe(false);
+    });
+
+    it('manages their own likes and nobody else, as a where on user id', () => {
+      expect(ability.can('manage', 'ProductLike')).toBe(true);
+      expect(ability.can('delete', subject('ProductLike', aLike(128)))).toBe(
+        true,
+      );
+      expect(ability.can('delete', subject('ProductLike', aLike(7)))).toBe(
+        false,
+      );
+      expect(accessibleBy(ability).ProductLike).toEqual({
+        OR: [{ userId: 128 }],
+      });
     });
 
     it('creates orders, and reads, cancels and pays their own', () => {
@@ -187,13 +208,19 @@ describe('AbilityFactory', () => {
       expect(accessibleBy(ability, 'pay').Order).toEqual({});
     });
 
-    it('still manages only their own cart', () => {
+    it('still manages only their own cart and their own likes', () => {
       expect(
         ability.can('read', subject('CartItem', aCartRow({ userId: 1 }))),
       ).toBe(true);
       expect(
         ability.can('read', subject('CartItem', aCartRow({ userId: 7 }))),
       ).toBe(false);
+      expect(ability.can('delete', subject('ProductLike', aLike(1)))).toBe(
+        true,
+      );
+      expect(ability.can('delete', subject('ProductLike', aLike(7)))).toBe(
+        false,
+      );
     });
   });
 });

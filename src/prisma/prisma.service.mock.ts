@@ -68,6 +68,11 @@ export interface PrismaMock {
     upsert: jest.Mock;
     deleteMany: jest.Mock;
   };
+  // The two like writes. The list goes through `ProductsService.pageOf`.
+  productLike: {
+    upsert: jest.Mock;
+    deleteMany: jest.Mock;
+  };
   category: {
     findMany: jest.Mock;
     count: jest.Mock;
@@ -173,6 +178,10 @@ export function createPrismaMock(): PrismaMock {
     cartItem: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
+    },
+    productLike: {
       upsert: jest.fn(),
       deleteMany: jest.fn(),
     },

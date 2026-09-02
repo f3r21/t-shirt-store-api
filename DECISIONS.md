@@ -689,3 +689,46 @@ column of it; the delivery role has no rule of its own; and `@casl/prisma` reads
 `@prisma/client` by default, which the Prisma 7 generator no longer fills, so `casl-prisma.ts`
 is the wrapper the package's README gives for a generated client, and it is one more file that
 knows where the client lives.
+
+## 26. A like needs a product on sale, an unlike needs only a variant, and the list is the product page
+
+The three like operations are the smallest feature in the contract, and they still forced three
+calls.
+
+**Two lookups, two rules.** `likeVariant` resolves the variant through
+`visibleProductWhere(undefined)`, the predicate the cart uses for "on sale", so liking a variant of
+a disabled or deleted product is the same 404 as adding it to the cart. `unlikeVariant` resolves
+through `NOT_DELETED` alone, the rule `variants.service.ts` already applies to a variant, because a
+like placed while the product was on sale must still be removable after a manager disables it. The
+asymmetry is the point: a like is refused where the storefront shows nothing, and an unlike is
+refused only where there is no variant at all. The e2e suite proves both halves, a 404 on the like
+of a disabled product's variant with no row written, and a 204 on the unlike of a variant nobody
+liked.
+
+**The list is the product list with one more clause.** The contract says an entry has the same
+shape as an entry of the product list and that a product with two liked variants appears once.
+Rather than a second mapper, `ProductsService.pageOf(where, query)` is now the page assembler both
+lists call: the rows and the count under one `where`, the cheapest variant and the primary image in
+one query each, then the mapping. The likes service hands it `accessibleBy(ability).Product` and
+`variants: { some: { likes: { some: { userId } } } }`, so one row per product is a property of the
+predicate and not of a `distinct`. Reading under the caller's own ability means a liked product
+that was disabled after the like leaves the list and its row stays, which is what the storefront
+shows anyway, and a manager who disabled it still sees it in their own list, because their ability
+reads disabled products.
+
+**What the row is.** The pair, and nothing else. No surrogate id, no timestamp, no counter: the
+contract exposes none of them, and the primary key is what makes `PUT` an upsert with an empty
+`update` and `DELETE` a `deleteMany` whose count is ignored. Both are idempotent because the key
+makes them so, not because a handler checks first.
+
+**Authorization is one rule.** `manage ProductLike` on the caller's own `userId`, for every
+signed-in role. The contract declares no 403 on any of the three operations, and a manager likes
+things for the same reason a client does. The list's `where` takes the user id from the token and
+not from `accessibleBy(ability).ProductLike`, because the predicate sits inside a relation filter
+where CASL's clause has no place to go; the ability still answers the guard, and the factory spec
+pins the instance checks and the clause.
+
+**Given up:** no like count on a product, which the contract does not ask for; and an unlike on a
+variant of a deleted product is a 404 rather than a silent 204, because the variant rule says a
+deleted product's variants do not exist, so a like that outlives a deletion is one unreachable row
+until the product row goes.

@@ -51,6 +51,23 @@ export class ProductsService {
       where.categories = { some: { categoryId: query.categoryId } };
     }
 
+    return this.pageOf(where, query);
+  }
+
+  /**
+   * One page of product summaries under any predicate.
+   *
+   * The product list and the list of liked products are one shape with two
+   * predicates, so the page is assembled here once: the rows and the count
+   * under the same `where`, then the cheapest variant and the primary image
+   * of each row in one query each, then the mapping. A second copy in the
+   * likes service would drift from this one on the order or on the two
+   * lookups.
+   */
+  async pageOf(
+    where: Prisma.ProductWhereInput,
+    query: { limit: number; offset: number },
+  ): Promise<{ data: ProductSummaryDto[]; meta: PageMetaDto }> {
     const [rows, total] = await Promise.all([
       this.prisma.product.findMany({
         where,

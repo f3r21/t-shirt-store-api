@@ -10,9 +10,9 @@ import type { AppAbility } from './ability';
  * - Anyone, signed in or not, reads the catalog: products on sale, variants,
  *   categories. That is the anonymous ability, and the condition on `Product`
  *   is the visibility rule `product-visibility.ts` states for a shopper.
- * - A signed-in caller manages their own cart, creates orders, and reads,
- *   cancels and pays their own; they also manage their own sessions and
- *   update their own account. The delivery person has exactly this until the
+ * - A signed-in caller manages their own cart and their own likes, creates
+ *   orders, and reads, cancels and pays their own; they also manage their own
+ *   sessions and update their own account. The delivery person has exactly this until the
  *   optional delivery feature exists, because the contract gives that role no
  *   operation of its own.
  * - A manager, on top of that, reads every product that is not deleted,
@@ -39,6 +39,7 @@ export class AbilityFactory {
 
     const userId = viewer.sub;
     can('manage', 'CartItem', { userId });
+    can('manage', 'ProductLike', { userId });
     can('create', 'Order');
     can(['read', 'cancel', 'pay'], 'Order', { userId });
     can('manage', 'RefreshToken', { userId });

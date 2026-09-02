@@ -248,8 +248,11 @@ export async function truncateAll(prisma: PrismaService): Promise<void> {
   // `stripe_events` has no foreign key at all, so CASCADE would never reach
   // it, and a replay test in one spec would see an event id another spec
   // applied.
+  // `product_likes` and `stock_notifications` are named for the reason
+  // `consumed_refresh_tokens` is: both hang off users and variants and would
+  // be reached, and both have a writer now.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "stripe_events" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events" RESTART IDENTITY CASCADE',
   );
 }
 

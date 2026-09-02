@@ -65,7 +65,7 @@ describe('OpenAPI document against the contract (e2e)', () => {
     /**
      * Bounds the server enforces that the contract does not state.
      *
-     * One decision, fourteen entries, and the decision is that the server is
+     * One decision, thirty-seven entries, and the decision is that the server is
      * deliberately stricter than the contract wherever the storage layer or
      * the domain already refuses a value the contract admits. Refusing at the
      * edge turns a 500 into a 400.
@@ -94,6 +94,9 @@ describe('OpenAPI document against the contract (e2e)', () => {
       'GET /auth/sessions q.offset.maximum=2147483647',
       'GET /categories q.offset.maximum=2147483647',
       'GET /products q.offset.maximum=2147483647',
+      // The liked products page through the same `PageQueryDto`, so it
+      // carries the same `offset` ceiling and nothing else.
+      'GET /users/me/likes q.offset.maximum=2147483647',
       'GET /products q.categoryId.maximum=2147483647',
       'GET /products q.categoryId.minimum=1',
       'PATCH /products/{id} body.categoryIds.items.maximum=2147483647',
@@ -282,11 +285,12 @@ describe('OpenAPI document against the contract (e2e)', () => {
       (op) => !implemented.includes(op),
     );
 
-    // Not an assertion that nothing is missing: 18 operations are Week 4 work.
-    // It pins the counts, so finishing one without updating the contract, or
-    // deleting one by accident, shows up here as a number that moved.
-    expect(implemented).toHaveLength(32);
-    expect(missing).toHaveLength(5);
+    // Not an assertion that nothing is missing: the two image operations wait
+    // on object storage. It pins the counts, so finishing one without updating
+    // the contract, or deleting one by accident, shows up here as a number
+    // that moved.
+    expect(implemented).toHaveLength(35);
+    expect(missing).toHaveLength(2);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,
     );
