@@ -17,7 +17,7 @@ import { aRefreshToken } from './auth.fixtures';
 import { aUser } from '../users/users.fixtures';
 import { hashToken } from './token-hash';
 import { nthArg } from '../common/mock-args';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { PageQueryDto } from '../common/dto/page-query.dto';
@@ -68,6 +68,7 @@ describe('AuthService', () => {
    */
   let hashSpy: jest.SpyInstance;
   let verifySpy: jest.SpyInstance;
+  let logSpy: jest.SpyInstance;
 
   beforeAll(async () => {
     digest = await argon2.hash(PASSWORD);
@@ -78,6 +79,11 @@ describe('AuthService', () => {
     mailer = createMailerMock();
     hashSpy = jest.spyOn(argon2, 'hash');
     verifySpy = jest.spyOn(argon2, 'verify');
+    // Silenced as well as observed: the service writes a line per sign-in and
+    // per reset, and the console logger would print each as a block.
+    logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
 
     const module = await Test.createTestingModule({
       imports: [
@@ -99,6 +105,10 @@ describe('AuthService', () => {
 
     service = module.get(AuthService);
     jwt = module.get(JwtService);
+    // Cleared after the compile, because Nest's loader writes its own
+    // "dependencies initialized" line through the same prototype, and
+    // `spyOn` hands back the same spy, calls included, on every test.
+    logSpy.mockClear();
   });
 
   /** The row `aUser()` describes, with a digest the tests can sign in against. */
@@ -164,6 +174,33 @@ describe('AuthService', () => {
       const payload = jwt.verify<AccessTokenPayload>(result.accessToken);
       expect(payload.sub).toBe(128);
       expect(payload.role).toBe('client');
+    });
+
+    it('logs the sign-in with the user and session ids, and never the address', async () => {
+      await service.createSession({
+        email: 'ana@example.com',
+        password: PASSWORD,
+      });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const logged = nthArg(logSpy as unknown as jest.Mock);
+      expect(logged).toMatchObject({
+        event: 'auth.signed-in',
+        userId: 128,
+        sessionId: 42,
+      });
+      expect(JSON.stringify(logged)).not.toContain('ana@example.com');
+    });
+
+    it('logs nothing for a wrong password, because the filter logs the 401', async () => {
+      await expect(
+        service.createSession({
+          email: 'ana@example.com',
+          password: 'not it',
+        }),
+      ).rejects.toMatchObject({ status: 401 });
+
+      expect(logSpy).not.toHaveBeenCalled();
     });
 
     it('creates one refresh row for this device, owned by the caller and with an expiry', async () => {
@@ -903,6 +940,20 @@ describe('AuthService', () => {
       await expect(
         argon2.verify(call.data.passwordHash, 'a new password'),
       ).resolves.toBe(true);
+    });
+
+    it('logs the reset with the user id, and never the address', async () => {
+      prisma.user.updateManyAndReturn.mockResolvedValue([signedInUser()]);
+
+      await service.resetPassword({ token: TOKEN, password: 'a new password' });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const logged = nthArg(logSpy as unknown as jest.Mock);
+      expect(logged).toMatchObject({
+        event: 'auth.password-reset',
+        userId: 128,
+      });
+      expect(JSON.stringify(logged)).not.toContain('ana@example.com');
     });
 
     it('rejects an unknown token with 422 and not 400, because the body is well formed (openapi.yaml:333)', async () => {

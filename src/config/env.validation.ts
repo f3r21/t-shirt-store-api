@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -14,11 +15,25 @@ import {
   validateSync,
 } from 'class-validator';
 
-enum Environment {
+export enum Environment {
   Development = 'development',
   Test = 'test',
   Production = 'production',
 }
+
+/**
+ * pino's six levels, and `silent`, which the end-to-end suite sets.
+ */
+export const LOG_LEVELS = [
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
 
 /**
  * Every numeric property carries an explicit `: number`.
@@ -37,6 +52,18 @@ export class EnvironmentVariables {
   @Min(0)
   @Max(65535)
   PORT: number = 3000;
+
+  /**
+   * The lowest level that reaches stdout.
+   *
+   * Every line is JSON and nothing here opens a file: the process writes to
+   * stdout and whatever runs it routes the stream. `info` carries the
+   * completion line of every request and the events the OWASP logging cheat
+   * sheet names. `silent` is what the end-to-end suite sets, so a failing
+   * assertion is not buried under the request lines of every call it makes.
+   */
+  @IsIn(LOG_LEVELS)
+  LOG_LEVEL: LogLevel = 'info';
 
   @IsString()
   DATABASE_URL!: string;

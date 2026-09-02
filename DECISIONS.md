@@ -449,3 +449,53 @@ overridden package is accepted silently until the audit step says otherwise, and
 Prisma release that fixes this itself makes the block dead weight rather than wrong. It should
 be deleted the day Prisma 7 ships a fix or 8 lands, and nothing in the repository will remind
 anyone; this entry is the reminder.
+
+## 21. Logs are pino JSON with a request id, and the events are the OWASP list
+
+The filter used to log a 500 at error with the stack and every 4xx at debug with the message,
+through Nest's console logger, and nothing else under `src` logged at all. `ARCHITECTURE.md`
+promised a correlation id and said it did not exist. Three things were missing: a shape a log
+query can filter on, an id that joins every line of one request, and the events the OWASP
+logging cheat sheet asks a service to record, which are authentication successes and failures,
+authorization failures, validation failures, application errors with a stack, and privileged
+actions on an account.
+
+**pino through `nestjs-pino`, and every existing `Logger` stays Nest's.** `app.useLogger` in
+`configureApp` routes the `@nestjs/common` logger through pino, so the filter and the mailer kept
+their `new Logger(Name)`, the two services gained one, and all of them got a request id without a
+constructor change; every unit spec kept its `Logger.prototype` spy. The alternative was
+`PinoLogger` injected everywhere, which is the same lines with a provider in every test module.
+Winston was the other candidate the block text names; it is slower, JSON is a configuration there
+rather than the default, and nothing here needs a second transport.
+
+**The id is the caller's when it is well formed, and ours otherwise.** A front end or a proxy that
+sends `X-Request-Id` gets the same value back and can join its trace to this one. The value is
+accepted only when it matches `^[A-Za-z0-9._-]{1,64}$`, because a header is caller-controlled text
+on its way into every log line of the request; anything else is replaced with a uuid and the
+request proceeds. The response carries the header in both cases and CORS exposes it, so a browser
+client can quote it. The contract does not declare it, on purpose: it is an operational header and
+not part of any operation's meaning, the same standing the throttler's `X-RateLimit-*` headers
+already have (`rg -c -i ratelimit contract/openapi.yaml` is 0).
+
+**What a line never carries.** pino-http's default request serializer writes the headers, which is
+the bearer token on every authenticated request. It is replaced with the id, the method, the path
+and the address, the query string dropped for the reason `problem.filter.ts` records, and the
+response serializer with the status code. `redact` still names `req.headers.authorization`, so a
+future serializer that brings the headers back finds the token gone. No line is built from a body,
+so no password or reset token can reach one, and the three account events carry a user id and
+never the address.
+
+**4xx moved from debug to info and warn.** A 401, a 403 and a 429 are the entries the list calls
+security events, so they are warnings under their own event names, `auth.rejected`,
+`authz.rejected` and `rate.limited`. Every other 4xx is what the caller sent and logs at info as
+`request.rejected` with the problem type, which is where a validation failure lands. The old
+debug level hid all of them from a default configuration, which is the opposite of what the list
+asks for; the cost is a line per bad request from an anonymous caller, bounded by the same rate
+limit that bounds the requests.
+
+**Given up:** no end-to-end test reads a log line, because the suite runs at `silent` and pino
+writes to stdout, so the shapes are proven by unit specs against the spy and the wiring by the
+header that comes back. The id stops at the response: the job it was meant to reach does not
+exist, and when it does the id has to be put on the job payload by hand, because
+AsyncLocalStorage does not cross a queue. Nothing is a metric; the architecture page still lists
+what would be.

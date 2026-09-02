@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import type { Express } from 'express';
 import { SwaggerModule } from '@nestjs/swagger';
+import { Logger as PinoNestLogger } from 'nestjs-pino';
 import { VALIDATION_PIPE_OPTIONS } from './common/validation-pipe-options';
 import { buildOpenApiDocument } from './openapi/document';
 import { EnvironmentVariables } from './config/env.validation';
@@ -20,6 +21,13 @@ import { EnvironmentVariables } from './config/env.validation';
  * sees a request and nothing fails loudly when that happens.
  */
 export function configureApp(app: INestApplication): INestApplication {
+  // **First, so nothing below logs through the console.** Every
+  // `new Logger(Name)` in `src` stays Nest's and is routed through pino by this
+  // one call, which is why no service, guard or filter had to change its
+  // constructor. `bufferLogs` at creation holds the lines written before this
+  // runs, and they flush here.
+  app.useLogger(app.get(PinoNestLogger));
+
   app.setGlobalPrefix('v1');
 
   app.use(helmet());
@@ -57,11 +65,18 @@ export function configureApp(app: INestApplication): INestApplication {
   //
   // Listed rather than derived from the contract on purpose: this is the set the
   // server actually sends, and `openapi-contract.e2e-spec.ts` is what keeps the
-  // two honest.
+  // two honest. `X-Request-Id` is the one the contract does not declare, on
+  // purpose: it is operational, not part of any operation, and DECISIONS 21
+  // says why a browser client still has to be able to read it.
   app.enableCors({
     origin: origins,
     credentials: true,
-    exposedHeaders: ['Location', 'WWW-Authenticate', 'Retry-After'],
+    exposedHeaders: [
+      'Location',
+      'WWW-Authenticate',
+      'Retry-After',
+      'X-Request-Id',
+    ],
   });
 
   // **A hop count, never `true`.** The rate limit is keyed on `req.ip`, and with

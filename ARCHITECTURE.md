@@ -105,8 +105,11 @@ by route, and the last paragraph below is why it does not hold in production.
 
 Per route: request rate, 4xx against 5xx, p95 latency, and saturation as pool usage and event loop
 lag. Then what no infrastructure metric shows: checkout conversion, webhook lag, the failed set's
-size, and stock going negative, which pages. Logs would carry one correlation id from the request
-into the job, and never a token. None of that exists yet.
+size, and stock going negative, which pages. Logs are pino JSON on stdout. Every line carries the
+request id, which a caller may set with `X-Request-Id` and reads back on the response, and the
+filter writes one line per failure with the event, the status, the problem type, and the user id
+once a token verified, never a token. The id does not reach the job yet, because the job does not
+exist, and none of the metrics in this section exist either.
 
 **One regression would reach production unnoticed, and it is now a setting rather than a bug.**
 `ThrottlerGuard` keys the limit on `req.ip` (`app.module.ts:71`, no `getTracker` override). With

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
@@ -20,6 +20,8 @@ import { normalizeEmail } from '../common/email';
  */
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MAILER) private readonly mailer: Mailer,
@@ -150,6 +152,14 @@ export class UsersService {
       // the grace window, it would wipe the sessions this user creates next.
       // `auth.service.ts` explains the shape at `deleteCurrentSession`.
       await tx.consumedRefreshToken.deleteMany({ where: { userId } });
+    });
+
+    // A privileged action on the account, which the OWASP logging cheat sheet
+    // asks to be recorded. The id and never the address.
+    this.logger.log({
+      msg: 'password changed',
+      event: 'users.password-changed',
+      userId,
     });
 
     await this.mailer.sendPasswordChanged(user.email);

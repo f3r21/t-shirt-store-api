@@ -41,6 +41,45 @@ describe('AppController (e2e)', () => {
   });
 
   /**
+   * The request id is the one piece of observability a caller can see.
+   *
+   * Three requests. One with a well-formed id, which comes back unchanged. One
+   * with none, which gets a uuid. One with an id outside the pattern, which
+   * also gets a uuid and not the text it sent: that is the control that the
+   * header is validated rather than echoed, because an echoed header is
+   * caller-controlled text on its way into every log line of the request. The
+   * fourth assertion is that CORS exposes the header, or a browser client
+   * could never read the id it is asked to quote.
+   */
+  it('echoes a well-formed X-Request-Id, and generates one for a missing or a malformed header', async () => {
+    const UUID =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+    const echoed = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .set('x-request-id', 'trace-42.a_b')
+      .expect(200);
+    expect(echoed.headers['x-request-id']).toBe('trace-42.a_b');
+
+    const generated = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .expect(200);
+    expect(generated.headers['x-request-id']).toMatch(UUID);
+
+    const malformed = 'not ok: ' + 'x'.repeat(100);
+    const replaced = await request(ctx.app.getHttpServer())
+      .get('/v1')
+      .set('x-request-id', malformed)
+      .set('origin', 'https://shop.example')
+      .expect(200);
+    expect(replaced.headers['x-request-id']).toMatch(UUID);
+    expect(replaced.headers['x-request-id']).not.toBe(malformed);
+    expect(
+      (replaced.headers['access-control-expose-headers'] ?? '').toLowerCase(),
+    ).toContain('x-request-id');
+  });
+
+  /**
    * Both halves, and the second is the one that used to fail.
    *
    * A test that only asserted the echo for an allowed origin would pass just as

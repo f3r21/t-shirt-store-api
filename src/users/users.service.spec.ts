@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import argon2 from 'argon2';
 import { UsersService } from './users.service';
 import {
@@ -37,6 +38,7 @@ describe('UsersService', () => {
   let prisma: PrismaMock;
   let mailer: MailerMock;
   let digest: string;
+  let logSpy: jest.SpyInstance;
 
   beforeAll(async () => {
     digest = await argon2.hash(PASSWORD);
@@ -45,6 +47,10 @@ describe('UsersService', () => {
   beforeEach(async () => {
     prisma = createPrismaMock();
     mailer = createMailerMock();
+    // Silenced as well as observed, for the password change line.
+    logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
 
     const module = await Test.createTestingModule({
       providers: [
@@ -55,6 +61,10 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get(UsersService);
+    // Cleared after the compile, because Nest's loader writes its own
+    // "dependencies initialized" line through the same prototype, and
+    // `spyOn` hands back the same spy, calls included, on every test.
+    logSpy.mockClear();
   });
 
   const validBody = (): CreateUserDto => ({
@@ -189,6 +199,21 @@ describe('UsersService', () => {
       await expect(
         argon2.verify(call.data.passwordHash, 'a brand new password'),
       ).resolves.toBe(true);
+    });
+
+    it('logs the change with the user id, and never the address', async () => {
+      await service.changePassword(128, {
+        currentPassword: PASSWORD,
+        newPassword: 'a brand new password',
+      });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const logged = nthArg(logSpy as unknown as jest.Mock);
+      expect(logged).toMatchObject({
+        event: 'users.password-changed',
+        userId: 128,
+      });
+      expect(JSON.stringify(logged)).not.toContain('ana@example.com');
     });
 
     it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:452)', async () => {

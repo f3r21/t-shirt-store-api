@@ -5,7 +5,9 @@ import { configureApp } from './configure-app';
 import { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // `bufferLogs`, so the lines Nest writes while the modules load wait for the
+  // pino logger `configureApp` installs, instead of reaching the console.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   configureApp(app);
 

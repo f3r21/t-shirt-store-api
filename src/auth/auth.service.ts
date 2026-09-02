@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -36,6 +37,14 @@ const RESET_TOKEN_TTL_SECONDS = 30 * 60;
 
 @Injectable()
 export class AuthService {
+  /**
+   * The success half of what the OWASP logging cheat sheet asks for. The
+   * failure half, every 401, is written by the problem filter, which sees all
+   * of them. Every line here carries a user id and never an address or a
+   * token.
+   */
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -169,6 +178,13 @@ export class AuthService {
         deviceName: dto.deviceName,
         expiresAt: this.refreshExpiry(),
       },
+    });
+
+    this.logger.log({
+      msg: 'signed in',
+      event: 'auth.signed-in',
+      userId: user.id,
+      sessionId: row.id,
     });
 
     return {
@@ -660,6 +676,12 @@ export class AuthService {
       // `deleteCurrentSession` for what a trigger left behind does.
       await tx.consumedRefreshToken.deleteMany({ where: { userId: row.id } });
       return row;
+    });
+
+    this.logger.log({
+      msg: 'password reset',
+      event: 'auth.password-reset',
+      userId: user.id,
     });
 
     await this.mailer.sendPasswordChanged(user.email);

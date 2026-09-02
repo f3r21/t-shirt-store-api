@@ -103,7 +103,12 @@ export async function createTestApp(
 
   const moduleRef = await builder.compile();
 
-  const app = configureApp(moduleRef.createNestApplication());
+  // `bufferLogs` for the same reason `main.ts` passes it: the lines written
+  // while the modules load wait for the pino logger `configureApp` installs,
+  // which the suite runs at `silent`.
+  const app = configureApp(
+    moduleRef.createNestApplication({ bufferLogs: true }),
+  );
   await app.init();
 
   return { app, prisma: app.get(PrismaService), mail };

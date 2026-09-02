@@ -102,6 +102,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Forgot password, reset password, change password | Done, with unit tests |
 | Mail on password change and password reset | Done, delivered through Mailpit locally |
 | RFC 9457 problem documents on every error | Done |
+| Structured JSON logs with a request id | Done, through pino. Every line carries the id, and no line carries a token |
 | Helmet, CORS, environment schema validation | Done |
 | Rate limiting | Done, in three tiers: browsing, sign-in, and the three password operations |
 | Products, variants, categories | Done, with unit tests |

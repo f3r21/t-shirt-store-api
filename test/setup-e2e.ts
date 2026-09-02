@@ -28,3 +28,8 @@ process.env.CORS_ORIGINS = 'https://shop.example';
 // Short, so an expiry test does not have to wait fifteen minutes.
 process.env.JWT_ACCESS_TTL = '900';
 process.env.JWT_REFRESH_TTL = '604800';
+
+// Silent, so a failing assertion is not buried under the request line pino
+// writes for every call the suite makes. Only when unset, so
+// `LOG_LEVEL=info npm run test:e2e` shows the lines when they are the point.
+process.env.LOG_LEVEL ??= 'silent';

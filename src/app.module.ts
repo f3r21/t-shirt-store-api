@@ -4,8 +4,10 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { LoggerModule } from 'nestjs-pino';
 import { EnvironmentVariables } from './config/env.validation';
 import { CONFIG_MODULE_OPTIONS } from './config/config-module-options';
+import { buildLoggerOptions } from './logging/logger.options';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
@@ -21,6 +23,18 @@ import { ProblemFilter } from './common/problem/problem.filter';
     // is explained, so that `app.module.spec.ts` can build the same module
     // against an environment it controls.
     ConfigModule.forRoot(CONFIG_MODULE_OPTIONS),
+    /**
+     * pino, through nestjs-pino. The module also mounts pino-http, which is
+     * where the request id is minted and the completion line is written. The
+     * options and their reasons are in `logging/logger.options.ts`; the
+     * `useLogger` call that routes every Nest `Logger` through it is in
+     * `configure-app.ts`, so the end-to-end suite gets the same logger.
+     */
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<EnvironmentVariables, true>) =>
+        buildLoggerOptions(config),
+    }),
     /**
      * `ttl` is milliseconds in this major version, and `THROTTLE_TTL` is a
      * number of seconds, so the value is wrapped rather than passed through. A

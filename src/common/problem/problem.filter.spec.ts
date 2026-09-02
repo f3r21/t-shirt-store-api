@@ -5,8 +5,18 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import { ProblemFilter } from './problem.filter';
 import { nthArg } from '../mock-args';
+import { AccessTokenPayload } from '../../auth/access-token-payload';
+
+/** The object a log spy was handed, typed by the caller. */
+function line(spy: jest.SpyInstance, call = 0): Record<string, unknown> {
+  return nthArg(spy as unknown as jest.Mock, 0, call) as Record<
+    string,
+    unknown
+  >;
+}
 
 /**
  * The filter, which is the half of the mapper that touches the response.
@@ -20,8 +30,10 @@ import { nthArg } from '../mock-args';
  * 2. `WWW-Authenticate` goes out on a 401 and on nothing else, which RFC 9110
  *    requires of every 401,
  * 3. `instance` is the request path, taken from the request rather than guessed,
- * 4. a 500 logs at error and a 4xx does not, so a caller cannot fill the log by
- *    sending bad requests.
+ * 4. what reaches the log: a 500 at error with the error itself, a 401, a 403
+ *    and a 429 at warn under their security events, every other 4xx at info,
+ *    each line carrying the event, the status, the method and the path, and
+ *    the user id once a token verified.
  */
 describe('ProblemFilter', () => {
   interface Harness {
@@ -32,7 +44,8 @@ describe('ProblemFilter', () => {
     json: jest.Mock;
     setHeader: jest.Mock;
     error: jest.SpyInstance;
-    debug: jest.SpyInstance;
+    warn: jest.SpyInstance;
+    log: jest.SpyInstance;
   }
 
   function harness(
@@ -40,13 +53,17 @@ describe('ProblemFilter', () => {
     method = 'GET',
     headersSent = false,
     type_ = 'http',
+    user?: AccessTokenPayload,
   ): Harness {
     const json = jest.fn();
     const type = jest.fn(() => ({ json }));
     const status = jest.fn(() => ({ type }));
     const setHeader = jest.fn();
     const res = { status, setHeader, headersSent };
-    const req = { url, method };
+    // `ip` is what Express derives from the socket, or from the forwarded
+    // header once `trust proxy` is set. A fixed value here, so the assertion
+    // that it reaches the line is about the filter and not about Express.
+    const req = { url, method, user, ip: '203.0.113.9' };
 
     const host = {
       getType: () => type_,
@@ -66,7 +83,8 @@ describe('ProblemFilter', () => {
       // Silenced as well as observed. Without this the suite prints a stack for
       // every 500 case and the real output gets lost in it.
       error: jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {}),
-      debug: jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => {}),
+      warn: jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {}),
+      log: jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {}),
     };
   }
 
@@ -118,42 +136,99 @@ describe('ProblemFilter', () => {
   });
 
   describe('what reaches the log', () => {
-    it('logs a 500 at error, with the method, path and status', () => {
+    it('logs a 500 at error, with the error itself and the where', () => {
       const h = harness('/v1/products', 'POST');
+      const boom = new Error('connection reset');
 
-      h.filter.catch(new Error('connection reset'), h.host);
+      h.filter.catch(boom, h.host);
 
-      expect(h.error).toHaveBeenCalled();
-      expect(nthArg(h.error as unknown as jest.Mock)).toBe(
-        'POST /v1/products 500',
-      );
-      expect(h.debug).not.toHaveBeenCalled();
+      expect(h.error).toHaveBeenCalledTimes(1);
+      expect(line(h.error)).toMatchObject({
+        msg: 'POST /v1/products 500',
+        event: 'request.failed',
+        status: 500,
+        method: 'POST',
+        path: '/v1/products',
+        // The Error and not its stack string, so pino's serializer prints the
+        // stack and a text logger prints the message.
+        err: boom,
+      });
+      expect(h.warn).not.toHaveBeenCalled();
+      expect(h.log).not.toHaveBeenCalled();
     });
 
-    it('logs a 4xx at debug and not at error', () => {
+    it('logs a 401, a 403 and a 429 at warn, each under its security event', () => {
+      const h = harness('/v1/users', 'POST');
+
+      h.filter.catch(new UnauthorizedException(), h.host);
+      h.filter.catch(new ForbiddenException(), h.host);
+      h.filter.catch(new ThrottlerException('Too many requests'), h.host);
+
+      expect(h.warn).toHaveBeenCalledTimes(3);
+      expect(line(h.warn, 0)).toMatchObject({
+        event: 'auth.rejected',
+        status: 401,
+        msg: 'POST /v1/users 401',
+      });
+      expect(line(h.warn, 1)).toMatchObject({
+        event: 'authz.rejected',
+        status: 403,
+      });
+      expect(line(h.warn, 2)).toMatchObject({
+        event: 'rate.limited',
+        status: 429,
+      });
+      expect(h.error).not.toHaveBeenCalled();
+      expect(h.log).not.toHaveBeenCalled();
+    });
+
+    it('logs every other 4xx at info, with the reason and never at error', () => {
       // The half that matters for a public route: before the oversized-body fix
       // a 413 was a 500, so one caller could fill the log with stack traces by
       // posting a large body with no token.
       const h = harness('/v1/users', 'POST');
 
-      h.filter.catch(new ForbiddenException(), h.host);
+      h.filter.catch(new BadRequestException('nope'), h.host);
 
+      expect(h.log).toHaveBeenCalledTimes(1);
+      expect(line(h.log)).toMatchObject({
+        msg: 'POST /v1/users 400',
+        event: 'request.rejected',
+        status: 400,
+        reason: 'nope',
+      });
       expect(h.error).not.toHaveBeenCalled();
-      expect(h.debug).toHaveBeenCalled();
-      expect(nthArg(h.debug as unknown as jest.Mock)).toBe(
-        'POST /v1/users 403',
-      );
+      expect(h.warn).not.toHaveBeenCalled();
     });
 
-    it('logs a thrown string without calling into it as an Error', () => {
+    it('names the caller once a token verified, and the address always', () => {
+      const signedIn = harness('/v1/products', 'POST', false, 'http', {
+        sub: 42,
+        sid: 7,
+        role: 'client',
+      });
+      const anonymous = harness('/v1/products', 'POST');
+
+      signedIn.filter.catch(new ForbiddenException(), signedIn.host);
+      anonymous.filter.catch(new UnauthorizedException(), anonymous.host);
+
+      expect(line(signedIn.warn)).toMatchObject({
+        userId: 42,
+        ip: '203.0.113.9',
+      });
+      expect(line(anonymous.warn, 1).userId).toBeUndefined();
+      expect(line(anonymous.warn, 1).ip).toBe('203.0.113.9');
+    });
+
+    it('logs a thrown string as text, without calling into it as an Error', () => {
       // `err.stack` on a string is undefined, so the branch has to ask first.
       const h = harness();
 
       expect(() => h.filter.catch('a bare string', h.host)).not.toThrow();
-      expect(h.error).toHaveBeenCalledWith(
-        'GET /v1/products/7 500',
-        'a bare string',
-      );
+      expect(line(h.error)).toMatchObject({
+        msg: 'GET /v1/products/7 500',
+        err: 'a bare string',
+      });
     });
   });
 
@@ -173,15 +248,15 @@ describe('ProblemFilter', () => {
      * passing because the filter stopped logging anything.
      */
     it('logs the path and never the query string', () => {
-      const { filter, host, debug, json } = harness(
-        '/v1/products?secret=leaked&big=' + 'x'.repeat(200),
-      );
+      const h = harness('/v1/products?secret=leaked&big=' + 'x'.repeat(200));
 
-      filter.catch(new BadRequestException('nope'), host);
+      h.filter.catch(new BadRequestException('nope'), h.host);
 
-      const [where] = debug.mock.calls[0] as [string, string];
-      expect(where).toBe('GET /v1/products 400');
-      expect(where).not.toContain('secret');
+      const logged = line(h.log);
+      expect(logged.msg).toBe('GET /v1/products 400');
+      expect(logged.path).toBe('/v1/products');
+      expect(JSON.stringify(logged)).not.toContain('secret');
+      const { json } = h;
 
       const body = (json.mock.calls[0] as [{ instance: string }])[0];
       expect(body.instance).toBe('/v1/products');
@@ -196,7 +271,7 @@ describe('ProblemFilter', () => {
      * be written: that is the second assertion.
      */
     it('writes nothing when the headers have already gone, and still logs', () => {
-      const { filter, host, status, debug } = harness(
+      const { filter, host, status, log } = harness(
         '/v1/products',
         'GET',
         true,
@@ -207,7 +282,7 @@ describe('ProblemFilter', () => {
       ).not.toThrow();
 
       expect(status).not.toHaveBeenCalled();
-      expect(debug).toHaveBeenCalled();
+      expect(log).toHaveBeenCalled();
     });
 
     /**
