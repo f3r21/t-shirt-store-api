@@ -7,7 +7,12 @@ import { EnvironmentVariables } from './config/env.validation';
 async function bootstrap() {
   // `bufferLogs`, so the lines Nest writes while the modules load wait for the
   // pino logger `configureApp` installs, instead of reaching the console.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // `rawBody`, so the Stripe webhook can verify its signature over the bytes
+  // Stripe sent; a parsed and re-serialised body would not match them.
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   configureApp(app);
 

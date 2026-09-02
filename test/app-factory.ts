@@ -4,8 +4,10 @@ import { ThrottlerStorage } from '@nestjs/throttler';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
+import Stripe from 'stripe';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { MAILER, Mailer } from '../src/mail/mailer';
+import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
 
 /**
  * Every message the application tried to send during a test.
@@ -38,10 +40,58 @@ export class MailerSpy implements Mailer {
   }
 }
 
+/**
+ * The Stripe SDK with its two network calls replaced and its signer kept.
+ *
+ * The Week 3 & 4 page names the Stripe API as the honest thing a test cannot
+ * run, and says to stub it. This records what the service asked Stripe for,
+ * so a test can assert the order id rode along, and answers the shapes the
+ * service reads. `webhooks` is the real SDK's, because `constructEvent` is
+ * pure HMAC over the body and the signature check is the production code
+ * path: a test signs with `webhooks.generateTestHeaderString` and the same
+ * secret `setup-e2e.ts` sets, and the server verifies for real.
+ */
+export class StripeStub implements StripeClient {
+  readonly links: Stripe.PaymentLinkCreateParams[] = [];
+  readonly intents: Stripe.PaymentIntentCreateParams[] = [];
+  readonly webhooks = new Stripe('sk_test_e2e').webhooks;
+
+  readonly paymentLinks = {
+    create: (params: Stripe.PaymentLinkCreateParams) => {
+      this.links.push(params);
+      return Promise.resolve({
+        id: 'plink_e2e',
+        object: 'payment_link',
+        url: 'https://buy.stripe.com/test_e2e',
+        metadata: params.metadata ?? {},
+      } as unknown as Stripe.Response<Stripe.PaymentLink>);
+    },
+  };
+
+  readonly paymentIntents = {
+    create: (params: Stripe.PaymentIntentCreateParams) => {
+      this.intents.push(params);
+      return Promise.resolve({
+        id: 'pi_e2e',
+        object: 'payment_intent',
+        client_secret: 'pi_e2e_secret_x',
+        amount: params.amount,
+        metadata: params.metadata ?? {},
+      } as unknown as Stripe.Response<Stripe.PaymentIntent>);
+    },
+  };
+
+  clear(): void {
+    this.links.length = 0;
+    this.intents.length = 0;
+  }
+}
+
 export interface TestApp {
   app: INestApplication;
   prisma: PrismaService;
   mail: MailerSpy;
+  stripe: StripeStub;
 }
 
 /**
@@ -88,12 +138,15 @@ export async function createTestApp(
   options: { throttle?: boolean } = {},
 ): Promise<TestApp> {
   const mail = new MailerSpy();
+  const stripe = new StripeStub();
 
   let builder: TestingModuleBuilder = Test.createTestingModule({
     imports: [AppModule],
   })
     .overrideProvider(MAILER)
-    .useValue(mail);
+    .useValue(mail)
+    .overrideProvider(STRIPE_CLIENT)
+    .useValue(stripe);
 
   if (options.throttle !== true) {
     builder = builder
@@ -105,13 +158,14 @@ export async function createTestApp(
 
   // `bufferLogs` for the same reason `main.ts` passes it: the lines written
   // while the modules load wait for the pino logger `configureApp` installs,
-  // which the suite runs at `silent`.
+  // which the suite runs at `silent`. `rawBody` for the same reason too: the
+  // tested app has to keep the bytes the Stripe signature covers.
   const app = configureApp(
-    moduleRef.createNestApplication({ bufferLogs: true }),
+    moduleRef.createNestApplication({ bufferLogs: true, rawBody: true }),
   );
   await app.init();
 
-  return { app, prisma: app.get(PrismaService), mail };
+  return { app, prisma: app.get(PrismaService), mail, stripe };
 }
 
 /**
@@ -191,8 +245,11 @@ export async function truncateAll(prisma: PrismaService): Promise<void> {
   // reached anyway through its user foreign key, and a table that is emptied
   // only as a side effect of another one is a table nobody remembers when the
   // foreign key changes.
+  // `stripe_events` has no foreign key at all, so CASCADE would never reach
+  // it, and a replay test in one spec would see an event id another spec
+  // applied.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "stripe_events" RESTART IDENTITY CASCADE',
   );
 }
 

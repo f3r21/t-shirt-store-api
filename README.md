@@ -13,7 +13,7 @@ Six commands, in this order. Two of them carry a trap, noted below.
 
 ```bash
 npm install
-cp .env.example .env      # then fill in the two blank secrets, see below
+cp .env.example .env      # then fill in the four blank secrets, see below
 npm run docker:up         # Postgres, Redis and Mailpit
 npm run db:migrate        # applies the migrations
 npm run db:seed           # NOT optional, see below
@@ -45,13 +45,14 @@ when `NODE_ENV` is `production`, and seeds only the roles and categories there.
 `.env.example` names every variable the schema declares, and
 `src/app.module.spec.ts` fails if one is missing rather than leaving that sentence to rot.
 
-Five are blank and only two of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
-blank because they are secrets and the boot refuses without them. `CORS_ORIGINS` is blank because
-empty is its real default and it means no cross-origin browser may call this service. `SMTP_USER`
-and `SMTP_PASS` are blank because Mailpit wants no credentials, and the mailer sends none unless
-both are set.
+Seven are blank and four of them need a value. `JWT_SECRET` and `REFRESH_TOKEN_PEPPER` are
+blank because they are secrets and the boot refuses without them. `STRIPE_SECRET_KEY` and
+`STRIPE_WEBHOOK_SECRET` are blank for the same reason, and the next section says where they come
+from. `CORS_ORIGINS` is blank because empty is its real default and it means no cross-origin
+browser may call this service. `SMTP_USER` and `SMTP_PASS` are blank because Mailpit wants no
+credentials, and the mailer sends none unless both are set.
 
-Only the two secrets need at least 32 characters:
+Only the two signing secrets need at least 32 characters:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -61,6 +62,29 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `REFRESH_TOKEN_PEPPER` keys the hash of the refresh and reset tokens. It is deliberately
   a separate value: rotating the signing key would otherwise invalidate every stored token
   hash at the same moment.
+
+### Stripe
+
+Payments run in Stripe test mode. `STRIPE_SECRET_KEY` is the `sk_test_` key from the Stripe
+dashboard. `STRIPE_WEBHOOK_SECRET` comes from the `stripe` command-line tool, which also forwards
+events to the running API:
+
+```bash
+stripe login
+stripe listen --forward-to localhost:3000/v1/webhooks/stripe   # prints whsec_..., paste it into .env
+```
+
+To pay an order without a browser, create a payment intent through the API, then confirm it with a
+test card. The tool prints the `payment_intent.succeeded` event as it forwards it, and the order
+turns `paid` with its stock lowered:
+
+```bash
+stripe payment_intents confirm pi_...   --payment-method pm_card_visa
+```
+
+The end-to-end suite never reaches Stripe. It replaces the two API calls with a stub and signs
+its own events with the same secret the server verifies, so the signature check is the production
+code path.
 
 ## Check it
 
@@ -109,8 +133,9 @@ evidence that the generated Prisma client matches the schema**: every file under
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
-| Likes, images, payments | Not built. The tables ship, the operations are week 4 |
-| End-to-end tests | Done, in ten suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout and the status flow, order history for two clients and a manager, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
+| Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock |
+| Likes, images | Not built. The tables ship, the operations are week 4 |
+| End-to-end tests | Done, in ten suites against a real database: authentication, catalog reads, catalog authorization, the cart, checkout through a signed Stripe event to the stock decrement, the status flow, order history for two clients and a manager, roles, rate limits, the kernel's headers, and the served OpenAPI document against the contract |
 | Cart, orders, order history | Not started |
 | CASL authorization | Not started. `RolesGuard` holds the seam, and the role claim it needs is already in the token |
 | Stripe, the notification queue, S3 uploads | Not started. See `ARCHITECTURE.md` for the queue rationale |

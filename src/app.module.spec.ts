@@ -35,6 +35,10 @@ describe('AppModule', () => {
     JWT_SECRET: 'a'.repeat(32),
     REFRESH_TOKEN_PEPPER: 'b'.repeat(32),
     MAIL_FROM: 'no-reply@tshirt.store',
+    // Required since block 3: a store that cannot verify a webhook must not
+    // boot. Throwaway values; the signature check is exercised end to end.
+    STRIPE_SECRET_KEY: 'sk_test_spec',
+    STRIPE_WEBHOOK_SECRET: 'whsec_spec',
   };
 
   let saved: NodeJS.ProcessEnv;

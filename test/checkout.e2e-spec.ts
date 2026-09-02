@@ -75,6 +75,7 @@ describe('Checkout (e2e)', () => {
 
   beforeEach(async () => {
     await truncateAll(ctx.prisma);
+    ctx.stripe.clear();
     fixture = await seedProductWithVariant(ctx.prisma, { stock: 7 });
     token = await signInAs(ctx, 'ana@example.com');
   });
@@ -323,6 +324,291 @@ describe('Checkout (e2e)', () => {
       await setStatus(other, id, 'cancelled').expect(404);
 
       expect((await orderRow(id)).status).toBe('pending');
+    });
+  });
+
+  /**
+   * The payment, through the stub for the API calls and the real signer for
+   * the webhook. The secret is the one `setup-e2e.ts` sets, so a body signed
+   * here verifies in the server the way a body signed by Stripe would.
+   */
+  describe('paying', () => {
+    const SECRET = process.env.STRIPE_WEBHOOK_SECRET as string;
+
+    const event = (
+      type: string,
+      orderId: number | string | undefined,
+      id = 'evt_1',
+    ) =>
+      JSON.stringify({
+        id,
+        object: 'event',
+        type,
+        data: {
+          object: {
+            id: 'obj_1',
+            metadata: orderId === undefined ? {} : { orderId: String(orderId) },
+          },
+        },
+      });
+
+    const deliver = (payload: string, secret = SECRET) =>
+      http()
+        .post('/v1/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .set(
+          'Stripe-Signature',
+          ctx.stripe.webhooks.generateTestHeaderString({ payload, secret }),
+        )
+        .send(payload);
+
+    const createIntent = (t: string, id: number) =>
+      http().post(`/v1/orders/${id}/payments`).set('Authorization', bearer(t));
+
+    const createLink = (t: string, variantId: number, quantity: number) =>
+      http()
+        .post('/v1/payment-links')
+        .set('Authorization', bearer(t))
+        .send({ variantId, quantity });
+
+    const eventsRecorded = () => ctx.prisma.stripeEvent.count();
+
+    it('pays a cart: order, intent, signed event, then the order is paid and the stock is down', async () => {
+      const id = await placeOrder(token);
+
+      const intent = await createIntent(token, id).expect(201);
+      expect(intent.body).toEqual({
+        orderId: id,
+        clientSecret: 'pi_e2e_secret_x',
+        amount: 3998,
+      });
+      // The amount came from the order, and the order id rode along.
+      expect(ctx.stripe.intents[0]).toMatchObject({
+        amount: 3998,
+        currency: 'usd',
+        metadata: { orderId: String(id) },
+      });
+
+      await deliver(event('payment_intent.succeeded', id)).expect(200);
+
+      const row = await orderRow(id);
+      expect(row.status).toBe('paid');
+      expect(row.paymentMethod).toBe('payment_intent');
+      expect(row.statusHistory.map((h) => h.status)).toEqual([
+        'pending',
+        'paid',
+      ]);
+      // The assertion the Week 3 & 4 page says people skip.
+      expect(await stockOf(fixture.variantId)).toBe(5);
+
+      const read = await http()
+        .get(`/v1/orders/${id}`)
+        .set('Authorization', bearer(token))
+        .expect(200);
+      expect(read.body).toMatchObject({
+        status: 'paid',
+        paymentMethod: 'payment_intent',
+      });
+    });
+
+    it('applies an event once: a replay is 200 and moves nothing', async () => {
+      const id = await placeOrder(token);
+      const payload = event('payment_intent.succeeded', id);
+      await deliver(payload).expect(200);
+
+      await deliver(payload).expect(200);
+
+      expect(await stockOf(fixture.variantId)).toBe(5);
+      const row = await orderRow(id);
+      expect(row.statusHistory.filter((h) => h.status === 'paid')).toHaveLength(
+        1,
+      );
+      expect(await eventsRecorded()).toBe(1);
+    });
+
+    it('a second event for an order already paid is 200 and changes nothing', async () => {
+      const id = await placeOrder(token);
+      await deliver(event('payment_intent.succeeded', id, 'evt_1')).expect(200);
+
+      await deliver(event('payment_intent.succeeded', id, 'evt_2')).expect(200);
+
+      expect(await stockOf(fixture.variantId)).toBe(5);
+      expect((await orderRow(id)).statusHistory).toHaveLength(2);
+      expect(await eventsRecorded()).toBe(2);
+    });
+
+    it('refuses a body that changed after it was signed, with 400', async () => {
+      const id = await placeOrder(token);
+      const payload = event('payment_intent.succeeded', id);
+      const header = ctx.stripe.webhooks.generateTestHeaderString({
+        payload,
+        secret: SECRET,
+      });
+
+      const res = await http()
+        .post('/v1/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .set('Stripe-Signature', header)
+        .send(payload.replace('"evt_1"', '"evt_9"'))
+        .expect(400);
+
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect((await orderRow(id)).status).toBe('pending');
+      expect(await stockOf(fixture.variantId)).toBe(7);
+      expect(await eventsRecorded()).toBe(0);
+    });
+
+    it('refuses a signature made with another secret, and a missing header', async () => {
+      const id = await placeOrder(token);
+      const payload = event('payment_intent.succeeded', id);
+
+      await deliver(payload, 'whsec_someone_else').expect(400);
+      await http()
+        .post('/v1/webhooks/stripe')
+        .set('Content-Type', 'application/json')
+        .send(payload)
+        .expect(400);
+
+      expect((await orderRow(id)).status).toBe('pending');
+    });
+
+    it('answers 200 for an event kind it does not handle, and records nothing', async () => {
+      const id = await placeOrder(token);
+
+      await deliver(event('charge.succeeded', id)).expect(200);
+
+      expect((await orderRow(id)).status).toBe('pending');
+      expect(await eventsRecorded()).toBe(0);
+    });
+
+    it('answers 200 for an event that names no order, and records it', async () => {
+      await deliver(event('payment_intent.succeeded', undefined)).expect(200);
+
+      expect(await eventsRecorded()).toBe(1);
+      expect(await ctx.prisma.order.count()).toBe(0);
+    });
+
+    it('a cancel that landed first wins: the payment does not reopen the order', async () => {
+      const id = await placeOrder(token);
+      await setStatus(token, id, 'cancelled').expect(200);
+
+      await deliver(event('payment_intent.succeeded', id)).expect(200);
+
+      const row = await orderRow(id);
+      expect(row.status).toBe('cancelled');
+      expect(row.paymentMethod).toBeNull();
+      expect(await stockOf(fixture.variantId)).toBe(7);
+      expect(await eventsRecorded()).toBe(1);
+    });
+
+    it('floors the stock at zero when the units are gone by the time the payment lands', async () => {
+      const id = await placeOrder(token);
+      await ctx.prisma.productVariant.update({
+        where: { id: fixture.variantId },
+        data: { stock: 1 },
+      });
+
+      await deliver(event('payment_intent.succeeded', id)).expect(200);
+
+      expect((await orderRow(id)).status).toBe('paid');
+      expect(await stockOf(fixture.variantId)).toBe(0);
+    });
+
+    it('refuses an intent for an order that is not pending, with 409', async () => {
+      const id = await placeOrder(token);
+      await setStatus(token, id, 'cancelled').expect(200);
+
+      const res = await createIntent(token, id).expect(409);
+
+      expect(res.body.detail).toBe(
+        'An order in status cancelled cannot be paid.',
+      );
+      expect(ctx.stripe.intents).toHaveLength(0);
+    });
+
+    it("refuses an intent for another client's order, with 404", async () => {
+      const id = await placeOrder(token);
+      const other = await signInAs(ctx, 'bob@example.com');
+
+      await createIntent(other, id).expect(404);
+      expect(ctx.stripe.intents).toHaveLength(0);
+    });
+
+    it('refuses an intent when a line is above the stock, before Stripe is asked', async () => {
+      const id = await placeOrder(token);
+      await ctx.prisma.productVariant.update({
+        where: { id: fixture.variantId },
+        data: { stock: 1 },
+      });
+
+      const res = await createIntent(token, id).expect(409);
+
+      expect(res.body.type).toBe(
+        'https://tshirt.store/problems/insufficient-stock',
+      );
+      expect(ctx.stripe.intents).toHaveLength(0);
+    });
+
+    it('sells one product through a link: a pending order, the id in the link, no stock moved', async () => {
+      const res = await createLink(token, fixture.variantId, 2).expect(201);
+
+      const orderId = res.body.orderId as number;
+      expect(res.headers.location).toBe(`/v1/orders/${orderId}`);
+      expect(res.body).toEqual({
+        orderId,
+        url: 'https://buy.stripe.com/test_e2e',
+      });
+      expect(ctx.stripe.links[0]).toMatchObject({
+        metadata: { orderId: String(orderId) },
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              unit_amount: 1999,
+              product_data: { name: 'Fixture Tee (M, black)' },
+            },
+            quantity: 2,
+          },
+        ],
+      });
+      const row = await orderRow(orderId);
+      expect(row.status).toBe('pending');
+      expect(row.totalCents).toBe(3998);
+      expect(row.items).toHaveLength(1);
+      expect(await stockOf(fixture.variantId)).toBe(7);
+    });
+
+    it('pays a link order from checkout.session.completed, as payment_link', async () => {
+      const res = await createLink(token, fixture.variantId, 2).expect(201);
+      const orderId = res.body.orderId as number;
+
+      await deliver(event('checkout.session.completed', orderId)).expect(200);
+
+      const row = await orderRow(orderId);
+      expect(row.status).toBe('paid');
+      expect(row.paymentMethod).toBe('payment_link');
+      expect(await stockOf(fixture.variantId)).toBe(5);
+    });
+
+    it('refuses a link for a withdrawn product with 404, and above stock with 409', async () => {
+      const withdrawn = await seedProductWithVariant(ctx.prisma, {
+        name: 'Withdrawn Tee',
+        isActive: false,
+      });
+
+      await createLink(token, withdrawn.variantId, 1).expect(404);
+      const res = await createLink(token, fixture.variantId, 8).expect(409);
+
+      expect(res.body.type).toBe(
+        'https://tshirt.store/problems/insufficient-stock',
+      );
+      expect(await ctx.prisma.order.count()).toBe(0);
+      expect(ctx.stripe.links).toHaveLength(0);
+    });
+
+    it('answers 401 to an anonymous caller on both payment operations', async () => {
+      await http().post('/v1/payment-links').send({}).expect(401);
+      await http().post('/v1/orders/1/payments').expect(401);
     });
   });
 });

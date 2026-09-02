@@ -583,3 +583,58 @@ written in the same transaction, so the column and the history cannot disagree.
 from `paid` and nothing pays an order yet, so until block 3 a manager cannot exercise the forward
 path through the API, and the e2e suite sets `paid` by hand and says so. No promo code, so
 `subtotal` equals `total`.
+
+## 24. The webhook is the only writer of `paid`, and a retry is a unique violation
+
+Stripe holds half of every payment's state, and the architecture page picked this as the seam
+where a request fails halfway. This entry is what the seam looks like in code, and the three
+places I chose against the obvious shape.
+
+**One event kind per flow.** A payment link carries the order id in its own `metadata`, which
+Stripe copies to every Checkout Session the link creates, so `checkout.session.completed` pays a
+link order and records `payment_link`. A payment intent carries it in the intent's `metadata`, so
+`payment_intent.succeeded` pays a cart order and records `payment_intent`. The link deliberately
+puts nothing in `payment_intent_data`: a link purchase fires both events, and if the intent also
+named the order the first to arrive would decide the recorded method by a race. With nothing
+there, the intent event of a link purchase names no order and is ignored, and the method on the
+row is always the flow the client actually used.
+
+**The transaction, in this order.** The event id is looked up and then inserted first into
+`stripe_events`, so a replay either stops at the lookup or loses on the primary key and rolls the
+whole transaction back. Then `updateMany` moves the order from `pending` to `paid` in one
+conditional write; zero rows means a cancel or the other event kind landed first, and the answer
+is still 200 with a warning, because a non-2xx makes Stripe retry and no retry can change that.
+Then the history row. Then each line's stock comes down, conditional on the units being there.
+The ERD's `order_payments` table, which the contract still names at `openapi.yaml:1710`, would
+have carried the Stripe reference; `stripe_events` carries it on the primary key, which is the
+one place idempotency needs it, and the schema comment on `Order.paymentMethod` records the rest
+of that departure.
+
+**Oversold means the stock floors at zero.** Between the intent and the payment the shelf can
+move, because an unpaid order reserves nothing (DECISIONS 23). When the payment lands and the
+units are gone, the money is already taken, so refusing is not on the table: the stock is set to
+zero and a `stock.oversold` warning names the variant and the shortfall, which is the number a
+person has to act on. The alternative, reserving stock at intent creation, would need an expiry
+and a sweeper for intents that never pay, and the brief's flow does not ask for either.
+
+**Everything that is not a signature failure is 200.** An unhandled event kind, an event that
+names no order, and an event for an order that is no longer pending all answer 200, the last two
+with a warning and a recorded event id. Stripe treats anything else as a reason to retry, and
+none of those answers would change on a retry. The signature is the one 400, because a body that
+does not verify is not Stripe's, and the raw bytes are what it covers, which is why `main.ts` and
+the test factory both keep `rawBody`.
+
+**The SDK is a token and the gateway is a class.** `STRIPE_CLIENT` provides a three-method
+interface a real `Stripe` instance satisfies; the e2e factory replaces the two API calls with a
+stub that records what was asked, and keeps the SDK's own `webhooks`, so the signature check in
+the suite is the production code path against a body the suite signed with the same secret. That
+is the Week 3 & 4 page's instruction taken literally: stub the API you cannot run, and never
+accept a webhook you have not tested against a signature.
+
+**Given up:** two intents for one order are allowed, because the contract calls the operation a
+payment attempt and reads none back; the conditional write makes the second success a no-op, and
+a double charge is a refund, which no operation in this contract performs. A payment link never
+expires, so `expiresAt` is never sent. The link's order is deleted if Stripe fails after it was
+written, which is a compensation and not a transaction, and a crash between the two leaves a
+`pending` order with no link, the same shape of gap the architecture page already admits for the
+queue.

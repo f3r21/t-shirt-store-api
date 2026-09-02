@@ -17,6 +17,10 @@ process.env.DATABASE_URL =
 process.env.JWT_SECRET = 'e2e-jwt-secret-at-least-32-characters-long';
 process.env.REFRESH_TOKEN_PEPPER = 'e2e-pepper-at-least-32-characters-long';
 process.env.MAIL_FROM = 'no-reply@tshirt.store';
+// Throwaway Stripe values. The stub in `app-factory.ts` answers the API calls,
+// and the webhook signature is verified for real against this secret.
+process.env.STRIPE_SECRET_KEY = 'sk_test_e2e';
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_e2e_secret';
 // One allowed origin, so the suite can assert both halves: the echo for this
 // one and the silence for any other. An empty list would only prove the
 // refusal, and a permissive default is what this suite exists to catch.

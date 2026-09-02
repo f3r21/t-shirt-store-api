@@ -88,15 +88,20 @@ expand and contract.
 The seam is the payment webhook, because Stripe holds half the state. It is the only writer of
 `paid`, and stock comes down inside the transaction that sets it, so a disagreement is one
 transaction failing rather than two systems drifting. The Stripe event id is the primary key of
-`stripe_events`, inserted first in that transaction, so a retry is a unique violation. The handler
-is not built. `orders.service.ts` now places an order from the cart and moves it through its
-statuses, reading the stock and never writing it, so nothing under `src` writes `paid` or the
-stock yet, and the seam is still one transaction that does not exist.
+`stripe_events`, inserted first in that transaction, so a retry is a unique violation.
+`payments.service.ts` is that transaction: the event row, then one conditional write from
+`pending` to `paid`, then the history row, then each line's stock, and every answer but a bad
+signature is 200 because Stripe retries anything else. When the units are gone by the time the
+payment lands, the stock floors at zero and a warning names the shortfall, because the money is
+already taken. DECISIONS 24 records the rest.
 
 ## Where the security risks are
 
-**A01, broken access control, first**, because the roles guard is global, denies by default, and is
-the only thing standing there: CASL, which the challenge requires, is a dependency at
+**A replayed webhook, before the list**, because Stripe retries, and a replayed `payment_intent.succeeded`
+that lowered the stock twice would be silent: the event id is the primary key of `stripe_events`,
+inserted first in the paying transaction, and the suite replays a signed event and asserts that
+the stock moved once. **A01, broken access control, first on the list**, because the roles guard is
+global, denies by default, and is the only thing standing there: CASL, which the challenge requires, is a dependency at
 `package.json:35` that no file in `src` imports. **A07 second**: `argon2.hash` takes no options, so
 its cost is inherited rather than chosen, and reuse detection accepts a spent token for ten seconds
 after rotation without raising the alarm, the hole DECISIONS 2 prices. **API4 third**, three tiers

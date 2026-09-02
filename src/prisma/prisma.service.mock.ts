@@ -47,11 +47,14 @@ export interface PrismaMock {
   };
   productVariant: {
     findUnique: jest.Mock;
+    findUniqueOrThrow: jest.Mock;
     findFirst: jest.Mock;
     findMany: jest.Mock;
     groupBy: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    // The webhook's conditional decrement, `stock >= quantity` in its where.
+    updateMany: jest.Mock;
     delete: jest.Mock;
   };
   productImage: {
@@ -78,18 +81,27 @@ export interface PrismaMock {
   // there and `onDelete: Restrict` would otherwise surface as an unmapped 500.
   orderItem: {
     count: jest.Mock;
+    findMany: jest.Mock;
   };
-  // The five order operations. `updateMany` is the conditional status write,
-  // `findUniqueOrThrow` the read back after it, inside one transaction.
+  // The five order operations and the three payment ones. `updateMany` is the
+  // conditional status write, `findUniqueOrThrow` the read back after it,
+  // inside one transaction; `delete` is the payment link's compensation.
   order: {
     create: jest.Mock;
     findFirst: jest.Mock;
+    findUnique: jest.Mock;
     findMany: jest.Mock;
     findUniqueOrThrow: jest.Mock;
     count: jest.Mock;
     updateMany: jest.Mock;
+    delete: jest.Mock;
   };
   orderStatusChange: {
+    create: jest.Mock;
+  };
+  // The webhook's replay guard: the event id is looked up, then inserted first.
+  stripeEvent: {
+    findUnique: jest.Mock;
     create: jest.Mock;
   };
   $transaction: jest.Mock;
@@ -146,11 +158,13 @@ export function createPrismaMock(): PrismaMock {
     },
     productVariant: {
       findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
       groupBy: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       delete: jest.fn(),
     },
     // Empty by default, for the reason `productImage.findMany` is: a cart spec
@@ -180,16 +194,25 @@ export function createPrismaMock(): PrismaMock {
     // path it means to test. A spec that does care says so.
     orderItem: {
       count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     order: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
       findUniqueOrThrow: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      delete: jest.fn(),
     },
     orderStatusChange: {
+      create: jest.fn(),
+    },
+    // Unseen by default, so a spec about applying an event reads as a first
+    // delivery. A spec about a replay says so.
+    stripeEvent: {
+      findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
     },
     $transaction: jest.fn(),

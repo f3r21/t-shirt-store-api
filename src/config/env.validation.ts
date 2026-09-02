@@ -130,6 +130,20 @@ export class EnvironmentVariables {
   REFRESH_TOKEN_PEPPER!: string;
 
   /**
+   * The Stripe secret key and the webhook signing secret. Both required and
+   * neither defaulted: a store that cannot verify a webhook must not boot,
+   * because an unverified event could mark an order paid. The e2e suite sets
+   * throwaway values, and the signature check runs for real against them.
+   */
+  @IsString()
+  @MinLength(8)
+  STRIPE_SECRET_KEY!: string;
+
+  @IsString()
+  @MinLength(8)
+  STRIPE_WEBHOOK_SECRET!: string;
+
+  /**
    * A rotating session still ends. Rotation never rewrites `created_at`, so the
    * cap needs no column of its own.
    */

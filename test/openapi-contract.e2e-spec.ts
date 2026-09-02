@@ -124,6 +124,11 @@ describe('OpenAPI document against the contract (e2e)', () => {
       'GET /users/me/orders q.minTotal.maximum=2147483647',
       'GET /users/me/orders q.minTotal.minimum=0',
       'GET /users/me/orders q.offset.maximum=2147483647',
+      // The payment link's body, the cart's decision again: two `int4`
+      // columns and an id below one. The contract states `quantity.minimum=1`.
+      'POST /payment-links body.quantity.maximum=2147483647',
+      'POST /payment-links body.variantId.maximum=2147483647',
+      'POST /payment-links body.variantId.minimum=1',
       'PATCH /variants/{id} body.price.maximum=2147483647',
       'PATCH /variants/{id} body.price.minimum=0',
       'PATCH /variants/{id}/stock body.stock.maximum=2147483647',
@@ -280,8 +285,8 @@ describe('OpenAPI document against the contract (e2e)', () => {
     // Not an assertion that nothing is missing: 18 operations are Week 4 work.
     // It pins the counts, so finishing one without updating the contract, or
     // deleting one by accident, shows up here as a number that moved.
-    expect(implemented).toHaveLength(29);
-    expect(missing).toHaveLength(8);
+    expect(implemented).toHaveLength(32);
+    expect(missing).toHaveLength(5);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,
     );
