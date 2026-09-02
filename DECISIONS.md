@@ -517,3 +517,31 @@ header that comes back. The id stops at the response: the job it was meant to re
 exist, and when it does the id has to be put on the job payload by hand, because
 AsyncLocalStorage does not cross a queue. Nothing is a metric; the architecture page still lists
 what would be.
+
+## 22. The cart shows what can be bought, and checks stock as a courtesy
+
+The contract says a cart is a live view: each line reads the price of its variant now, and a
+manager who changes a price changes the subtotal of a cart that already holds it. Two things
+follow from taking that literally, and the contract states neither.
+
+**A line for a product that is no longer on sale leaves the view.** The read filters through the
+relation with the same predicate the catalog uses for an anonymous viewer, `visibleProductWhere`,
+so a product disabled or deleted after it was added is not shown, and the add and set paths
+resolve the variant through the same predicate, which is where the contract's 404 for a withdrawn
+product comes from. One rule, two places it shows. The row stays until the user removes it or
+empties the cart, and the delete resolves the variant by id alone, so the user can always remove
+what they can no longer see. The alternative, showing the line with its stock and letting the
+checkout refuse it, tells a user about a product the catalog itself answers 404 for, and I did
+not want the cart to be the one place a withdrawn product is still visible.
+
+**The stock check happens before the write, and it is not the guarantee.** Both writes compare
+the resulting quantity with the units on hand and throw the contract's `insufficient-stock` 409
+before touching the row, so a 409 leaves the cart unchanged, as promised. Two adds racing past
+the stock are accepted, because the contract makes the order the place where the number has to
+be right: `createOrder` validates every line again and an unpaid order reserves nothing. A
+transaction or a conditional update here would buy a guarantee the next operation has to give
+anyway. The cost is a cart that can briefly hold more than the shelf, which the read reports
+honestly through `stock`, and which the contract's own `CartItem` description anticipates.
+
+**Given up:** no promo code, no tax, no delivery charge, so `subtotal` is the sum of the lines and
+nothing else, which is what the contract says it is.

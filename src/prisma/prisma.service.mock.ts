@@ -46,6 +46,7 @@ export interface PrismaMock {
     update: jest.Mock;
   };
   productVariant: {
+    findUnique: jest.Mock;
     findFirst: jest.Mock;
     findMany: jest.Mock;
     groupBy: jest.Mock;
@@ -55,6 +56,14 @@ export interface PrismaMock {
   };
   productImage: {
     findMany: jest.Mock;
+  };
+  // The five cart operations: the read, the two upserts, and the two deletes.
+  // `findUnique` is the add path reading the existing line before it sums.
+  cartItem: {
+    findMany: jest.Mock;
+    findUnique: jest.Mock;
+    upsert: jest.Mock;
+    deleteMany: jest.Mock;
   };
   category: {
     findMany: jest.Mock;
@@ -123,12 +132,22 @@ export function createPrismaMock(): PrismaMock {
       update: jest.fn(),
     },
     productVariant: {
+      findUnique: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
       groupBy: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+    },
+    // Empty by default, for the reason `productImage.findMany` is: a cart spec
+    // that is about the stock check or the 404 reads an empty cart back, and
+    // a spec about the read says what rows it holds.
+    cartItem: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn(),
+      deleteMany: jest.fn(),
     },
     // Empty by default, for the reason `orderItem.count` defaults to zero: the
     // list asks for the page's primary images on every call, and a spec that
