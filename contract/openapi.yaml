@@ -1519,7 +1519,8 @@ paths:
         status decide which moves are legal.
 
         A client may send `cancelled`, and only while the order is `pending`, `paid` or
-        `processing`. A manager may send `processing`, `shipped` or `cancelled`.
+        `processing`. A manager may send `processing`, `shipped` or `cancelled`. Cancelling a
+        `paid` or `processing` order returns its units to stock.
 
         No caller may send `paid`. The payment webhook sets that status, because Stripe
         confirms the payment and a request does not.

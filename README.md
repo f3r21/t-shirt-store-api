@@ -226,7 +226,7 @@ records, and the account's credits carry that for the review.
 | Products, variants, categories | Done, with unit tests |
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
-| Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, and the history with its five filters |
+| Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, a cancel after payment giving the units back, and the history with its five filters |
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock. The deployed endpoint receives Stripe's own test-mode events through the distribution |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
