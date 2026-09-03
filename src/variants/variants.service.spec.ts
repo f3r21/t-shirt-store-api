@@ -148,25 +148,47 @@ describe('VariantsService', () => {
   });
 
   describe('setVariantStock', () => {
-    it('sets an absolute value rather than applying a delta', async () => {
+    beforeEach(() => {
       prisma.productVariant.findFirst.mockResolvedValue(aVariant({ stock: 7 }));
-      prisma.productVariant.update.mockResolvedValue(aVariant({ stock: 3 }));
+      prisma.productVariant.updateMany.mockResolvedValue({ count: 1 });
+      prisma.productVariant.findUniqueOrThrow.mockResolvedValue(
+        aVariant({ stock: 3 }),
+      );
+    });
 
+    // Written by hand against the service, 2026-09-03. The count is absolute,
+    // and the write carries the stock it read, so the pair handed to the
+    // producer is the pair that was written and never a stale one. ADR 34.
+    it('writes the count only if the stock is still the one it read, then notifies with that pair', async () => {
       const result = await service.setVariantStock(21, { stock: 3 });
 
-      const call = nthArg(prisma.productVariant.update) as {
-        data: { stock: number };
-      };
       // 3, not 7 minus 3. The caller is a person doing a stock count.
-      expect(call.data.stock).toBe(3);
+      expect(nthArg(prisma.productVariant.updateMany)).toEqual({
+        where: { id: 21, stock: 7 },
+        data: { stock: 3 },
+      });
       expect(result.stock).toBe(3);
-      // The second stock writer hands the pair over once the write is done.
       expect(notify).toHaveBeenCalledWith([
         { variantId: 21, before: 7, after: 3 },
       ]);
       expect(notify.mock.invocationCallOrder[0]).toBeGreaterThan(
-        prisma.productVariant.update.mock.invocationCallOrder[0],
+        prisma.productVariant.updateMany.mock.invocationCallOrder[0],
       );
+    });
+
+    it('answers 409 and notifies nobody when the stock changed under the count', async () => {
+      prisma.productVariant.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.setVariantStock(21, { stock: 3 }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          detail:
+            'The stock changed while you were counting. Read it and send the count again.',
+        },
+      });
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it('answers 404 for a variant that is not visible', async () => {
