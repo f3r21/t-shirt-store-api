@@ -12,7 +12,7 @@ flowchart TB
 
     client["Client<br/>browser or mobile"]
     api["API, NestJS<br/>helmet, CORS, policies guard,<br/>throttler with a<br/>per-process counter"]
-    pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>pool of 10 per process,<br/>97 usable, so 9 replicas")]
+    pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>20 connections per task,<br/>76 usable, so 3 tasks")]
     casl["CASL abilities<br/>a dependency, not a guard"]
     store[("Object storage<br/>product images")]
     smtp["SES<br/>from the task role"]
@@ -38,11 +38,12 @@ flowchart TB
     worker -->|"low-stock mail"| smtp
 ```
 
-The shared ceiling is Postgres. `prisma.service.ts` builds `PrismaPg` without a pool size,
-so the pool is `pg`'s default of ten per process and the ceiling is replicas times ten.
-Postgres here reports `max_connections=100` with three reserved for the superuser, so nine
-replicas fit inside the 97 usable and a tenth does not. That ten is inherited rather than
-chosen, and it belongs in the environment beside the replica count.
+The shared ceiling is Postgres. Each process opens a pool of `DATABASE_POOL_SIZE`
+connections, 10 by default, and a task runs two processes, the API and the worker, so a
+task holds 20. The database answered `SHOW max_connections` with 79 from a one-off task on
+2026-09-03, three of them reserved for the superuser, so 76 are usable: three tasks fit, a
+fourth does not, and the migrate task's single connection sits inside the margin. ADR 35
+records the choice and what would move it.
 
 ## What comes off the request path
 
