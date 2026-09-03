@@ -309,41 +309,11 @@ export class PaymentsService {
         const stocks: StockChange[] = [];
         const oversold: { variantId: number; shortfall: number }[] = [];
         for (const line of lines) {
-          const down = await tx.productVariant.updateMany({
-            where: { id: line.variantId, stock: { gte: line.quantity } },
-            data: { stock: { decrement: line.quantity } },
-          });
-          if (down.count === 1) {
-            const after = await tx.productVariant.findUniqueOrThrow({
-              where: { id: line.variantId },
-              select: { stock: true },
-            });
-            // The value before is the value after plus what just came off,
-            // and that is one read fewer than reading it first.
-            stocks.push({
-              variantId: line.variantId,
-              before: after.stock + line.quantity,
-              after: after.stock,
-            });
-            continue;
+          const { change, shortfall } = await this.takeUnits(tx, line);
+          stocks.push(change);
+          if (shortfall !== null) {
+            oversold.push({ variantId: line.variantId, shortfall });
           }
-          const before = await tx.productVariant.findUniqueOrThrow({
-            where: { id: line.variantId },
-            select: { stock: true },
-          });
-          await tx.productVariant.update({
-            where: { id: line.variantId },
-            data: { stock: 0 },
-          });
-          stocks.push({
-            variantId: line.variantId,
-            before: before.stock,
-            after: 0,
-          });
-          oversold.push({
-            variantId: line.variantId,
-            shortfall: line.quantity - before.stock,
-          });
         }
 
         return { kind: 'applied', orderId, stocks, oversold };
@@ -360,6 +330,56 @@ export class PaymentsService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Take a line's units off its variant inside the paying transaction: the
+   * guarded decrement, else the floor to zero guarded on the stock just read.
+   * Zero rows on either means another writer moved the stock in between, so
+   * the round starts again, three times at most. ADR 24, ADR 34.
+   */
+  private async takeUnits(
+    tx: Prisma.TransactionClient,
+    line: { variantId: number; quantity: number },
+  ): Promise<{ change: StockChange; shortfall: number | null }> {
+    for (let round = 0; round < 3; round += 1) {
+      const down = await tx.productVariant.updateMany({
+        where: { id: line.variantId, stock: { gte: line.quantity } },
+        data: { stock: { decrement: line.quantity } },
+      });
+      if (down.count === 1) {
+        const after = await tx.productVariant.findUniqueOrThrow({
+          where: { id: line.variantId },
+          select: { stock: true },
+        });
+        // The value before is the value after plus what just came off.
+        return {
+          change: {
+            variantId: line.variantId,
+            before: after.stock + line.quantity,
+            after: after.stock,
+          },
+          shortfall: null,
+        };
+      }
+      const before = await tx.productVariant.findUniqueOrThrow({
+        where: { id: line.variantId },
+        select: { stock: true },
+      });
+      const floored = await tx.productVariant.updateMany({
+        where: { id: line.variantId, stock: before.stock },
+        data: { stock: 0 },
+      });
+      if (floored.count === 1) {
+        return {
+          change: { variantId: line.variantId, before: before.stock, after: 0 },
+          shortfall: line.quantity - before.stock,
+        };
+      }
+    }
+    throw new Error(
+      `The stock of variant ${line.variantId} moved three times during the payment.`,
+    );
   }
 
   private report(
