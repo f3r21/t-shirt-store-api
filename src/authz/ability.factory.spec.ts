@@ -56,10 +56,13 @@ describe('AbilityFactory', () => {
   describe('anyone, signed in or not', () => {
     const ability = factory.for(undefined);
 
-    it('reads the catalog: products on sale, variants, categories', () => {
+    it('reads products on sale; variants and categories have no rule of their own', () => {
       expect(ability.can('read', 'Product')).toBe(true);
-      expect(ability.can('read', 'ProductVariant')).toBe(true);
-      expect(ability.can('read', 'Category')).toBe(true);
+      // Written by hand, 2026-09-03. Variants and categories are read through
+      // their product and no route names either subject, so an unconditional
+      // rule here was a trap for the first route that would trust it.
+      expect(ability.can('read', 'ProductVariant')).toBe(false);
+      expect(ability.can('read', 'Category')).toBe(false);
     });
 
     it('reads a product only when it is active and not deleted', () => {

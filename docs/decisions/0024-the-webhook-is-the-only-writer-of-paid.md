@@ -37,5 +37,6 @@ after a read, so a restock landing in between was discarded. The floor now carri
 it read, zero rows starts the round again from the decrement, and a third miss throws so the
 transaction rolls back and Stripe retries. ADR 34.
 
-**Switch:** handle `checkout.session.async_payment_succeeded` when a delayed method is
-enabled.
+**Switch:** a second payment method is added in code, `payment_method_types` on the link and
+the intent, after `checkout.session.async_payment_succeeded` is handled; the dashboard alone
+cannot enable one.

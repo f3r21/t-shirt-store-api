@@ -64,6 +64,9 @@ describe('StripeGateway', () => {
         ],
         // A string, because Stripe metadata values are strings.
         metadata: { orderId: '502' },
+        // Card only, in code: a delayed method needs the async event handled
+        // first, and the dashboard alone must not be able to enable one. ADR 24.
+        payment_method_types: ['card'],
       });
       expect(result).toEqual({ url: 'https://buy.stripe.com/test_abc' });
     });
@@ -85,7 +88,7 @@ describe('StripeGateway', () => {
         amount: 3998,
         currency: 'usd',
         metadata: { orderId: '501' },
-        automatic_payment_methods: { enabled: true },
+        payment_method_types: ['card'],
       });
       expect(result).toEqual({ clientSecret: 'pi_1_secret_x' });
     });

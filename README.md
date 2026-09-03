@@ -185,7 +185,8 @@ aws ecs wait services-stable --profile tshirt --region us-east-2 --cluster tshir
 Then read the running task's image back, as the deploy job does in its last step. Two
 mechanisms exist. A task that never becomes healthy returns to the previous task definition
 on its own, through the service's circuit breaker. A release that became healthy and is wrong
-needs that command. Leave `MigrateImageTag` where it is: a migration is never reversed, so
+needs that command. Rehearsed on 2026-09-03: about three minutes each way, proven by the
+running tag. Leave `MigrateImageTag` where it is: a migration is never reversed, so
 the previous image must read the current schema, and so every migration is additive
 (`ARCHITECTURE.md` names the one that was not).
 
@@ -203,9 +204,14 @@ Mail and Stripe, once, after the first release:
 
 The API answers at the `ApiUrl` stack output. The review instance is
 `https://daat4q77vztp7.cloudfront.net/v1`: sign up there, and the operator's seed override
-makes one account the manager. Tear everything down with
-`aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`, and
-the trust with the same command on `tshirt-ci`.
+makes one account the manager. Tear everything down in two commands: empty the images bucket
+first, because CloudFormation refuses to delete a bucket that holds objects, then delete the
+stack, and the trust with the same command on `tshirt-ci`:
+
+```bash
+aws s3 rm "s3://$(aws cloudformation describe-stacks --profile tshirt --region us-east-2 --stack-name tshirt --query "Stacks[0].Outputs[?OutputKey=='ImagesBucket'].OutputValue" --output text)" --recursive --profile tshirt --region us-east-2
+aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt
+```
 
 It costs about 31 USD a month plus storage at the prices of 2026-09-02, the figure ADR 29
 records, and the account's credits carry that for the review.
@@ -282,6 +288,12 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
   grants production access: the request is `aws sesv2 put-account-details`, answered in
   about a day. The mails land in spam, because the sender is a personal address SES cannot
   sign for. A domain with DKIM fixes that.
+
+- The liveness route reaches no database, so a task that boots against an incompatible
+  schema passes the circuit breaker. The additive-migration rule is discipline, not a check.
+- Every link sale logs `payment.orphan` for its `payment_intent.succeeded` event, because the
+  link's intent carries no order id (ADR 24). The warning is real only for an intent this
+  service did not create.
 
 ## License
 

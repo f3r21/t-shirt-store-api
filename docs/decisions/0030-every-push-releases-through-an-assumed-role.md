@@ -1,6 +1,6 @@
 # 30. Every push to main releases through a role GitHub assumes, and the stack changes through a role of its own
 
-Status: accepted
+Status: accepted, revised 2026-09-03
 Date: 2026-09-02
 
 ## Context
@@ -14,6 +14,9 @@ stored in GitHub.
   `tshirt-cloudformation` (chosen).
 - An access key in a repository secret: something to rotate, and to leak from a fork.
 - One wide role for the job: an instance, a database or a role reachable from a run.
+- Git-flow's `develop` and `release` branches: nothing to stabilise in one environment and
+  no version to support; its author's 2020 note points a continuously delivered web app at
+  GitHub flow, which a short-lived branch per block and a merge to `main` is.
 
 ## Decision
 
@@ -26,6 +29,12 @@ is a fixed id.
 
 ## Consequences
 
-**Gives up:** no environment protection rule, because the tests are the gate. No rollback
-beyond the circuit breaker; the Deploy section of the README states the by-hand command. The
-service role is wider than the stack needs.
+**Gives up:** no environment protection rule, because the tests are the gate. The service
+role is wider than the stack needs.
+
+**Revised 2026-09-03:** the rollback is the deploy command with the previous tag, in the
+Deploy section of the README, rehearsed once to `ba49a7a` and back in about three minutes
+each way; before that it was a sentence and the circuit breaker.
+
+**Switch:** release branches when a versioned cadence or a second supported version exists;
+an environment protection rule when a second environment exists.

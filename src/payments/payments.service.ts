@@ -133,7 +133,18 @@ export class PaymentsService {
       });
       return { orderId: order.id, url: link.url };
     } catch (err) {
-      await this.prisma.order.delete({ where: { id: order.id } });
+      // The cleanup must not replace the error that caused it. A row left
+      // behind is a warning with its id, and a person removes it.
+      try {
+        await this.prisma.order.delete({ where: { id: order.id } });
+      } catch (cleanup) {
+        this.logger.warn({
+          msg: 'pending order left behind after a failed link',
+          event: 'payment.link-orphan',
+          orderId: order.id,
+          reason: cleanup instanceof Error ? cleanup.message : String(cleanup),
+        });
+      }
       throw err;
     }
   }
