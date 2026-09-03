@@ -13,20 +13,9 @@ import { PageMetaDto } from '../common/dto/page-meta.dto';
 import { ProductSummaryDto } from '../products/dto/product-summary.dto';
 
 /**
- * Likes, three operations over `product_likes`. See `openapi.yaml:772-875`.
- *
- * A like is a pair, the user and the variant, and nothing else: no counter
- * and no timestamp, because the contract exposes neither. The primary key
- * makes both writes idempotent, so `PUT` is an upsert with nothing to update
- * and `DELETE` removes what is there, zero rows included.
- *
- * **Two lookups, two rules.** A like needs a product on sale, through the
- * cart's own predicate, because a like on a disabled product would be a like
- * on something the storefront does not show. An unlike needs only a variant
- * that exists, because a like placed before the product was disabled must
- * still be removable. The list reads under the caller's own visibility, so a
- * liked product that was disabled after the like is kept and hidden until it
- * returns. ADR 26.
+ * Likes, three operations over `product_likes`. The row is the pair, so both
+ * writes are idempotent. A like needs a product on sale, an unlike only a
+ * variant, and the list reads under the caller's own visibility. ADR 26.
  */
 @Injectable()
 export class LikesService {

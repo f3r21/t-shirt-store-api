@@ -199,10 +199,7 @@ describe('VariantsService', () => {
       });
     });
 
-    /**
-     * The contract's 409 at `openapi.yaml:1084`. Order history points at the
-     * variant row, so removing it would rewrite what a customer bought.
-     */
+    /** The contract's 409 on `deleteVariant`: order history points at the row. */
     it('answers 409 when an order line points at the variant', async () => {
       prisma.productVariant.findFirst.mockResolvedValue(aVariant());
       prisma.orderItem.count.mockResolvedValue(1);

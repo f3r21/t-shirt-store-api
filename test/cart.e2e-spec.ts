@@ -9,17 +9,9 @@ import {
 } from './app-factory';
 
 /**
- * The cart, end to end, against a real database.
- *
- * What it covers that the unit spec cannot: the composite key doing the work
- * the service assumes of it (one line per variant, an upsert that replaces
- * rather than duplicates), the relation filter actually hiding a withdrawn
- * product's line, and the contract's sentence about a cart being a live view,
- * proven by a manager changing a price under a line that already exists.
- *
- * Every mutation is asserted on the row it left behind and not only on the
- * body, for the reason `catalog-authz.e2e-spec.ts` gives: a handler that
- * answered 200 and wrote nothing would satisfy a body assertion.
+ * The cart against a real database: the composite key, the relation filter
+ * hiding a withdrawn product's line, and the live view. Every mutation is
+ * asserted on the row it left behind.
  */
 describe('Cart (e2e)', () => {
   let ctx: TestApp;

@@ -1,14 +1,7 @@
 /**
- * The title and detail each status carries when the thrower names neither.
- *
- * Every string is transcribed from the response examples in `openapi.yaml`, so a
- * generic failure reads the same as the contract says it reads. RFC 9457 states
- * that a title "does not change between occurrences", which is why nothing here
- * is built from a message that carries request text.
- *
- * A status whose detail depends on the case is absent from `STATUS_DETAILS`. 401,
- * 409 and 422 each cover more than one cause, and the contract gives a different
- * detail for each, so the thrower supplies it.
+ * The title and detail each status carries when the thrower names neither,
+ * transcribed from the contract's examples. A status with more than one
+ * cause is absent from `STATUS_DETAILS`, so the thrower supplies it. ADR 11.
  */
 const STATUS_TITLES: Record<number, string> = {
   400: 'Validation failed',

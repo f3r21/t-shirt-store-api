@@ -8,12 +8,8 @@ export const ORDER_STATUSES = Object.values(OrderStatus);
 const PAYMENT_METHODS = Object.values(PaymentMethod);
 
 /**
- * One line of an order. See `openapi.yaml:2207-2240`.
- *
- * A snapshot, unlike `CartItem`: the name and the price are the ones the
- * client saw when the order was placed, copied into `order_items`, and a later
- * rename or reprice does not reach them. That is why there is no `stock` and
- * no `imageUrl` here: both describe the catalog now, and an order is a record.
+ * The contract's `OrderItem`: a snapshot of the name and the price at the
+ * time of the order, so no `stock` and no `imageUrl`.
  */
 @ApiSchema({ name: 'OrderItem' })
 export class OrderItemDto {
@@ -39,7 +35,7 @@ export class OrderItemDto {
   lineTotal!: number;
 }
 
-/** One status the order has held, and when it began. See `openapi.yaml:2241-2250`. */
+/** The contract's `OrderStatusChange`: one status the order has held. */
 @ApiSchema({ name: 'OrderStatusChange' })
 export class OrderStatusChangeDto {
   @ApiProperty({ enum: ORDER_STATUSES })
@@ -49,12 +45,7 @@ export class OrderStatusChangeDto {
   changedAt!: string;
 }
 
-/**
- * The client who placed the order. See `openapi.yaml:2111-2130`.
- *
- * Present when the caller is a manager. A client reading its own history
- * already knows whose the order is, so the member is absent there.
- */
+/** The contract's `OrderCustomer`, present for a manager only. */
 @ApiSchema({ name: 'OrderCustomer' })
 export class OrderCustomerDto {
   id!: number;
@@ -67,12 +58,8 @@ export class OrderCustomerDto {
 }
 
 /**
- * Response shape of `POST /orders`, `GET /orders/{id}` and
- * `PATCH /orders/{id}/status`. See `openapi.yaml:2167-2206`.
- *
- * `subtotal` and `total` are equal until a promo code exists, and both ship
- * because the contract does. `paymentMethod` is absent until a payment
- * succeeds, and the webhook is its only writer.
+ * The contract's `Order`. `subtotal` equals `total` until a promo code
+ * exists, and `paymentMethod` is absent until the webhook writes it.
  */
 @ApiSchema({ name: 'Order' })
 export class OrderDto {

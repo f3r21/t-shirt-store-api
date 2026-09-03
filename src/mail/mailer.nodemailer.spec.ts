@@ -13,15 +13,8 @@ jest.mock('nodemailer', () => ({ createTransport: jest.fn() }));
 const createTransportMock = createTransport as jest.Mock;
 
 /**
- * The production binding for the `MAILER` token, which had no spec at all.
- *
- * `mail.module.ts` binds this class unconditionally, with no branch on
- * `NODE_ENV`, so it is what runs anywhere this service is deployed. Every test
- * in the repository used the in-memory double instead, so two decisions went
- * unexamined: how the transport is built, and what happens when a send fails.
- *
- * The second one has no other reachable test. Both doubles always resolve, so
- * the `catch` in `send` was a branch nothing could enter.
+ * The production binding for `MAILER`. Two decisions no double exercises: how
+ * the transport is built, and what a failed send does.
  */
 describe('NodemailerMailer', () => {
   const ENV: Record<string, unknown> = {
@@ -64,15 +57,8 @@ describe('NodemailerMailer', () => {
 
   describe('the transport it builds', () => {
     /**
-     * **`ignoreTLS` is gone, and its absence is the assertion.**
-     *
-     * The transport was hard coded with `secure: false, ignoreTLS: true`, which
-     * refuses STARTTLS even from a relay that offers it, on the class that
-     * sends a raw password reset token. Nothing asserted the options because
-     * nothing built this class outside production.
-     *
-     * The second half is the control: the flag is read rather than pinned to
-     * one value, so this stays red if `secure` is hard coded back to false.
+     * `ignoreTLS` is absent, and `secure` follows `SMTP_SECURE`. The second
+     * half is the control.
      */
     it('never disables TLS, and follows SMTP_SECURE', () => {
       expect(build().options).toMatchObject({ secure: false });

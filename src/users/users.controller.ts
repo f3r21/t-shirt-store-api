@@ -52,18 +52,9 @@ export class UsersController {
   @ApiResponse({ status: 429, description: 'Too many requests.' })
   @ApiResponse({ status: 500, description: 'Unexpected server error.' })
   /**
-   * The sign-in tier, on sign-up.
-   *
-   * This route carried no `@Throttle` at all, so it inherited the browse
-   * default of 100 a minute. It answers 409 for an address that has an account
-   * and 201 for one that does not, which is **a faster and more exact account
-   * enumeration oracle than sign-in**, the route this service deliberately
-   * hardened by paying an Argon2id hash on the unknown-address path.
-   *
-   * The 409 cannot be removed: the contract declares it and a caller has to be
-   * told the address is taken. So the answer is the limit, and the sign-in tier
-   * is the right one, because a person signing up retries within seconds and a
-   * script enumerating addresses does not stop at ten.
+   * The sign-in tier on sign-up: the 409 for a taken address is an
+   * enumeration oracle, and the contract requires it, so the limit is the
+   * answer. ADR 7.
    */
   @Throttle(SIGN_IN_THROTTLE)
   @Post()

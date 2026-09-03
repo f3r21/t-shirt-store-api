@@ -7,44 +7,11 @@ import type { TestApp } from './app-factory';
 import { createTestApp } from './app-factory';
 
 /**
- * The generated document against the hand written contract.
- *
- * The contract is authoritative. This suite is the thing that notices when the
- * code stops matching it, and it is the only reason generating a second
- * description of the same API is worth anything.
- *
- * **What it compares:** the set of operations, the name each one is served
- * under, who may call it, the status codes it declares, whether every failure
- * and every documented success describes its body, the property and required
- * names of each request body, which query parameters are required, which
- * response headers are declared, and every bound on a body property or query
- * parameter.
- *
- * **What it does not:** types, formats, examples and descriptions. Every integer
- * in the contract is served as `number` rather than `integer`, which is
- * imprecise and not wrong, and comparing descriptions would fail on wording.
- * That limit is stated here rather than left for a reader to find out.
- *
- * The first four of those checks were added on 2026-08-31, after an audit found
- * that the served document renamed all 19 operations, showed seven of them with
- * the wrong authentication, described 75 failures with no body at all, and
- * pointed readers at a file in another repository. Every one of those was green
- * here, because comparing status code keys says nothing about what sits under
- * them.
- *
- * The last four were added on 2026-09-01, after a second pass found fourteen
- * more differences that the first four were green on: three list operations
- * served a 200 with no body schema, which kept `ProductSummary`, `Session` and
- * `PageMeta` out of the document entirely; seven query parameters said
- * `required: true` against a contract that marks them optional; and four
- * `Location` headers the code sends were undocumented.
- *
- * That pass also retired a limit this file used to declare. It said bounds would
- * not be compared because "the contract expresses bounds the generated document
- * spells differently". Measured rather than inherited: fourteen bounds appear
- * only in the served document and zero appear only in the contract, so there was
- * no spelling noise, and the fourteen are one signed decision. A drift test is
- * only worth what it compares, and a stated limit is worth re-measuring.
+ * The generated document against the hand-written contract, which wins.
+ * Compared: the operations, their names, who may call them, the status codes,
+ * whether every failure and success describes its body, request body
+ * properties and required names, required query parameters, response headers,
+ * and every bound. Not compared: types, formats, examples and descriptions.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
@@ -64,27 +31,10 @@ describe('OpenAPI document against the contract (e2e)', () => {
     operationsNotInContract: ['GET /'],
 
     /**
-     * Bounds the server enforces that the contract does not state.
-     *
-     * One decision, thirty-seven entries, and the decision is that the server is
-     * deliberately stricter than the contract wherever the storage layer or
-     * the domain already refuses a value the contract admits. Refusing at the
-     * edge turns a 500 into a 400.
-     *
-     * The seven `maximum` entries are the `int4` ceiling of the column behind
-     * the field. Measured: a value above it made Postgres answer `P2020`, which
-     * nothing mapped, which left a 500 on two routes reachable with no token.
-     * `src/common/int4.ts` carries the measurement.
-     *
-     * The `minimum` entries refuse an id or a price no row could carry, and
-     * `uniqueItems` refuses a `categoryIds` that names the same category twice,
-     * which would otherwise be two identical join rows and a unique violation.
-     *
-     * **The comparison runs in both directions and only this side is allowed to
-     * be non-empty.** A bound the contract states and the server does not is
-     * never signed off here, because that is the server being looser than its
-     * own promise. Measured when this list was written: fourteen served-only and
-     * zero contract-only.
+     * Bounds the server enforces that the contract does not state: the `int4`
+     * ceilings, the minimums no row could carry, and `uniqueItems` on
+     * `categoryIds`. Only this side may be non-empty; a bound the contract
+     * states and the server does not is never signed off.
      */
     boundsNotInContract: [
       // The three `offset` ceilings are the newest entries and they arrived the
@@ -196,18 +146,8 @@ describe('OpenAPI document against the contract (e2e)', () => {
   }
 
   /**
-   * The header names one response declares, with its `$ref` followed.
-   *
-   * **This hop is why the header check measured nothing.** The check read
-   * `.headers` off the raw response object. Every error response in the
-   * contract is a `$ref` into `components.responses`, so `.headers` was
-   * `undefined` on all 36 of them and the loop skipped every one. The seven
-   * inline `Location` headers were the only sites it ever compared, which is
-   * exactly why it looked like it worked.
-   *
-   * `queryParams` below follows the same hop, and its docstring already names
-   * it as the reason that check went unseen. The lesson was written down two
-   * functions above this one and not applied here.
+   * The header names one response declares, with its `$ref` followed, because
+   * every error response is a `$ref` into `components.responses`.
    */
   function responseHeaders(
     doc: OpenAPIObject,
@@ -333,16 +273,9 @@ describe('OpenAPI document against the contract (e2e)', () => {
   });
 
   /**
-   * Whether a caller needs a token, which the contract spells three ways.
-   *
-   * The root `security` is the default and means required. An operation's own
-   * `security: []` means public. `[{}, {bearerAuth: []}]` is the 3.0.3 spelling
-   * for optional, a token allowed and not required, and `listProducts` and
-   * `getProduct` are the two that carry it.
-   *
-   * Comparing the arrays literally would fail on ordering, so both sides are
-   * reduced to the answer a reader of the document actually wants: may I call
-   * this without signing in.
+   * Whether a caller needs a token, which the contract spells three ways: the
+   * root `security`, `security: []`, and `[{}, {bearerAuth: []}]` for
+   * optional. Both sides reduce to one answer, so ordering cannot fail it.
    */
   function authOf(doc: OpenAPIObject, op: string): string {
     const requirements = operationAt(doc, op)?.security ?? doc.security ?? [];
@@ -469,16 +402,9 @@ describe('OpenAPI document against the contract (e2e)', () => {
   }
 
   /**
-   * A required parameter is a different API from an optional one.
-   *
-   * Seven entries across the three collections said `required: true` against a
-   * contract that marks all seven optional and a server that defaults them. A
-   * client generated from that document refuses to call `GET /products` without
-   * a `limit`, for an API that has always accepted the call.
-   *
-   * The `$ref` hop is why this went unseen for so long: the contract declares
-   * `limit` and `offset` once and references them, so a comparison that does not
-   * follow the reference sees no parameters at all and passes.
+   * A required parameter is a different API from an optional one. The
+   * contract declares `limit` and `offset` once and references them, so the
+   * `$ref` is followed.
    */
   it('agrees with the contract on which query parameters are required', () => {
     const wrong: string[] = [];
@@ -501,21 +427,9 @@ describe('OpenAPI document against the contract (e2e)', () => {
   });
 
   /**
-   * A header the contract promises and the code sends must be documented.
-   *
-   * Two kinds of header, and the second kind is the one this check could not
-   * see until `responseHeaders` learned to follow a `$ref`.
-   *
-   * **Inline, on four 201s.** `Location`, set by `res.setHeader` in the
-   * controllers. A client following the document has no reason to read the one
-   * header that tells it where the thing it just created now lives.
-   *
-   * **Behind a `$ref`, on every 401 and every 429.**
-   * `components/responses/Unauthorized` declares `WWW-Authenticate` as
-   * "Required on every 401" and `TooManyRequests` declares `Retry-After`. The
-   * runtime sends both, and `auth.e2e-spec.ts` and `rate-limit.e2e-spec.ts`
-   * assert them. The document promised neither, on 36 sites, and this check
-   * was green the whole time.
+   * A header the contract promises and the code sends must be documented:
+   * `Location` inline on the 201s, `WWW-Authenticate` and `Retry-After`
+   * behind a `$ref` on every 401 and 429.
    */
   it('declares the response headers the contract declares', () => {
     const wrong: string[] = [];
@@ -589,21 +503,9 @@ describe('OpenAPI document against the contract (e2e)', () => {
   }
 
   /**
-   * The bounds, in both directions, which this file used to say it would not do.
-   *
-   * The reason it gave was that "the contract expresses bounds the generated
-   * document spells differently, and asserting on those would fail on spelling
-   * rather than on substance". That was worth checking rather than inheriting.
-   * Measured: fourteen bounds appear only in the served document and **zero**
-   * appear only in the contract, so there is no spelling noise to drown the
-   * signal. The fourteen are a single deliberate decision, listed and reasoned
-   * in `DECLARED_DIFFERENCES.boundsNotInContract`.
-   *
-   * The two directions are not symmetric and the test treats them differently.
-   * Serving a bound the contract does not state is the server being stricter
-   * than its promise, which is a decision somebody can sign. Failing to serve a
-   * bound the contract does state is the server being looser than its promise,
-   * which is never signed off and always fails.
+   * The bounds in both directions. Serving a bound the contract does not
+   * state is a signed decision in `DECLARED_DIFFERENCES.boundsNotInContract`;
+   * failing to serve one it does state always fails.
    */
   it('serves every bound the contract states, and no unsigned extras', () => {
     const servedOnly: string[] = [];

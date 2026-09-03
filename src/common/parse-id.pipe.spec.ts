@@ -2,17 +2,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ParseIdPipe } from './parse-id.pipe';
 
 /**
- * The pipe exists because of two measured 500s, so the spec asserts both
- * boundaries either side rather than a single happy value.
- *
- * `2147483647` and `2147483648` are the pair that created the pipe: the first
- * answered 404 and the second answered 500, on a route reachable with no token.
- *
- * `-1` and `-2147483649` are the pair that corrected it. The pipe shipped with
- * only the upper bound, under a comment arguing a lower one was redundant
- * because a negative id already answers 404 by matching no row. That is true of
- * `-1` and false past the floor, where the value stops being a missing row and
- * becomes a value the column cannot hold.
+ * Both `int4` boundaries, either side: a value past the floor is one the
+ * column cannot hold, not a row that does not exist.
  */
 describe('ParseIdPipe', () => {
   const pipe = new ParseIdPipe();

@@ -29,14 +29,9 @@ import { can } from '../authz/policies';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
- * The upload, under the product it belongs to. See `openapi.yaml:911-966`.
- *
- * Multer reads the multipart body into memory with the contract's size limit,
- * so a file above it is refused while it streams, as 413, before a byte of
- * it is stored. Whether the bytes are an image is the service's question,
- * answered from the bytes and not from the part's declared type. Each
- * handler is named after its contract operation id, which the drift suite
- * compares.
+ * The upload, under the product it belongs to. Multer refuses a body above
+ * the contract's size limit while it streams, as 413. The bytes decide the
+ * type, not the declared part type.
  */
 @ApiTags('catalog')
 @Controller('products')
@@ -111,7 +106,7 @@ export class ProductImagesController {
   }
 }
 
-/** The delete, on the image's own path. See `openapi.yaml:968-1000`. */
+/** The delete, on the image's own path. */
 @ApiTags('catalog')
 @Controller('images')
 export class ImagesController {

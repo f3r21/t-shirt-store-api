@@ -1,11 +1,8 @@
 import { ApiSchema } from '@nestjs/swagger';
 
 /**
- * Response shape of POST /payment-links. See `openapi.yaml:2252-2270`.
- *
- * `expiresAt` is declared optional by the contract and never sent: a Stripe
- * payment link has no expiry, it is deactivated instead, and inventing a
- * date would be a promise Stripe does not keep.
+ * The contract's `PaymentLink`. `expiresAt` is declared optional and never
+ * sent: a Stripe link is deactivated, not expired.
  */
 @ApiSchema({ name: 'PaymentLink' })
 export class PaymentLinkDto {

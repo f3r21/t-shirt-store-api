@@ -21,11 +21,8 @@ export class VariantsService {
   ) {}
 
   /**
-   * A size and colour pair the product already has.
-   *
-   * No problem `type`. The enum is closed and carries no member for a duplicate
-   * variant, and the contract makes `type` optional precisely so a failure the
-   * status code already explains does not have to invent one.
+   * A duplicate size and colour pair. No problem type: the enum names none,
+   * and the status explains it.
    */
   private pairTaken(): ConflictException {
     return new ConflictException({
@@ -35,12 +32,8 @@ export class VariantsService {
   }
 
   /**
-   * A variant an order line points at.
-   *
-   * No problem `type`, for the reason `pairTaken` carries none: the enum is
-   * closed and names no member for this, and the status code already explains
-   * it. The detail repeats the contract's own remedy at `openapi.yaml:1083-1085`
-   * so the caller is told what to do instead of being told no.
+   * A variant an order line points at. The detail repeats the remedy the
+   * contract's `deleteVariant` names.
    */
   private variantOrdered(): ConflictException {
     return new ConflictException({
@@ -51,15 +44,8 @@ export class VariantsService {
   }
 
   /**
-   * Resolve the parent product, or 404.
-   *
-   * `isActive` is deliberately not filtered. Every operation here is
-   * manager-only, and a manager works on a disabled product: disabling is how
-   * you take something off sale while you fix it. Deleted is filtered, because
-   * deleted is 404 for everyone.
-   *
-   * Without this read a bad id reaches the insert and raises a foreign key
-   * violation, which nothing maps, so the caller would read 500.
+   * The parent product, or 404. Disabled passes, because a manager works on a
+   * disabled product; deleted is 404 for everyone. ADR 15.
    */
   private async assertProductExists(productId: number): Promise<void> {
     const product = await this.prisma.product.findFirst({
@@ -114,11 +100,8 @@ export class VariantsService {
   }
 
   /**
-   * Update a variant. Never its stock.
-   *
-   * `UpdateVariantDto` declares no stock field, and that is the enforcement:
-   * stock has its own operation because it moves for reasons that have nothing
-   * to do with editing a product, and the pipe rejects an unknown property.
+   * Update a variant, never its stock: the DTO declares no stock field, and
+   * the pipe rejects an unknown property.
    */
   async updateVariant(
     id: number,
@@ -155,24 +138,9 @@ export class VariantsService {
   }
 
   /**
-   * Delete a variant outright.
-   *
-   * A hard delete, unlike a product, and only while no order line points at it.
-   *
-   * **The count and the catch, for the reason `users.service.ts:43-49` gives
-   * about the same shape.** The count is the common path and produces the
-   * message the contract asks for. The catch is what makes it correct: an order
-   * placed between the count and the delete would otherwise reach
-   * `onDelete: Restrict` on `order_items.product_variant_id` and come back as an
-   * unmapped `P2003`, which is a 500 where the contract declares a 409.
-   *
-   * The index this count uses already existed and was built for it. See the
-   * comment on `@@index([variantId])` at `schema.prisma:290-291`.
-   *
-   * No order can exist through the API this week, so both branches are reached
-   * by inserting the rows directly. That is what `catalog-authz.e2e-spec.ts`
-   * does, and it is the difference between a branch that is tested and one that
-   * is only written.
+   * A hard delete, only while no order line points at it. The count gives
+   * the contract's message; the catch of `P2003` covers an order placed
+   * between the count and the delete. ADR 15.
    */
   async deleteVariant(id: number): Promise<void> {
     await this.findVariantOr404(id);
@@ -198,15 +166,9 @@ export class VariantsService {
   }
 
   /**
-   * Set the units on hand.
-   *
-   * An absolute value and not a delta, because the caller is a person doing a
-   * stock count. The DTO bounds it at zero, so the column cannot go negative
-   * through this path.
-   *
-   * This is the second stock writer, so the value before and after goes to
-   * the low-stock producer once the write is done. A count that takes a
-   * variant from ten to three tells its likers the same way a purchase does.
+   * Set the units on hand, an absolute value bounded at zero by the DTO. The
+   * second stock writer, so the values before and after go to the low-stock
+   * producer. ADR 27.
    */
   async setVariantStock(
     id: number,

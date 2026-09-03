@@ -22,13 +22,9 @@ import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
- * A like on a variant. See `openapi.yaml:772-839`.
- *
- * Every signed-in caller may like and unlike: the contract declares no 403 on
- * either operation, and the ability grants `manage ProductLike` on the
- * caller's own rows. Both answer 204, and a second call answers the same 204
- * because the primary key makes the write idempotent. Each handler is named
- * after its contract operation id, which the drift suite compares.
+ * The likes. Every signed-in caller may like and unlike, as the contract
+ * declares no 403; both answer 204, and a repeat answers the same. Each
+ * handler is named after its operation id.
  */
 @ApiTags('catalog')
 @Controller('variants')

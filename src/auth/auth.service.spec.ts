@@ -22,15 +22,8 @@ import { PageQueryDto } from '../common/dto/page-query.dto';
 import type { AccessTokenPayload } from './access-token-payload';
 
 /**
- * The seven /auth operations.
- *
- * Every entry names a behaviour the contract states, with the line that states it
- * where the line is not obvious.
- *
- * The module registers the real `JwtModule` with a fixed secret rather than a
- * `JwtService` mock. Rotation is the one operation where signing is the behaviour
- * under test, and a mock would assert that the service called a method rather
- * than that a rotated token verifies.
+ * The seven /auth operations. The real `JwtModule` with a fixed secret,
+ * because rotation's behaviour is that a rotated token verifies.
  */
 const PEPPER = 'test-pepper-at-least-32-characters-long';
 const SECRET = 'test-secret-at-least-32-characters-long';
@@ -241,18 +234,9 @@ describe('AuthService', () => {
     });
 
     /**
-     * The address is folded before it is looked up.
-     *
-     * `normalizeEmail` at `auth.service.ts:101` was unasserted, and deleting it
-     * left all 245 tests green. Nothing in the suite ever sent an address that
-     * was not already lower case, so the whole rule was invisible: every
-     * existing test would pass against a server where signing up as
-     * `Ana@Example.com` and signing in as `ana@example.com` are two accounts.
-     *
-     * The assertion reads the `where` handed to Prisma rather than the result,
-     * because the mock returns a user whatever it is asked for. Asserting the
-     * return value here would pass with the fold deleted, which is exactly the
-     * failure this replaces.
+     * The address is folded before the lookup. The assertion reads the
+     * `where` handed to Prisma, because the mock returns a user whatever it
+     * is asked.
      */
     it('folds the address before it looks the user up', async () => {
       await service.createSession({
@@ -291,7 +275,7 @@ describe('AuthService', () => {
       expect(call.data.deviceName).toBe('Ana iPhone');
     });
 
-    it('returns the same invalid-credentials problem for a wrong address and for a wrong password (openapi.yaml:100)', async () => {
+    it('returns the same invalid-credentials problem for a wrong address and for a wrong password', async () => {
       // The fifth dimension, and the one this test used to be blind to: the two
       // paths must also cost the same. Counting Argon2id calls rather than
       // milliseconds, because a clock assertion in CI is flaky by construction
@@ -393,16 +377,9 @@ describe('AuthService', () => {
     });
 
     /**
-     * The absolute cap, which is the only bound a rotating session cannot slip.
-     *
-     * `expiresAt` moves forward on every rotation, so a token refreshed every
-     * fourteen minutes never expires. `createdAt` does not move, and this is the
-     * clause that ends the session anyway. Delete it and a stolen refresh token
-     * rotates forever with nothing to notice.
-     *
-     * The bound is asserted against the clock for the same reason the
-     * `expiresAt` assertion is: `toBeInstanceOf(Date)` is satisfied by
-     * `new Date(0)`, which is a cap that never fires.
+     * The absolute cap: `createdAt` does not move on rotation, so it ends a
+     * session that refreshes forever. Asserted against the clock, because
+     * `new Date(0)` satisfies `toBeInstanceOf(Date)`.
      */
     it('refuses to rotate a session older than the absolute cap', async () => {
       rotates();
@@ -423,19 +400,8 @@ describe('AuthService', () => {
     });
 
     /**
-     * The sliding window, which is the other half of the pair above.
-     *
-     * The cap test asserts the bound that ends a session. This asserts the one
-     * that keeps it alive: every rotation writes a new `expiresAt`, which is
-     * what `openapi.yaml:1724` promises and what makes a refresh token useful
-     * at all. `expiresAt` at `auth.service.ts:171` was unasserted, and deleting
-     * it left the suite green. The column has no `@updatedAt` and no default
-     * (`schema.prisma:52`), so without that line the expiry keeps whatever the
-     * row was created with and every session dies seven days after sign-in
-     * however often it is refreshed.
-     *
-     * Asserted against the clock, not against `toBeInstanceOf(Date)`, which
-     * `new Date(0)` satisfies while expiring the session in 1970.
+     * The sliding window: every rotation writes a new `expiresAt`, as the
+     * contract's `refreshSession` promises. Asserted against the clock.
      */
     it('moves the expiry forward on every rotation', async () => {
       rotates();
@@ -452,7 +418,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('keeps the session id, because rotation updates the row in place (openapi.yaml:241)', async () => {
+    it('keeps the session id, because rotation updates the row in place', async () => {
       rotates();
 
       const result = await service.refreshSession({ refreshToken: PRESENTED });
@@ -503,7 +469,7 @@ describe('AuthService', () => {
       expect(call.data.familyId).toBe(42);
     });
 
-    it('deletes every refresh row for the user when a token is presented twice (openapi.yaml:245)', async () => {
+    it('deletes every refresh row for the user when a token is presented twice', async () => {
       // The conditional update matches nothing, because the row no longer
       // answers to this hash, and the hash is on record as spent, long enough
       // ago that the grace window has closed.
@@ -609,18 +575,8 @@ describe('AuthService', () => {
     });
 
     /**
-     * A dead row is not a device that is signed in.
-     *
-     * The contract calls this list "each device that is signed in", and the
-     * filter was `{ userId }` alone. Nothing deletes a refresh row when its
-     * window closes, so the list returned tokens that no longer work: expired
-     * ones, and ones whose session had run past the thirty day cap. The list
-     * grew for the life of the account, and `meta.total` counted sessions the
-     * user could neither use nor recognise.
-     *
-     * Asserted against the clock rather than with `toBeInstanceOf(Date)`, which
-     * `new Date(0)` satisfies while filtering nothing. Same reason the rotation
-     * assertions above do it.
+     * A dead row is not a device that is signed in, so the list carries the
+     * liveness clauses. Asserted against the clock.
      */
     it('excludes the rows that are expired or past the absolute cap', async () => {
       prisma.refreshToken.findMany.mockResolvedValue([]);
@@ -644,17 +600,8 @@ describe('AuthService', () => {
     });
 
     /**
-     * A device is a family, so two rows of one family are one entry.
-     *
-     * This is the assertion the whole family design exists for. The grace path
-     * adds a row to an existing family, so counting rows would tell a user with
-     * two tabs open that they are signed in on two devices, and offer them two
-     * things to sign out of that are the same thing.
-     *
-     * `meta.total` counting the same way is no longer a separate risk: there is
-     * one query and one grouped list, so the count and the page cannot drift.
-     * The previous version issued a `findMany` and a `count` and needed a test
-     * to hold their two `where` clauses together.
+     * A device is a family, so two rows of one family are one entry, and
+     * `meta.total` counts the same way.
      */
     it('reports one entry per family, not one per row', async () => {
       const founder = aRefreshToken({ id: 42, familyId: null });
@@ -671,10 +618,8 @@ describe('AuthService', () => {
     });
 
     /**
-     * The id a caller reads is the family, and the contract promises it is
-     * stable: `openapi.yaml:244`, "The session id does not change, so an id
-     * from `GET /auth/sessions` stays valid for the life of the device
-     * session." A second tab must not rename the device.
+     * The id a caller reads is the family, which the contract promises stays
+     * stable for the life of the device session.
      */
     it('names a family by its founder, whichever row is newest', async () => {
       prisma.refreshToken.findMany.mockResolvedValue([
@@ -811,7 +756,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('returns 404 for a session id that belongs to another user, because a 403 would confirm it exists (openapi.yaml:213)', async () => {
+    it('returns 404 for a session id that belongs to another user, because a 403 would confirm it exists', async () => {
       // The row exists, but not for this user, so the scoped delete matches
       // nothing and the service cannot tell that case from an absent id.
       prisma.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
@@ -864,7 +809,7 @@ describe('AuthService', () => {
       expect(call.where.email).toBe('ana@example.com');
     });
 
-    it('accepts an unknown address and sends no mail (openapi.yaml:290)', async () => {
+    it('accepts an unknown address and sends no mail', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -954,7 +899,7 @@ describe('AuthService', () => {
       expect(JSON.stringify(logged)).not.toContain('ana@example.com');
     });
 
-    it('rejects an unknown token with 422 and not 400, because the body is well formed (openapi.yaml:333)', async () => {
+    it('rejects an unknown token with 422 and not 400, because the body is well formed', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([]);
 
       await expect(
@@ -985,7 +930,7 @@ describe('AuthService', () => {
       );
     });
 
-    it('clears the reset token, so it works one time only (openapi.yaml:352)', async () => {
+    it('clears the reset token, so it works one time only', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([signedInUser()]);
 
       await service.resetPassword({ token: TOKEN, password: 'a new password' });
@@ -1012,7 +957,7 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ status: 422 });
     });
 
-    it('deletes every refresh row for this user (openapi.yaml:337)', async () => {
+    it('deletes every refresh row for this user', async () => {
       prisma.user.updateManyAndReturn.mockResolvedValue([signedInUser()]);
 
       await service.resetPassword({ token: TOKEN, password: 'a new password' });

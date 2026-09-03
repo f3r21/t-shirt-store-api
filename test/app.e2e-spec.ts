@@ -42,15 +42,9 @@ describe('AppController (e2e)', () => {
   });
 
   /**
-   * The request id is the one piece of observability a caller can see.
-   *
-   * Three requests. One with a well-formed id, which comes back unchanged. One
-   * with none, which gets a uuid. One with an id outside the pattern, which
-   * also gets a uuid and not the text it sent: that is the control that the
-   * header is validated rather than echoed, because an echoed header is
-   * caller-controlled text on its way into every log line of the request. The
-   * fourth assertion is that CORS exposes the header, or a browser client
-   * could never read the id it is asked to quote.
+   * The request id: echoed when well formed, generated when absent or
+   * malformed (the control that the header is validated and not echoed), and
+   * exposed to a browser.
    */
   it('echoes a well-formed X-Request-Id, and generates one for a missing or a malformed header', async () => {
     const UUID =
@@ -105,23 +99,9 @@ describe('AppController (e2e)', () => {
   });
 
   /**
-   * **Every header the contract promises has to be readable by a browser.**
-   *
-   * This is the gate, and it is here because supertest is not a browser.
-   * `Access-Control-Expose-Headers` is enforced on the client, so the server
-   * sends `Location`, `WWW-Authenticate` and `Retry-After` whether or not they
-   * are exposed, and every existing assertion in this suite reads them either
-   * way. The defect was invisible to the harness rather than untested in it.
-   *
-   * So the assertion changes shape: instead of reading a header, it reads the
-   * **set the server permits a browser to read** and requires the contract's
-   * declared headers to be inside it. Declaring a new header in the contract
-   * without exposing it turns this red, which is what makes it a gate rather
-   * than three hard-coded names.
-   *
-   * The contract's names are collected by following `$ref` into
-   * `components.responses`, the same hop `openapi-contract.e2e-spec.ts` needed
-   * and did not have for a while.
+   * Every header the contract promises is in the set a browser may read.
+   * supertest reads them either way, so this is the gate; the names come from
+   * following `$ref` into `components.responses`.
    */
   it('exposes every response header the contract declares', async () => {
     // The set a browser is told it may read, taken off a real response from an
@@ -217,16 +197,8 @@ describe('AppController (e2e)', () => {
   });
 
   /**
-   * A body larger than the parser accepts.
-   *
-   * `express.json()` defaults to a 100 KB limit and rejects a larger body before
-   * any guard, pipe or handler runs. What it throws is a plain `Error` carrying
-   * `status: 413` and `type: 'entity.too.large'`, and not an `HttpException`, so
-   * it misses every branch of `toProblem` and lands on the unmapped 500.
-   *
-   * The status is the visible half. The other half is that the filter logs a 500
-   * at error level, so a caller can fill the log with stack traces by posting a
-   * large body to a route that needs no token.
+   * A body over the parser limit is a plain `Error` with `status: 413`, not
+   * an `HttpException`; without its branch it lands on the 500.
    */
   it('answers 413 for a body over the parser limit, not 500', async () => {
     const res = await request(ctx.app.getHttpServer())
@@ -240,18 +212,8 @@ describe('AppController (e2e)', () => {
   });
 
   /**
-   * The neighbouring case, which turned out not to be broken.
-   *
-   * A body the parser cannot read looked like the same hole one status down, and
-   * it is not: Nest's adapter wraps that one into a `BadRequestException` before
-   * the filter sees it, so the `HttpException` branch has always answered it.
-   * Measured, by reading what reached the filter:
-   *
-   *     body over 100 KB   PayloadTooLargeError, raw
-   *     body `{"email": `  BadRequestException, already wrapped
-   *
-   * It is pinned anyway, because the fix above added a branch that runs before
-   * Prisma and could have captured this one by accident.
+   * A body the parser cannot read arrives already wrapped by Nest, pinned so
+   * the 413 branch cannot capture it by accident.
    */
   it('answers 400 for a body that is not valid JSON, and names no field', async () => {
     const res = await request(ctx.app.getHttpServer())

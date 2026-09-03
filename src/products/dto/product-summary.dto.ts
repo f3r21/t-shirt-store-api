@@ -1,10 +1,7 @@
 import { ApiSchema } from '@nestjs/swagger';
 /**
- * One entry of GET /products. See `openapi.yaml:1789-1819`.
- *
- * The entries carry no variants. The contract states that a caller asks for one
- * product to get them, so the server runs a fixed number of queries as the page
- * grows.
+ * The contract's `ProductSummary`, with no variants, so a page costs a fixed
+ * number of queries.
  */
 @ApiSchema({ name: 'ProductSummary' })
 export class ProductSummaryDto {

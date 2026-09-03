@@ -12,16 +12,9 @@ import { STOCK_QUEUE_NAME } from './stock-queue';
 import type { LowStockJob } from './stock-queue';
 
 /**
- * The queue's consumer, in its own process.
- *
- * `src/worker.ts` boots this in an application context with no HTTP, the
- * page's "same image, different entrypoint", so the API and the worker scale
- * apart and a slow mail provider never holds a request. The job's attempts
- * are the retry; the last attempt's `failed` line is the alert, and the job
- * stays in the failed set behind it until somebody clears the set.
- *
- * Concurrency 5. The bound is the mail provider's rate and not Postgres, and
- * five in flight is what a provider's free tier tolerates.
+ * The queue's consumer, in its own process from the same image, so the API
+ * and the worker scale apart. The job's attempts are the retry, and the failed
+ * set is the alert. Concurrency five, the mail provider's rate. ADR 28.
  */
 @Injectable()
 export class LowStockWorker

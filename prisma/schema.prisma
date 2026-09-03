@@ -249,12 +249,9 @@ enum OrderStatus {
   @@map("order_status")
 }
 
-/// The Stripe flow that paid an order.
-///
-/// The contract declares exactly these two and no third, because feature 7 asks
-/// for both flows: a payment link buys one product, a payment intent buys a
-/// cart. It is absent until a payment succeeds, which is why the column on
-/// `Order` is nullable rather than defaulted.
+/// The Stripe flow that paid an order: a payment link buys one product, a
+/// payment intent buys a cart. Absent until a payment succeeds, so the column
+/// on `Order` is nullable.
 enum PaymentMethod {
   payment_link
   payment_intent
@@ -382,11 +379,10 @@ model OrderStatusChange {
   @@map("order_status_history")
 }
 
-/// A user's like on one variant. See `contract/openapi.yaml:756`.
+/// A user's like on one variant. See the contract's `likeVariant`.
 ///
-/// Keyed on the variant and not the product, which was the mentor's single
-/// explicit schema correction in the week 2 review: a like says "tell me when
-/// this size in this colour runs low", and a product-level like cannot answer it.
+/// Keyed on the variant and not the product: a like says "tell me when this
+/// size in this colour runs low", and a product-level like cannot answer it.
 ///
 /// No surrogate id and no timestamp. The pair is the whole fact, the contract
 /// exposes neither, and `PUT` and `DELETE` on the like are idempotent because
@@ -407,7 +403,7 @@ model ProductLike {
   @@map("product_likes")
 }
 
-/// One image of a product. See `contract/openapi.yaml:885`.
+/// One image of a product. See the contract's `ProductImage`.
 ///
 /// `url` holds the public address, not the object key. The API returns it
 /// verbatim and never signs it, because the contract's example is a plain CDN

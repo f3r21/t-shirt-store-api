@@ -13,20 +13,10 @@ import { INT4_MAX } from '../../common/int4';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
- * Request body of POST /products. See `openapi.yaml:571-593`.
- *
- * Each message omits the field name, because `Problem.errors[].field` carries
- * it.
- *
- * A `categoryIds` entry that names no category returns 422 and not 400. The
- * body is well formed and the server rejects it on its content, so that check
- * belongs to the service and not to this class. An entry above `INT4_MAX` is a
- * different case and belongs here: no category could carry that id, so the
- * service never gets to ask, and Postgres answers `P2020` and a 500 instead.
- *
- * `@Type(() => Number)` on the array is required and not decoration.
- * `src/common/validation-pipe-options.ts:20` sets `enableImplicitConversion: false`, so class-transformer
- * leaves each entry as it arrives and `@IsInt()` reads the real type.
+ * Request body of `createProduct`. Messages omit the field name, because
+ * `Problem.errors[].field` carries it. An unknown category is 422 from the
+ * service; an id above `INT4_MAX` is 400 here, because no category could
+ * carry it.
  */
 export class CreateProductDto {
   @IsString({ message: 'must be a string' })

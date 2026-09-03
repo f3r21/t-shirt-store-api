@@ -10,28 +10,11 @@ import { LOW_STOCK_JOB, STOCK_QUEUE } from './stock-queue';
 import type { StockQueue } from './stock-queue';
 
 /**
- * The producer: who to tell, decided at the write, one job per person.
- *
- * Called by both stock writers after their transaction committed, never inside
- * it. The page says the enqueue waits for the commit so a queue outage cannot
- * fail a paid order, and names the gap that leaves: a crash between the commit
- * and the enqueue loses the job. So nothing here throws. A queue that cannot be
- * reached is a line at error, and the writer's answer stands.
- *
- * **The audience is three clauses.** Liked this variant; no
- * `stock_notifications` row for it, which the worker writes before it mails;
- * and no line for it in an order that is paid or later, because a pending
- * order reserves nothing and a cancelled one bought nothing. The buyer whose
- * payment caused the crossing is excluded by the third clause, since their
- * order is `paid` by the time this runs.
- *
- * **One job per recipient, with a deterministic id.** `low-stock:<variant>:<user>`,
- * so two crossings before the worker runs, a manager setting the stock twice
- * say, leave one job: BullMQ ignores an add whose id already exists. A
- * completed job is removed and its id freed, and the row the worker wrote is
- * what stops a second mail then. A job that failed its attempts keeps its id
- * in the failed set until somebody clears it, which is the alert the page
- * names. ADR 27.
+ * The producer: who to tell, decided after the commit, one job per person.
+ * Nothing here throws. The audience is three clauses: liked the variant, no
+ * `stock_notifications` row, no line in a paid order. The job id
+ * `low-stock:<variant>:<user>` collapses two crossings before the worker
+ * runs. ADR 27.
  */
 @Injectable()
 export class LowStockProducer implements OnApplicationShutdown {

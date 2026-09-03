@@ -1,28 +1,9 @@
 import { createHmac, randomBytes } from 'node:crypto';
 
 /**
- * The refresh token and the password reset token, and how they are stored.
- *
- * Both are hashed with HMAC-SHA-256 and never with argon2. The reason is
- * structural rather than a preference about speed: both are found *by* their
- * hash. `refresh_tokens.token_hash` carries a unique index, and the reset request
- * body carries only the token and the new password, so there is no second key to
- * find the row by. argon2 draws a fresh salt on every call, so its digest is not
- * a function of its input and the `where` clause could never match. Measured on
- * this machine, argon2 also costs about 40 ms against 0.005 ms, on an endpoint
- * that needs no token to reach.
- *
- * argon2id stays for passwords, where the secret is short, human-chosen and
- * reused, and where the cost and the per-row salt are the whole defence. These
- * values are none of those things: they are 256 bits from a CSPRNG, single use,
- * and short-lived, so there is no dictionary to slow down and nothing to
- * amortise across rows.
- *
- * The pepper is what a bare SHA-256 would not buy: an attacker holding a
- * read-only copy of the database cannot turn a stored hash back into a token
- * that this server will accept. It is deliberately not `JWT_SECRET`, because
- * rotating the signing key would otherwise invalidate every stored hash at the
- * same moment.
+ * The refresh and reset tokens: 32 random bytes, stored as `HMAC-SHA-256` with
+ * a pepper, because both rows are found by their hash and argon2's digest is
+ * not a function of its input. ADR 1.
  */
 const REFRESH_TOKEN_BYTES = 32;
 

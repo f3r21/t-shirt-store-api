@@ -9,16 +9,9 @@ import {
 } from './app-factory';
 
 /**
- * Checkout, end to end: cart to order, then the order through its statuses.
- *
- * The Week 3 & 4 page names this as the second of the three flows the suite
- * owes, and says what to assert: the response, the order's status in the
- * database, and the stock afterwards, "the one people skip". Until the payment
- * webhook lands in block 3 the stock assertion is that it did **not** move,
- * because the contract says an unpaid order reserves nothing. Block 3 extends
- * this file with the payment and the decrement rather than starting another.
- *
- * Every mutation is asserted on the rows it left behind, not only the body.
+ * Checkout end to end: cart to order, the order through its statuses, the
+ * payment, and the stock afterwards. Every mutation is asserted on the rows
+ * it left behind.
  */
 describe('Checkout (e2e)', () => {
   let ctx: TestApp;
@@ -123,8 +116,7 @@ describe('Checkout (e2e)', () => {
       ]);
       expect(row.statusHistory.map((h) => h.status)).toEqual(['pending']);
       expect(await ctx.prisma.cartItem.count()).toBe(0);
-      // The assertion the Week 3 & 4 page says people skip. Here it is that
-      // nothing moved: an unpaid order reserves nothing.
+      // The stock did not move: an unpaid order reserves nothing.
       expect(await stockOf(fixture.variantId)).toBe(7);
     });
 
@@ -403,7 +395,7 @@ describe('Checkout (e2e)', () => {
         'pending',
         'paid',
       ]);
-      // The assertion the Week 3 & 4 page says people skip.
+      // The stock after the payment.
       expect(await stockOf(fixture.variantId)).toBe(5);
 
       const read = await http()

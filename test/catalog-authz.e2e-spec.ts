@@ -10,29 +10,10 @@ import {
 } from './app-factory';
 
 /**
- * Who may write to the catalog, end to end, on every route that writes to it.
- *
- * Six of the seven catalog mutations were reachable by no test in either tier
- * before this file existed. `roles.e2e-spec.ts` covers the seventh, `POST
- * /products`, and it covers it to prove the guard mechanism rather than the
- * route, which is why it stays as it is and this suite sits beside it.
- *
- * **Two attacks, and each half of this suite catches exactly one.**
- *
- * Delete `@Roles('manager')` from a handler and it carries no marker at all.
- * `roles.guard.ts:78-80` denies by default, so every caller is refused, the
- * client is still 403 and only the manager case changes. The positive controls
- * are what turn red.
- *
- * Widen it to `@Roles(...ROLE_NAMES)` and every signed-in caller is let through.
- * The manager still succeeds and only the client case changes. The 403 block is
- * what turns red.
- *
- * Neither half is redundant, and neither one alone would have caught both.
- *
- * The manager cases assert the row the request left behind and not only the
- * status code, because a handler that answered 200 and wrote nothing would
- * satisfy a status assertion.
+ * Who may write to the catalog, on every route that writes to it. Two
+ * attacks, and each half catches one: a handler with no policy turns the
+ * manager cases red, a widened policy turns the 403 block red. The manager
+ * cases assert the row left behind.
  */
 describe('Catalog authorization (e2e)', () => {
   let ctx: TestApp;
@@ -232,7 +213,7 @@ describe('Catalog authorization (e2e)', () => {
     });
 
     /**
-     * The contract's 409 at `openapi.yaml:1084`, run against a real order row.
+     * The contract's 409 on `deleteVariant`, run against a real order row.
      *
      * No operation creates an order this week, so the rows go in directly. That
      * is what makes this a test rather than a promise: without it the branch is

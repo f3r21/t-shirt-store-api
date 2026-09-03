@@ -138,11 +138,10 @@ Resources:
                   - logs:DescribeLogStreams
                 Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}:*
 
-  # What CloudFormation may do when it executes a change set on the stack: everything the
-  # stack manages, which is most of what an administrator did on the first release, plus the
-  # stack's own roles and instance profile in IAM and nothing else there. Only CloudFormation
-  # in this account can assume it, and the job can only pass it to a change set on the one
-  # stack. Powerful on purpose, and reachable through the stack alone.
+  # What CloudFormation may do when it executes a change set: everything the stack manages,
+  # plus the stack's own roles and instance profile in IAM and nothing else there. Only
+  # CloudFormation in this account can assume it, and only through a change set on the one
+  # stack.
   StackRole:
     Type: AWS::IAM::Role
     Properties:

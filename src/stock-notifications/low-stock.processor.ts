@@ -6,16 +6,10 @@ import type { Mailer } from '../mail/mailer';
 import type { LowStockJob } from './stock-queue';
 
 /**
- * The consumer: one job, one person, one mail, once.
- *
- * The order is the schema comment's rule. The `stock_notifications` row is
- * written first, so two workers holding the same pair (two crossings, or a
- * retry of a job whose worker died after mailing) meet the primary key and
- * only one sends. Then the mail. If the send throws, the row is deleted and
- * the error is rethrown, so the job's next attempt sends again; without the
- * delete, the retry would find the row and count the person as told. A crash
- * between the row and the mail loses that mail, the same class of gap the
- * page accepts between the commit and the enqueue. ADR 28.
+ * The consumer: one job, one person, one mail, once. The row first, so two
+ * workers holding the same pair meet the primary key; on a failed send the
+ * row is deleted and the error thrown again, so the next attempt sends.
+ * ADR 28.
  */
 @Injectable()
 export class LowStockProcessor {

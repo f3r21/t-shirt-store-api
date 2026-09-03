@@ -28,20 +28,14 @@ import { EnvironmentVariables } from '../config/env.validation';
 import { AccessTokenPayload } from './access-token-payload';
 import { liveSessionWhere } from './live-session';
 
-/**
- * A reset link is short-lived. The contract sets no window, so this is ours to
- * choose and to record: thirty minutes is long enough to walk to a laptop and
- * short enough that a link left in an inbox stops working the same hour.
- */
+/** The lifetime of a reset link. ADR 9. */
 const RESET_TOKEN_TTL_SECONDS = 30 * 60;
 
 @Injectable()
 export class AuthService {
   /**
-   * The success half of what the OWASP logging cheat sheet asks for. The
-   * failure half, every 401, is written by the problem filter, which sees all
-   * of them. Every line here carries a user id and never an address or a
-   * token.
+   * The success events of the OWASP list; the problem filter writes the
+   * failures. A line carries a user id, never an address or a token. ADR 21.
    */
   private readonly logger = new Logger(AuthService.name);
 
@@ -66,11 +60,8 @@ export class AuthService {
   }
 
   /**
-   * One rejection for every way a refresh token can fail.
-   *
-   * Unknown, expired, already used and past the absolute cap all answer with the
-   * same document. A caller that could tell them apart would learn whether a
-   * token it holds was ever real.
+   * One document for every way a refresh token fails, so a caller cannot learn
+   * whether a token it holds was ever real.
    */
   private refreshTokenUnknown(): ProblemException {
     return new ProblemException(
@@ -96,49 +87,23 @@ export class AuthService {
   }
 
   /**
-   * The two clauses that decide whether a refresh row is still a live session.
-   *
-   * `refreshSession` has always carried them, because a token that fails either
-   * one must not rotate. `listSessions` did not, so the device list answered
-   * with rows that no longer work: an expired one, and one whose session had run
-   * past the thirty day cap. The contract calls that list "each device that is
-   * signed in", and a row failing either clause is a device that is not.
-   *
-   * Nothing deletes a dead row. The window closes and the row stays, so without
-   * this the list grew for the life of the account and `meta.total` counted
-   * sessions the user could not use and could not remove, since deleting one
-   * needs an id the user would have no reason to trust. Sharing the predicate
-   * with the rotation is the point: two places that decide the same thing must
-   * not drift.
+   * The two clauses that make a refresh row a live session. Shared with the
+   * guard and the device list through `live-session.ts`, so the three cannot
+   * drift; nothing deletes a dead row.
    */
   private liveSessionWhere(): {
     expiresAt: { gt: Date };
     createdAt: { gt: Date };
   } {
-    // Delegates to `live-session.ts`, which is where it moved once the guard
-    // became a third caller and got it wrong by not having it at all.
     return liveSessionWhere(
       this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS'),
     );
   }
 
   /**
-   * Sign in. See `openapi.yaml:88`.
-   *
-   * A wrong address and a wrong password produce the identical rejection. The
-   * contract is explicit that the server does not say which of the two was
-   * wrong, so the two paths must not differ in status, type, title, detail
-   * **or time**.
-   *
-   * That last one used to be missing, and this list is where it hid: four
-   * dimensions were named and checked, and the clock was not one of them.
-   * Returning at the null user skipped the only expensive call on the route,
-   * so a wrong address answered in about 3 ms and a wrong password in about
-   * 35 ms, and the gap said which addresses have accounts. The rate limit slows
-   * that enumeration and does not close it.
-   *
-   * The refresh row is created before the access token is signed, because the
-   * token carries the session id and the row is where that id comes from.
+   * A wrong address and a wrong password answer the same document in the same
+   * time. The refresh row is created before the access token is signed,
+   * because the token carries the session id.
    */
   async createSession(
     dto: CreateSessionDto,
@@ -150,17 +115,9 @@ export class AuthService {
       include: { role: true },
     });
     if (user === null) {
-      // Run one KDF and throw the result away, so this path costs what the
-      // path below costs. `hash` rather than a `verify` against a stored dummy
-      // digest, because both run the same Argon2id work and this needs no
-      // module state to hold the dummy. `verify` reads its parameters out of
-      // the digest it is given while `hash` uses the library defaults, so if
-      // stored digests ever stop matching those defaults, this line is where to
-      // switch to a dummy.
-      //
-      // It looks like a call whose value is unused, because it is one. That is
-      // why it carries this comment: the next reader tidying dead code would
-      // reopen the leak and no test would name the reason.
+      // The same Argon2id work as the verify below, thrown away, so an unknown
+      // address takes as long as a wrong password. Removing this call reopens
+      // an enumeration leak that no test names.
       await argon2.hash(dto.password);
       throw this.invalidCredentials();
     }
@@ -196,29 +153,10 @@ export class AuthService {
   }
 
   /**
-   * Rotate. See `openapi.yaml:227`.
-   *
-   * The rotation is one conditional write and never a read followed by a write.
-   * PostgreSQL re-evaluates the WHERE clause after waiting on a concurrent
-   * writer, so exactly one of two racing requests can match a given hash. A read
-   * then a write would let both pass.
-   *
-   * The same statement carries the expiry and the absolute cap, so a token that
-   * is expired or whose session has simply run long matches nothing and takes
-   * the same path as one that was never real.
-   *
-   * Zero rows is not yet an error. It asks two questions in order: was this
-   * token rotated a moment ago by another tab of the same session, and if not,
-   * was it already used. The first is `rotateWithinGrace`. The second is
-   * `detectReuse`, and the contract answers it by deleting every refresh row
-   * for that user.
-   *
-   * **The grace window exists because the second question used to be asked
-   * first, and it answered yes to an honest client.** Two tabs refreshing in
-   * the same moment left the loser holding a hash that was now the previous
-   * one, so the loser tripped reuse detection and signed the account out on
-   * every device, with no attacker anywhere. It reproduced on the first try
-   * with two concurrent refreshes of one token.
+   * Rotation is one conditional write, so one of two racing requests wins.
+   * Zero rows asks two questions in order: rotated a moment ago by another tab
+   * of the same session, or already used, which ends every session of the
+   * user. ADR 2.
    */
   async refreshSession(dto: RefreshSessionDto): Promise<SessionTokensDto> {
     const presented = hashToken(dto.refreshToken, this.pepper);
@@ -242,22 +180,8 @@ export class AuthService {
     }
 
     return {
-      // **The family, not the row, and this line is the whole defect.**
-      //
-      // When a device became a family, every reader of the session id moved
-      // with it: `session.mapper.ts`, `listSessions`, both deletes. This is the
-      // one line that WRITES an identity, and it was not in that list, because
-      // it does not mention a family and does not match a search for one. It
-      // reads `row.id`, which was correct while a session was a row.
-      //
-      // On the grace path `row` is a child created in an existing family, so
-      // `row.id` names nothing the guard can find: it is not a `familyId` on
-      // any row, and its own `familyId` is not null. The loser of a tab race
-      // received 200 and a token that answered 401 on every protected route for
-      // the life of the access token, and did not recover on its own.
-      //
-      // It survived because it was harmless until the guard started reading
-      // `sid` on every request. Two commits, each correct alone.
+      // The family, not the row: on the grace path `row` is a child of an
+      // existing family, and `row.id` names nothing the guard can find.
       accessToken: await this.issueAccessToken(
         user.id,
         this.familyOf(row),
@@ -269,12 +193,8 @@ export class AuthService {
   }
 
   /**
-   * The rows that make up one device session.
-   *
-   * A device is a family and not a row, because one row holds one
-   * `token_hash` and two browser tabs refreshing in the same moment need two
-   * live tokens. The founder carries `family_id` null, so this reads it two
-   * ways in one predicate.
+   * The rows of one device. A device is a family, and the founder carries
+   * `familyId` null. ADR 2.
    */
   private familyWhere(familyId: number): {
     OR: [{ familyId: number }, { id: number; familyId: null }];
@@ -288,25 +208,9 @@ export class AuthService {
   }
 
   /**
-   * The ordinary rotation: spend a token that is still the live one.
-   *
-   * One conditional write, never a read followed by a write. PostgreSQL
-   * re-evaluates a WHERE clause after waiting on a concurrent writer, so
-   * exactly one of two racing requests can match a given hash. The loser gets
-   * zero rows and goes to `rotateSpentToken`.
-   *
-   * **The consumed row and the rotation commit together, and that is not
-   * tidiness.** As two statements there is a window between the update
-   * committing and the insert committing, and a losing racer lands in it: its
-   * own update returns zero rows because the winner already moved the hash,
-   * and its lookup in `consumed_refresh_tokens` finds nothing because the
-   * winner has not written it yet. It answers 401 to an honest tab. Three
-   * concurrent refreshes reproduced it as `200 401 200`, and this docstring
-   * claimed the transaction before the code had one.
-   *
-   * Inside one transaction the loser's update blocks on the row lock and can
-   * only return zero rows after the winner has committed both statements, so
-   * the record it then looks for is always there.
+   * Spend the live token. The rotation and the consumed row commit together:
+   * as two statements a losing racer lands between them, finds no live row and
+   * no record, and answers 401 to an honest tab.
    */
   private async rotateLiveToken(
     presented: string,
@@ -341,30 +245,11 @@ export class AuthService {
   }
 
   /**
-   * A token that has already been spent. Three answers, and only one is theft.
-   *
-   * **Never spent.** Nothing is deleted. A token the server has no record of is
-   * not a replay, it is a string, and the previous version deleted every
-   * session for the user on the strength of one unbounded lookup by
-   * `previous_token_hash` that carried no liveness filter at all.
-   *
-   * **Spent inside the window.** An honest second tab. It gets **a new row in
-   * the same family**, and the row the winner is holding is not touched.
-   *
-   * That last clause is the correction. The first version of this rotated the
-   * winner's row and wrote the winner's live token into
-   * `previous_token_hash`, so fifteen minutes later, when that tab refreshed on
-   * its own schedule and the window had long closed, reuse detection found its
-   * hash and deleted every session for the user. The two-tab bug did not go
-   * away, it moved and got quieter. A review in a session with none of this
-   * context found it; the two tests written here did not, because both of them
-   * refreshed inside the window.
-   *
-   * **Spent outside the window.** Theft, and the contract's answer is to delete
-   * every refresh row for that user.
-   *
-   * The new row inherits `created_at` from the founder so the thirty day
-   * absolute cap belongs to the family rather than restarting with each tab.
+   * A token that was already spent. Never spent: 401 and nothing deleted.
+   * Spent inside the grace window: an honest second tab, which gets a new row
+   * in the same family, with the founder's `createdAt` so the absolute cap
+   * belongs to the family. Spent outside it: theft, and every refresh row of
+   * the user goes. ADR 2.
    */
   private async rotateSpentToken(
     presented: string,
@@ -373,18 +258,9 @@ export class AuthService {
     const capDays = this.config.getOrThrow<number>('REFRESH_ABSOLUTE_TTL_DAYS');
     const seconds = this.config.getOrThrow<number>('REFRESH_GRACE_SECONDS');
 
-    // **Two windows, and this `where` is what stops an old token being a
-    // permanent weapon.** Nothing prunes `consumed_refresh_tokens`, so a hash
-    // spent weeks ago used to sit here for ever, and the branch below deletes
-    // every refresh row for its owner. An attacker holding one spent token
-    // could end the account, wait for the victim to sign in again, and repeat,
-    // on a public route, indefinitely.
-    //
-    // A token spent longer ago than the absolute session cap comes from a
-    // session that cannot be alive, so there is nothing left for it to be a
-    // replay of. It reads as never spent, which is 401 and nothing deleted.
-    // No migration and no sweep: the sweep is still owed, and this makes the
-    // table's growth a storage problem rather than a security one.
+    // A hash spent longer ago than the absolute cap cannot be a replay of a
+    // live session, so it reads as never spent. Without this bound one old
+    // spent token could end the account again after every sign-in.
     const spent = await this.prisma.consumedRefreshToken.findFirst({
       where: {
         tokenHash: presented,
@@ -395,36 +271,16 @@ export class AuthService {
       return null;
     }
 
-    // **The window is measured against the database clock, not this process's.**
-    // `consumed_at` is stamped by Postgres at the start of the transaction that
-    // spent the token, so comparing it to `Date.now()` compares two clocks. A
-    // container eleven seconds ahead pushes an honest second tab outside a ten
-    // second window, and a slow `rotateLiveToken` stamps `consumed_at` at its
-    // own start while the loser reads a value that is already older than the
-    // window. `NOW()` here is the same clock that wrote the column.
+    // The window is measured on the database clock, which stamped
+    // `consumed_at`. Comparing it with `Date.now()` compares two clocks.
     const [{ now }] = await this.prisma.$queryRaw<{ now: Date }[]>`
       SELECT NOW() AS now
     `;
     const within = spent.consumedAt.getTime() > now.getTime() - seconds * 1000;
 
     if (seconds <= 0 || !within) {
-      // **The consumed rows go with the refresh rows, or the wipe repeats.**
-      //
-      // The `where` above stops a spent token being a lever for ever. It was
-      // still one for the life of the cap: the wipe deleted every refresh row
-      // and left the consumed row that triggered it, so the owner signed in
-      // again, the same string arrived again, and the new session was gone.
-      // Measured: three sign-ins, three replays of one token, zero rows after
-      // each. No attacker is needed. A browser that signed out on a shared
-      // machine and later retries the refresh it still holds did this to the
-      // owner's phone.
-      //
-      // After the first statement every family of this user is dead, so every
-      // consumed row of this user records a family that cannot be alive.
-      // Removing them makes the next presentation a token the server never
-      // issued, which the contract answers with 401 and nothing deleted. One
-      // transaction, because a wipe that commits without its second half
-      // reopens the lever.
+      // The consumed rows go with the refresh rows, or the same token wipes
+      // the next sign-in too. One transaction, so a wipe cannot commit half.
       await this.prisma.$transaction([
         this.prisma.refreshToken.deleteMany({
           where: { userId: spent.userId },
@@ -447,23 +303,9 @@ export class AuthService {
       return null;
     }
 
-    // **This create is deliberately unconditional, and the bound is elsewhere.**
-    //
-    // A review found that replaying one stolen token in a loop produces N live
-    // rows in the family, and the obvious fix is to allow one grace rotation
-    // per spent token. **That fix is wrong**, because three honest tabs present
-    // the same token and all three deserve a working one: nothing here can tell
-    // the third honest tab from the third replay, which is what a grace window
-    // is for.
-    //
-    // The bound is the window times the rate. The window is
-    // `REFRESH_GRACE_SECONDS`, ten by default, and the rate is now the sign-in
-    // tier on `POST /auth/refresh`, ten in any sixty seconds. That tier is a
-    // fixed window, so all ten can land inside the grace window: one spent
-    // token buys at most ten rows before it ages out. Those rows expire on
-    // their own and the whole family dies at the absolute cap, so they are
-    // bounded and self-clearing rather than merely rare. ADR 2 records the
-    // same bound under "Gives up".
+    // Unconditional: three honest tabs present the same token, and all three
+    // deserve a working one. The bound is the window times the refresh tier,
+    // ten rows per spent token at the defaults. ADR 2.
     return this.prisma.refreshToken.create({
       data: {
         userId: founder.userId,
@@ -478,14 +320,8 @@ export class AuthService {
   }
 
   /**
-   * The device list. See `openapi.yaml:166`.
-   *
-   * `total` counts every row the filter matches, before limit and offset apply,
-   * so it comes from its own count and not from the length of the page.
-   *
-   * The order ends in `id` on purpose. Two rows can share a microsecond, and
-   * PostgreSQL returns an unpredictable subset under LIMIT when the order does
-   * not pin the rows uniquely.
+   * The device list, one entry per family. `total` is counted before the page
+   * is cut, and the order ends in `id` so a page under LIMIT is stable.
    */
   async listSessions(
     userId: number,
@@ -496,9 +332,7 @@ export class AuthService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
 
-    // One entry per family, because a device is a family. The grace path adds a
-    // row to an existing one, so counting rows would report a user with two
-    // tabs open as a user with two devices.
+    // The grace path adds rows to an existing device, so rows are not devices.
     const newest = new Map<number, (typeof rows)[number]>();
     for (const row of rows) {
       const family = row.familyId ?? row.id;
@@ -508,12 +342,9 @@ export class AuthService {
     }
     const devices = [...newest.values()];
 
-    // Grouped and paged here rather than in SQL, because the group is not a
-    // column: a founder carries `family_id` null and names its family by its
-    // own id, so no `GROUP BY` can see it. The set is every live row for one
-    // user, bounded by devices times grace events, and small. The day that
-    // stops being true the fix is a `family_id` that is never null, which needs
-    // the backfill this migration deliberately avoided.
+    // Grouped here and not in SQL: a founder names its family by its own id
+    // with `family_id` null, so no GROUP BY can see it. The set is every live
+    // row of one user, and small.
     return {
       data: devices
         .slice(query.offset, query.offset + query.limit)
@@ -523,26 +354,13 @@ export class AuthService {
   }
 
   /**
-   * Sign this device out. See `openapi.yaml:196`.
-   *
-   * The session id comes from the access token, so the family this deletes is
-   * the one belonging to the device that sent the request. Other devices stay
-   * signed in. The access token stops working at once, because
-   * `AccessTokenGuard` checks on every request that the session it names is
-   * still alive.
+   * Sign this device out. The session id in the token names the family, and
+   * the guard refuses the access token from the next request on.
    */
   async deleteCurrentSession(userId: number, sessionId: number): Promise<void> {
-    // By family. Deleting the one row whose id matches would leave every other
-    // live row of the same device signed in, and a second tab is exactly the
-    // thing that creates one.
-    //
-    // **The family's consumed rows go too.** A family that has ended has
-    // nothing left to protect, and a consumed row that outlives it is only a
-    // trigger: the device that signed out, or anyone holding a token it once
-    // spent, sends it again after the grace window and reuse detection wipes
-    // every other device of this user. Removing the records makes that token
-    // one the server never issued, which is 401 and nothing deleted. One
-    // transaction, so the family cannot end with its triggers left behind.
+    // The whole family, and its consumed rows with it: a consumed row that
+    // outlives its family is only a trigger for reuse detection against the
+    // user's other devices.
     await this.prisma.$transaction([
       this.prisma.refreshToken.deleteMany({
         where: { userId, ...this.familyWhere(sessionId) },
@@ -554,18 +372,11 @@ export class AuthService {
   }
 
   /**
-   * Sign another device out. See `openapi.yaml:207`.
-   *
-   * A session id that belongs to another user answers 404 and never 403. The id
-   * is a small integer a caller can guess, so a 403 would confirm that the row
-   * exists. The `where` names both the id and the owner, so an id that is absent
-   * and an id that belongs to somebody else take the same path.
+   * Sign another device out. Another user's session id is 404 and never 403,
+   * so a guessed id confirms nothing.
    */
   async deleteSession(userId: number, id: number): Promise<void> {
-    // By family, for the same reason as `deleteCurrentSession`, and the
-    // family's consumed rows go with it for the reason given there. The 404
-    // still comes from the count of refresh rows, so an id that names nothing
-    // and an id that names somebody else's family take the same path.
+    // By family, as above. The 404 comes from the refresh row count.
     const [{ count }] = await this.prisma.$transaction([
       this.prisma.refreshToken.deleteMany({
         where: { userId, ...this.familyWhere(id) },
@@ -580,18 +391,10 @@ export class AuthService {
   }
 
   /**
-   * Ask for a reset link. See `openapi.yaml:281`.
-   *
-   * The server answers the same way whether or not the address has an account,
-   * because a different answer would tell the caller which addresses are
-   * registered. Only a registered address receives mail.
-   *
-   * Known limit, deliberate: the two paths still differ in how long they take,
-   * since only one of them writes a row and sends a message. Closing that gap
-   * means doing equivalent work on the unknown path, and the endpoint is rate
-   * limited instead. Recorded rather than hidden.
-   *
-   * The row stores a hash. The raw token exists only in the message.
+   * Ask for a reset link. The answer is the same for a known and an unknown
+   * address, and only a known one gets mail. The two paths differ in time,
+   * which the rate limit bounds and nothing closes (README, Known gaps). The
+   * row stores a hash; the raw token exists only in the message.
    */
   async requestPasswordReset(dto: RequestPasswordResetDto): Promise<void> {
     const email = normalizeEmail(dto.email);
@@ -616,34 +419,11 @@ export class AuthService {
   }
 
   /**
-   * Set a new password with a reset token. See `openapi.yaml:320`.
-   *
-   * An unknown or expired token answers 422 and not 400, because the body is
-   * well formed and the server rejects it on its content. It is also not 401:
-   * this operation carries no credentials to reject.
-   *
-   * One conditional write again, for two reasons. It makes the token single use
-   * against a concurrent second submission, and it avoids the shape where a
-   * plain `update` on a missing row raises `P2025`, which this codebase maps to
-   * 404 where the contract requires 422.
-   *
-   * Clearing the token in the same statement is what makes it single use.
-   *
-   * **The password and the revocation commit together, or neither does.** They
-   * were two statements: the new hash was written, and then every refresh row
-   * was deleted. A failure between the two, and the connection dying is enough,
-   * left the account with a password the user did not choose to keep and every
-   * stolen session still working. That is the worst possible half of this
-   * operation to leave standing, because the whole reason a reset revokes
-   * sessions is that the old password may be in somebody else's hands.
-   *
-   * `argon2.hash` runs before the transaction opens on purpose. It is the
-   * slowest thing here by orders of magnitude, and hashing inside would hold a
-   * connection and a row lock for the whole of it.
-   *
-   * The mail is sent after the transaction commits, and not inside it. A mail
-   * provider that is slow must not hold a database transaction, and a message
-   * about a password change that was then rolled back cannot be unsent.
+   * Set a new password with a reset token. An unknown or expired token is 422,
+   * because the body is well formed. One conditional write makes the token
+   * single use, and the password and the session wipe commit together or not
+   * at all. The hash runs before the transaction opens, and the mail goes out
+   * after it commits.
    */
   async resetPassword(dto: ResetPasswordDto): Promise<void> {
     const presented = hashToken(dto.token, this.pepper);
@@ -671,9 +451,7 @@ export class AuthService {
 
       const row = updated[0];
       await tx.refreshToken.deleteMany({ where: { userId: row.id } });
-      // Every family of this user has just ended, so every consumed row of
-      // this user is a trigger with nothing left behind it. See
-      // `deleteCurrentSession` for what a trigger left behind does.
+      // Every family has ended, so its consumed rows are only triggers.
       await tx.consumedRefreshToken.deleteMany({ where: { userId: row.id } });
       return row;
     });

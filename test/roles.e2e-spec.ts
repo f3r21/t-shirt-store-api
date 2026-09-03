@@ -8,19 +8,9 @@ import {
 } from './app-factory';
 
 /**
- * Authorization, end to end, against the real guards.
- *
- * `PoliciesGuard` denies by default, and that is only worth anything if
- * something proves it. The guard is bound as an `APP_GUARD` beside
- * `AccessTokenGuard`, so two separate things need asserting and a unit test can
- * reach neither: that the two guards run in the right order, and that a manager
- * still gets through. The abilities behind the verdicts are CASL's, built per
- * caller by `AbilityFactory`; the fourth test is the one route whose policy
- * reads the request and answers 401 or 403 by who asked.
- *
- * The third test is the positive control and the reason the other two mean
- * anything. A guard that refused every caller would satisfy the 401 and the 403
- * and be completely broken.
+ * Authorization against the real guards: the two guards run in order, a
+ * manager still gets through (the positive control), and the one route whose
+ * policy reads the request answers 401 or 403 by who asked.
  */
 describe('Authorization (e2e)', () => {
   let ctx: TestApp;

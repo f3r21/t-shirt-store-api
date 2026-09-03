@@ -14,15 +14,10 @@ import type { StripeClient } from './stripe.client';
 const CURRENCY = 'usd';
 
 /**
- * Stripe's shapes in, this service's shapes out.
- *
- * Everything that knows what a Stripe parameter is called lives here, so
- * `payments.service.ts` and its spec never see a Stripe object and the e2e
- * stub has three methods to answer. The two facts this file leans on were
- * checked against the Stripe docs on 2026-09-01: a payment link takes an
- * inline `price_data` and needs no Price object first, and the link's
- * `metadata` is copied to every Checkout Session it creates, which is how the
- * webhook finds the order.
+ * Stripe's shapes in, this service's shapes out, so nothing else sees a
+ * Stripe object and the e2e stub answers three methods. A payment link takes
+ * inline `price_data`, and its `metadata` is copied to every Checkout Session
+ * it creates, which is how the webhook finds the order.
  */
 @Injectable()
 export class StripeGateway {

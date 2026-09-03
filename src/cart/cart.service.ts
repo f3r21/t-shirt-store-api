@@ -8,25 +8,10 @@ import { CartDto } from './dto/cart.dto';
 import { CART_LINE_INCLUDE, toCartDto } from './cart.mapper';
 
 /**
- * The cart of the signed-in user, five operations over `cart_items`.
- *
- * There is no cart row. The table is keyed on the user and the variant, so
- * "the cart exists because the user exists" is a fact about that key, and an
- * empty result is an empty cart rather than a 404. `schema.prisma` records why.
- *
- * **What a cart shows.** Only lines whose product is on sale, through the same
- * predicate the catalog reads with, `visibleProductWhere` for an anonymous
- * viewer. A line for a product since disabled or deleted leaves the view, and
- * `clearCart` removes the row. The add and set paths resolve the variant through
- * the same predicate, so the 404 for a withdrawn product and the vanished line
- * are one rule. ADR 22.
- *
- * **The stock check is a courtesy, not the guarantee.** Both writes compare
- * the resulting quantity with the units on hand before they write, so a 409
- * leaves the cart unchanged, as the contract promises. Two adds racing past
- * the stock are accepted: the contract says the checkout validates every line
- * again and an unpaid order reserves nothing, so the cart is a live view and
- * the order is where the number has to be right.
+ * The cart, five operations over `cart_items`. No cart row: the table is
+ * keyed on the user and the variant, so an empty result is an empty cart.
+ * Lines show only while their product is on sale, and the stock check is a
+ * courtesy, because the order is where the number has to be right. ADR 22.
  */
 @Injectable()
 export class CartService {

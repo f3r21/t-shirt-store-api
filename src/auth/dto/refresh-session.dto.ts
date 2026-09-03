@@ -1,10 +1,8 @@
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Request body of POST /auth/refresh.
- *
- * The token is opaque, so the contract states two rules only: it is present and
- * it is bounded. See `openapi.yaml:259-266`.
+ * Request body of `refreshSession`. The token is opaque, so it is present and
+ * bounded, nothing more.
  */
 export class RefreshSessionDto {
   @IsString({ message: 'must be a string' })

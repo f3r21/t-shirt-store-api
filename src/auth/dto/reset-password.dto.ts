@@ -1,11 +1,8 @@
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Request body of POST /auth/reset-password.
- *
- * See `openapi.yaml:346-359`. A malformed body returns 400 from this class. A
- * token that is unknown or expired returns 422 from the service, because the body
- * is well formed and the server rejects it on its content.
+ * Request body of `resetPassword`. A malformed body is 400 here; an unknown or
+ * expired token is 422 from the service.
  */
 export class ResetPasswordDto {
   @IsString({ message: 'must be a string' })

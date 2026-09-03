@@ -8,22 +8,10 @@ import { OrderStatus } from '../../generated/prisma/enums';
 import { ORDER_STATUSES } from './order.dto';
 
 /**
- * Query parameters of GET /users/me/orders. See `openapi.yaml:1458-1499` and
- * the parameters at `2406-2456`.
- *
- * The class extends `PageQueryDto`, so `limit` and `offset` keep the defaults
- * every collection declares and this file states only the five filters the
- * brief's feature 9 asks for: status, a date range, and a price range.
- *
- * `createdFrom` is inclusive and `createdTo` is exclusive, the contract's own
- * words, so one day is `createdFrom` that day and `createdTo` the next. Both
- * arrive as strings and are turned into dates by the service, because the
- * pipe converts nothing implicitly (`validation-pipe-options.ts`).
- *
- * `minTotal` and `maxTotal` read `total_cents`, an `int4`, so they carry the
- * same ceiling every amount in this API carries, for the reason
- * `src/common/int4.ts` records. `@Type(() => Number)` is required, not
- * decoration: a query value arrives as a string.
+ * Query parameters of `listMyOrders`: the page pair plus five filters.
+ * `createdFrom` is inclusive and `createdTo` exclusive, the contract's words,
+ * and both arrive as strings. `@Type(() => Number)` because the pipe converts
+ * nothing implicitly.
  */
 export class OrderHistoryQueryDto extends PageQueryDto {
   /** Return only the orders in this status. */

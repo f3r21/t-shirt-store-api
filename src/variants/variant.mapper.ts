@@ -2,16 +2,9 @@ import type { ProductVariant as ProductVariantRow } from '../generated/prisma/cl
 import type { ProductVariantDto } from './dto/product-variant.dto';
 
 /**
- * Map a `product_variants` row to the response shape.
- *
- * The empty string is how "this variant has no size" is stored, and absence is
- * how it travels. The column is not null so that the unique index can enforce
- * the one-pair-per-product rule, which a nullable column cannot: PostgreSQL
- * treats two NULLs in a unique index as distinct. This function is where the two
- * spellings meet, so nothing else has to know about the empty string.
- *
- * `price` is the integer minor unit the contract declares. The column is named
- * `price_cents` so the database says the same thing the wire does.
+ * A `product_variants` row to the response. The empty string is how an absent
+ * option is stored, so the unique index can see a duplicate pair, and this is
+ * where the two spellings meet. ADR 13, ADR 14.
  */
 export function toProductVariantDto(row: ProductVariantRow): ProductVariantDto {
   const dto: ProductVariantDto = {

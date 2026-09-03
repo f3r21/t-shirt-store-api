@@ -16,19 +16,9 @@ export const CHECK_POLICIES_KEY = 'checkPolicies';
 export type Policy = (ability: AppAbility, request: Request) => boolean;
 
 /**
- * The policies a handler requires, all of them.
- *
- * A handler with no marker at all reaches nobody. `PoliciesGuard` denies by
- * default, so an undecorated route answers 403 to every caller including a
- * manager, and that is the point: the route somebody adds next week and
- * forgets to decorate fails closed.
- *
- * **The marker also tells the OpenAPI document.** Needing a token and needing
- * a policy are the same fact, and stating it twice is how the served document
- * once showed public operations as requiring a bearer token. Composing
- * `@ApiBearerAuth` here means the document cannot disagree with the guard,
- * because there is only one statement to read. An optional-auth route adds
- * `@OptionalAuth`, which contributes the empty requirement beside this one.
+ * The policies a handler requires. A handler with no marker is 403 for
+ * everyone, so a forgotten decorator fails closed. `@ApiBearerAuth` is
+ * composed here, so the document cannot disagree with the guard.
  */
 export const CheckPolicies = (...policies: Policy[]) =>
   applyDecorators(

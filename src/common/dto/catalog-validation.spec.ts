@@ -7,29 +7,10 @@ import { UpdateVariantDto } from '../../variants/dto/update-variant.dto';
 import { SetVariantStockDto } from '../../variants/dto/set-variant-stock.dto';
 
 /**
- * The catalog DTOs, through the pipe the application actually runs.
- *
- * Two rules, and each one shipped as a measured 500 before it was a test.
- *
- * **An integer bound the contract never restated.** `price_cents`, `stock` and
- * every id are `int4`. A value above the ceiling parses, passes every validator
- * the DTO carried, reaches Prisma, and Postgres answers `P2020`. Nothing maps
- * that code, so the caller got a 500 where the contract declares 400 or 422.
- * Two of those routes need no token.
- *
- * **Null is not absent.** `@IsOptional()` skips the rest of a property's
- * validators for null as well as undefined, so an explicit null walked through
- * the global pipe, through `NonEmptyBodyPipe`, and into the service. Measured
- * before `@IsOptionalNotNull` existed:
- *
- *     PATCH /products/{id}  {"categoryIds": null}   TypeError, then 500
- *     PATCH /products/{id}  {"description": null}   200, and the column erased
- *
- * The contract has no nullable field anywhere and says so with the command that
- * proves it, at `contract/openapi.yaml:32-36`, so null is a 400 everywhere.
- *
- * Every rejection below ships with the accepting control beside it, because a
- * rejection alone does not show the pipe still lets a good value through.
+ * The catalog DTOs through the pipe the application runs. Two rules: the
+ * `int4` bound the contract never restates, and null is not absent, because
+ * the contract declares no nullable field. Every rejection ships with its
+ * accepting control.
  */
 describe('catalog validation', () => {
   // Written out rather than imported from `src/common/int4.ts`. The boundary is
@@ -118,18 +99,8 @@ describe('catalog validation', () => {
   });
 
   /**
-   * The one query parameter that arrives as a string and must not be coerced.
-   *
-   * `includeInactive` decides who sees a disabled product, and a query string
-   * carries it as `'true'` or `'false'`. The obvious `@Type(() => Boolean)`
-   * cannot be used: class-transformer returns `Boolean(value)` for that target
-   * (`TransformOperationExecutor.js:91-94`) and `Boolean('false')` is `true`, so
-   * a caller who asks for the enabled products would be asking for the disabled
-   * ones and would get 403.
-   *
-   * The hand written transform that avoids this had 0% branch coverage, and
-   * deleting its `'false'` line left the whole suite green. The three cases
-   * below are its three branches.
+   * `includeInactive` must not use `Boolean()`, because `Boolean('false')` is
+   * true. The three cases are the transform's three branches.
    */
   describe('the includeInactive transform, which must not use Boolean()', () => {
     const parse = (value: string) =>

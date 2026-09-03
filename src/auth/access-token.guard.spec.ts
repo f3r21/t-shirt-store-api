@@ -15,22 +15,10 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { IS_OPTIONAL_AUTH_KEY } from './decorators/optional-auth.decorator';
 
 /**
- * The guard that decides who is authenticated, on every route.
- *
- * `roles.e2e-spec.ts` proves the two guards run in the right order and
- * `catalog-authz.e2e-spec.ts` proves the 401 reaches a caller, but neither can
- * separate the three causes behind that status. The contract gives the 401 a
- * type on one cause and no type on the others, and only this file can tell them
- * apart, because an end to end test would have to mint an expired token to reach
- * the branch that matters most.
- *
- * Three decisions are pinned here that a status code assertion would not catch.
- * The `@Public` short circuit has to happen before any token work, or a manager
- * holding an expired token could not sign in again. The absent type on the plain
- * 401 is deliberate and documented at `access-token.guard.ts:87-101`, so an
- * assertion that it stays absent protects that reasoning. And an optional route
- * tolerates no token while refusing a broken one, which is the distinction the
- * guard's own comment at `:57-58` names and which nothing else tests.
+ * The guard, on every route. Three things a status assertion cannot catch:
+ * the `@Public` short circuit before any token work, the plain 401 with no
+ * type, and an optional route that tolerates no token while refusing a broken
+ * one.
  */
 describe('AccessTokenGuard', () => {
   const PAYLOAD: AccessTokenPayload = { sub: 7, sid: 12, role: 'client' };
@@ -136,16 +124,8 @@ describe('AccessTokenGuard', () => {
     });
 
     /**
-     * **The liveness predicate, and this assertion is the one that was missing.**
-     *
-     * The lookup used to carry the owner and the family and nothing else, so a
-     * refresh row that had expired, or whose session had run past the absolute
-     * cap, still authenticated every protected route while `POST /auth/refresh`
-     * answered 401 for the same row. Nothing ever deletes a dead row, so the
-     * row is there to be found.
-     *
-     * Asserted as shape rather than as exact dates, because the two `gt` values
-     * are computed from the clock at call time.
+     * The liveness predicate: a dead row must not authenticate. Asserted as
+     * shape, because the two `gt` values come from the clock.
      */
     it('asks only for a session that is still alive', async () => {
       const { guard, context, session } = harness({}, 'Bearer good');
@@ -167,16 +147,9 @@ describe('AccessTokenGuard', () => {
     });
 
     /**
-     * A signature is not a set of claims.
-     *
-     * `verifyAsync` proves the token came from this server and returns whatever
-     * was inside it. A payload without `sub` or `sid` casts cleanly to the
-     * payload type, and both fields then reach Prisma as `undefined`, which it
-     * **drops from a `where`** rather than matching on. The filter reduces to
-     * `{"OR":[{},{"familyId":null}]}`, and an empty object inside an `OR`
-     * matches every row.
-     *
-     * The last row is the control: a payload with both claims still passes.
+     * A signature is not a set of claims: an absent `sub` or `sid` reaches
+     * Prisma as `undefined`, which it drops from a `where`, and
+     * `{ OR: [{}, ...] }` matches every row. The last row is the control.
      */
     it.each([
       ['no claims at all', {}],
@@ -287,18 +260,8 @@ describe('AccessTokenGuard', () => {
     });
 
     /**
-     * The case the test above does not cover, and the one that was broken.
-     *
-     * `'Bearer broken'` is a well formed header whose token fails
-     * verification, so it never reaches the branch this is about. A header
-     * whose *scheme* is unusable never produces a token at all, and
-     * `bearerToken` answers `undefined` for that exactly as it does for a
-     * header that is absent. The optional route then read `undefined` as "no
-     * token" and admitted the request.
-     *
-     * The protected-route block below asserts three of these four already, so
-     * the guard has always known how to refuse them. Only this tier let them
-     * through, which is why nothing was red.
+     * A header whose scheme is unusable produces no token, and an optional
+     * route must still refuse it.
      */
     it.each([
       ['a scheme that is not Bearer', 'Basic dXNlcjpwYXNz'],
@@ -318,17 +281,9 @@ describe('AccessTokenGuard', () => {
     });
 
     /**
-     * **A header that is present and empty is the absence of a credential.**
-     *
-     * This is the previous fix overshooting. Splitting "no header" from "broken
-     * header" stopped a broken one being served as anonymous, and made a
-     * present but empty `Authorization:` land on the broken side. Node reports
-     * that header as `''`, which is not `undefined`, so a proxy that always
-     * injects the header made both anonymous catalog operations answer 401 to
-     * everybody.
-     *
-     * Two mistakes in the same three lines, in opposite directions, three hours
-     * apart.
+     * A header that is present and empty is the absence of a credential, not
+     * a broken one: a proxy that always injects the header must not turn the
+     * anonymous catalog into a 401.
      */
     it.each([
       ['an empty header', ''],
@@ -359,15 +314,8 @@ describe('AccessTokenGuard', () => {
 
   describe('a protected route', () => {
     /**
-     * RFC 7235 section 2.1 spells the gap between the scheme and the
-     * credentials as `1*SP`, one space or more. `split(' ')` on two spaces gave
-     * `['Bearer', '', 'abc']`, an empty token, and a 401 to a caller who did
-     * nothing wrong. This is the second time this method has refused something
-     * the standard it cites calls valid: the first was comparing the scheme
-     * with `===` against `'Bearer'`.
-     *
-     * The single-space row is the control, so a split that stopped working
-     * altogether could not pass this.
+     * RFC 7235 section 2.1 allows a run of spaces between the scheme and the
+     * credentials. The single-space row is the control.
      */
     it.each([
       ['one space', 'Bearer good'],
@@ -391,14 +339,8 @@ describe('AccessTokenGuard', () => {
     });
 
     /**
-     * The scheme is case-insensitive, and this row used to say the opposite.
-     *
-     * `bearer good` sat in the 401 list below, pinning a refusal RFC 7235
-     * section 2.1 forbids: "the scheme name is case-insensitive". The contract
-     * selects that scheme by name at `openapi.yaml:1697-1699`. So the test was
-     * not protecting the behaviour, it was protecting the bug, which is the
-     * failure the block brief names at line 330: an assertion written for the
-     * code that exists rather than the behaviour that is owed.
+     * The scheme is case-insensitive, per RFC 7235 section 2.1 and the
+     * contract's `bearerAuth` scheme.
      */
     it.each([
       ['Bearer', 'Bearer good'],

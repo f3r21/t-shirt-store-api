@@ -9,17 +9,9 @@ import {
 } from './app-factory';
 
 /**
- * Likes, end to end, against a real database.
- *
- * What it covers that the unit spec cannot: the composite key making the two
- * writes idempotent (a second `PUT` leaves one row, a second `DELETE` answers
- * 204 over nothing), the relation filter folding two liked variants into one
- * product, and the visibility rule hiding a liked product that was disabled
- * after the like while keeping its row.
- *
- * Every mutation is asserted on the row it left behind and not only on the
- * status, for the reason `catalog-authz.e2e-spec.ts` gives: a handler that
- * answered 204 and wrote nothing would satisfy a status assertion.
+ * Likes against a real database: the composite key's idempotence, the
+ * relation filter folding two liked variants into one product, and the
+ * visibility rule. Every mutation is asserted on the row it left behind.
  */
 describe('Likes (e2e)', () => {
   let ctx: TestApp;

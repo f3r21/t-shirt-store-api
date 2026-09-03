@@ -2,13 +2,8 @@ import { IsInt, Max, Min } from 'class-validator';
 import { INT4_MAX } from '../../common/int4';
 
 /**
- * Request body of PATCH /variants/{id}/stock. See `openapi.yaml:1096-1108`.
- *
- * The stock has its own operation and its own body, because the payment webhook
+ * Request body of `setVariantStock`. Its own operation, because the webhook
  * writes the same column.
- *
- * The upper bound is the `int4` ceiling of that column, for the reason
- * `create-variant.dto.ts` records.
  */
 export class SetVariantStockDto {
   /** The units on hand after this call. */

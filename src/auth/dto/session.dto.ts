@@ -1,10 +1,5 @@
 import { ApiSchema } from '@nestjs/swagger';
-/**
- * One entry of GET /auth/sessions. See `openapi.yaml:1620-1643`.
- *
- * The field list is the point. The `refresh_tokens` row also holds `token_hash`
- * and `previous_token_hash`. Neither reaches a response.
- */
+/** The contract's `Session`. No hash reaches a response. */
 @ApiSchema({ name: 'Session' })
 export class SessionDto {
   /**

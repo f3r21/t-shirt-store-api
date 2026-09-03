@@ -1,14 +1,9 @@
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
 /**
- * Request body of POST /users.
- *
- * Every bound comes from the contract, at
- * `contract/openapi.yaml:397-421`. The contract sets
- * no minimum length on `firstName` and `lastName`, so an empty name passes.
- *
- * Each message omits the field name, because `Problem.errors[].field` carries
- * it. The contract's own example does the same.
+ * Request body of `createUser`. Every bound comes from the contract, which
+ * sets no minimum on the names. Messages omit the field name, because
+ * `Problem.errors[].field` carries it.
  */
 export class CreateUserDto {
   @IsEmail({}, { message: 'must be a valid email address' })

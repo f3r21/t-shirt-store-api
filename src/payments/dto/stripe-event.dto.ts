@@ -1,14 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * The body of POST /webhooks/stripe, for the document only. See
- * `openapi.yaml:1713-1732`.
- *
- * The handler never validates through this class. The signature covers the
- * raw bytes Stripe sent, so the route reads `req.rawBody` and hands it to the
- * SDK, which parses it after the check. This class exists so the served
- * document describes the body the contract describes: `id` and `type`
- * required, the rest opaque.
+ * The body of `receiveStripeEvent`, for the document only: the handler reads
+ * the raw bytes, and the SDK parses them after the signature check.
  */
 export class StripeEventDto {
   id!: string;

@@ -28,16 +28,9 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
 import { ApiPageResponse } from '../common/dto/api-page-response';
 
 /**
- * Orders under `/orders`. See `openapi.yaml:1375-1586`.
- *
- * The policies are type-level, which is what a guard can know before the row
- * is read: `manage Order` opens the manager's list, the one operation the
- * contract gives a 403, and a client's `read Order` on their own rows passes
- * the same check because some orders are theirs. The three that resolve one
- * order hand the ability to the service, which turns the rule's condition
- * into the `where`, so another client's order is 404 and not 403, as the
- * contract asks. Each handler is named after its contract operation id, which
- * the drift suite compares.
+ * Orders under `/orders`. The policies are type-level, and the handlers that
+ * resolve one order hand the ability to the service, so another client's
+ * order is 404. Each handler is named after its operation id. ADR 25.
  */
 @ApiTags('orders')
 @Controller('orders')

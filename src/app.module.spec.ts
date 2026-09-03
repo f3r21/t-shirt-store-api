@@ -11,20 +11,9 @@ import { STOCK_QUEUE } from './stock-notifications/stock-queue';
 import { validateEnv, EnvironmentVariables } from './config/env.validation';
 
 /**
- * The application boots.
- *
- * `compile()` resolves the whole dependency graph without opening a socket or a
- * database connection, so this catches the class of failure that a unit test
- * cannot: a provider nothing supplies, a module that forgot an export, a
- * factory that reads a variable the environment schema does not declare.
- *
- * It is worth a test rather than a manual check because the failure only
- * appears at boot. Every service spec here builds its own tiny module, so all
- * of them would stay green while `npm run start:dev` threw.
- *
- * The environment is set here rather than read from `.env`, so the test states
- * exactly what the application requires and does not pass because a developer's
- * machine happens to be configured.
+ * The application boots. `compile()` resolves the whole graph without a
+ * socket, which catches a provider nothing supplies or a factory that reads
+ * an undeclared variable. The environment is set here, not read from `.env`.
  */
 describe('AppModule', () => {
   // This constant is the list of what the application genuinely cannot start
@@ -134,22 +123,9 @@ describe('AppModule', () => {
   });
 
   /**
-   * **No numeric variable may accept a present but empty value, and the list of
-   * them is discovered rather than written down.**
-   *
-   * This is the gate, not the fix. The fix is one filter in `validateEnv`; this
-   * is what keeps it honest for variables nobody has added yet. It walks the
-   * schema with `design:type` metadata, keeps the properties TypeScript typed
-   * as `number`, and asserts each one reads the same whether it is omitted or
-   * supplied as `''`.
-   *
-   * A hand-written list would have been wrong the day it was written: the two
-   * variables that made this a security problem, `REFRESH_GRACE_SECONDS` and
-   * `TRUST_PROXY_HOPS`, were added by two different commits on the same
-   * afternoon, and `PORT` had been carrying the same hole since the first week.
-   *
-   * The `expect(numeric.length)` line is the control. Metadata discovery that
-   * silently finds nothing would satisfy every assertion in the loop.
+   * No numeric variable may read `''` as 0. The list is discovered from
+   * `design:type`, so a variable added later is covered, and the length check
+   * is the control.
    */
   it('treats an empty numeric variable as absent, for every numeric variable', () => {
     const proto = EnvironmentVariables.prototype as object;
@@ -177,16 +153,8 @@ describe('AppModule', () => {
   });
 
   /**
-   * **Every variable the schema declares appears in `.env.example`.**
-   *
-   * Three commits added `REFRESH_GRACE_SECONDS`, `CORS_ORIGINS` and
-   * `TRUST_PROXY_HOPS` and none of them touched the example file, while
-   * `README.md` went on saying it fills in every value but two. A developer
-   * copying it got a working boot and three defaults they did not know existed,
-   * one of which decides whether a stolen refresh token raises an alarm.
-   *
-   * Discovered from the schema rather than listed, for the same reason as the
-   * check above: a list is a fourth place to forget.
+   * Every declared variable appears in `.env.example`, discovered from the
+   * schema so there is no list to forget.
    */
   it('documents every declared variable in .env.example', () => {
     const example = readFileSync(join(__dirname, '..', '.env.example'), 'utf8');
@@ -202,18 +170,8 @@ describe('AppModule', () => {
   });
 
   /**
-   * **No boolean variable may read a word as truthy, and the list of them is
-   * discovered rather than written down.**
-   *
-   * The sibling of the check above, one type over, and it was found by running
-   * the numeric one's reasoning against the variable this round added.
-   * `SMTP_SECURE` carried `@Type(() => Boolean)`, which is `Boolean(value)`
-   * under implicit conversion, so `SMTP_SECURE=false` read true.
-   *
-   * The last assertion is the one that makes this a gate rather than a
-   * spelling test: an unknown word has to stop the boot. Every string is
-   * truthy, so a boolean that does not reject loudly accepts silently, and
-   * there is no third outcome.
+   * No boolean variable may read a word as truthy, and an unknown word stops
+   * the boot. Discovered from `design:type`.
    */
   it('reads every boolean variable as a word, not as a truthy string', () => {
     const proto = EnvironmentVariables.prototype as object;
@@ -247,27 +205,10 @@ describe('AppModule', () => {
   });
 
   /**
-   * **A variable the shell exported empty stays absent through the module.**
-   *
-   * The gate above proves `validateEnv` reads `''` as absent. This is the
-   * other half. `ConfigService.get` used to fall through to `process.env` when
-   * the validated value was undefined, and a container that exports
-   * `SMTP_USER=` leaves `''` there. So the validator said absent, the service
-   * said `''`, and the mailer authenticated with empty credentials. A `.env`
-   * line never showed it, because the file is parsed and not exported.
-   * `mailer.nodemailer.spec.ts` proves the mailer sends no `auth` for an
-   * undefined pair, so undefined here is what closes it.
-   *
-   * `PORT` is the same hole one type over. It has a default, so the validated
-   * value has to win over the shell's `''`, and `main.ts` reads that value
-   * rather than the shell. The set pair is the control: the option that closes
-   * this must not hide a real value.
-   *
-   * Built from `CONFIG_MODULE_OPTIONS` and not from `AppModule`, because
-   * `forRoot` reads the environment when `app.module.ts` is imported, and a
-   * test that sets `process.env` afterwards is testing the environment the
-   * import saw. The first version of this test compiled `AppModule` and three
-   * of its assertions passed for exactly that reason.
+   * A variable the shell exported empty stays absent through
+   * `ConfigService`, which is what `skipProcessEnv` buys. The set pair is the
+   * control. Built from `CONFIG_MODULE_OPTIONS`, because `forRoot` reads the
+   * environment at import.
    */
   it('reads a variable the shell exported empty as absent, through the module', async () => {
     const before = { ...process.env };

@@ -23,26 +23,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * An error Express raised before any handler ran, in the `http-errors` shape.
- *
- * Express and its body parsers signal failure with `http-errors`, not with
- * Nest's `HttpException`. Nest's adapter converts some of those on the way in
- * and passes the rest through untouched, and which is which is not something to
- * assume. Measured, by reading what actually reached the filter:
- *
- *     body over 100 KB   PayloadTooLargeError   raw, status 413, expose true
- *     body `{"email": `  BadRequestException    already wrapped, status 400
- *
- * So the oversized body was the one that missed every branch and answered 500,
- * on a route that needs no token, logged at error level with a stack. The
- * unreadable body was never broken: Nest had already wrapped it and the
- * `HttpException` branch above answers it 400.
- *
- * `expose` is the property that makes this safe to trust, and it is the reason
- * this branch reads it rather than reading `status` alone. `http-errors` sets it
- * true for a 4xx, where the message describes what the caller sent, and false
- * for a 5xx, where it describes the server. A 5xx therefore falls past this
- * branch and keeps the generic 500, which is the answer it should have.
+ * An error Express raised before any handler ran, in the `http-errors` shape:
+ * an oversized body arrives raw as a 413. `expose` is true for a 4xx, where
+ * the message describes what the caller sent, so a 5xx falls past this branch
+ * and keeps the generic 500.
  */
 interface ExposedHttpError {
   status: number;
@@ -59,21 +43,9 @@ function isExposedHttpError(value: unknown): value is ExposedHttpError {
 }
 
 /**
- * What the caller is told for a body the parser refused.
- *
- * One entry, and the table is not a placeholder for more. `STATUS_DETAILS` is
- * transcribed from the contract, and the contract writes 413 for the image
- * upload: "The image is above the size limit for this operation." An oversized
- * JSON body is the same status for a different cause, so it needs its own
- * sentence. RFC 9457 asks for a `title` that does not change between
- * occurrences and a `detail` that describes this one, so the title stays and
- * only this differs.
- *
- * Every other `body-parser` failure is absent on purpose rather than pending.
- * Each one that was checked arrives already wrapped by Nest, so it never
- * reaches this branch, and an entry for it would be a line no test could turn
- * red. Anything that does arrive takes the status default, which is honest for
- * the status even when it is not specific to the cause.
+ * The detail for a body the parser refused. One entry: the contract's own 413
+ * detail is about the image upload, and every other body-parser failure
+ * arrives already wrapped by Nest.
  */
 const PARSER_DETAILS: Record<string, string> = {
   'entity.too.large': 'The request body is above the size limit.',
@@ -92,13 +64,8 @@ function isProblemFields(value: unknown): value is ProblemField[] {
 }
 
 /**
- * Fill the members the thrower did not name.
- *
- * The default title and detail come from the contract's own response examples,
- * through `problem-titles.ts`. They are never taken from `err.message`: Nest puts
- * request-derived text there, so an unrouted request would answer with the title
- * `Cannot GET /v1/nope` and a malformed body would echo a fragment of what was
- * posted. RFC 9457 requires a title that does not change between occurrences.
+ * Fill the members the thrower did not name, from the contract's own examples
+ * and never from `err.message`. ADR 11.
  */
 function withDefaults(body: ProblemBody): ProblemBody {
   if (body.detail === undefined) {
@@ -131,15 +98,8 @@ export function toProblem(
     return { status, body: withDefaults(body) };
   }
 
-  /**
-   * The payload, not the message.
-   *
-   * `validationExceptionFactory` packs `{ title, detail, errors }` into the
-   * exception, and `err.message` for an object payload is the class name, so
-   * reading the message would drop `errors` on every 400 and answer with the
-   * title `Bad Request Exception`. The contract references that one response
-   * from 22 operations and requires one entry per rejected field.
-   */
+  // The payload, not the message: `validationExceptionFactory` packs title,
+  // detail and errors into it, and the message is only the class name.
   if (err instanceof HttpException) {
     const status = err.getStatus();
     const payload: unknown = err.getResponse();

@@ -6,25 +6,10 @@ import { INT4_MAX } from '../../common/int4';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
- * Query parameters of GET /products. See `openapi.yaml:514-532`.
- *
- * The class extends `PageQueryDto`, so `limit` and `offset` keep the defaults
- * every collection declares and this file states only what is new.
- *
- * `categoryId` carries an upper bound because this operation is `@OptionalAuth`
- * and so reachable with no token. Measured before the bound existed,
- * `?categoryId=2147483648` reached Prisma, which answered `P2020`, which nothing
- * maps, which left a 500 one anonymous request could produce.
- *
- * `includeInactive` must not use `@Type(() => Boolean)`.
- * `node_modules/class-transformer/cjs/TransformOperationExecutor.js:91-94`
- * returns `Boolean(value)` for that target type, and `Boolean('false')` is
- * `true`. A caller who sends `?includeInactive=false` would then ask for the
- * disabled products and receive 403.
- *
- * The transform maps the two spellings the contract allows and returns every
- * other value unchanged, so `@IsBoolean()` rejects it and the operation keeps
- * the 400 it declares.
+ * Query parameters of `listProducts`. `categoryId` is bounded because the
+ * route is reachable with no token. `includeInactive` must not use
+ * `@Type(() => Boolean)`, because `Boolean('false')` is true: the transform
+ * maps the two spellings and leaves anything else for `@IsBoolean` to refuse.
  */
 export class ListProductsQueryDto extends PageQueryDto {
   /** Return only the products in this category. */

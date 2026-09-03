@@ -50,11 +50,10 @@ RUN npm run build
 RUN wget -qO /app/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
 # ---- migrate: the release step -------------------------------------------
-# `prisma migrate deploy` needs the CLI and prisma/migrations, which the runtime stage leaves
-# behind on purpose, so the step is this stage with one command: the build stage, run once as
-# a one-off task before a new tag takes traffic (infra/stack.yml, MigrateTaskDefinition). The
-# build-time DATABASE_URL is emptied here, so a run that forgot to pass one fails at once
-# rather than dialling the placeholder.
+# `prisma migrate deploy` needs the CLI and prisma/migrations, which the runtime stage drops,
+# so the step is the build stage with one command, run once as a one-off task before a new
+# tag takes traffic (infra/stack.yml, MigrateTaskDefinition). The build-time DATABASE_URL is
+# emptied, so a run that forgot to pass one fails at once.
 FROM build AS migrate
 ENV DATABASE_URL=""
 CMD ["npx", "prisma", "migrate", "deploy"]

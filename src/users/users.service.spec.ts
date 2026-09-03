@@ -17,16 +17,9 @@ import type { CreateUserDto } from './dto/create-user.dto';
 import { Prisma } from '../generated/prisma/client';
 
 /**
- * The two /users operations.
- *
- * Every entry below is a behaviour the contract states, with the line that states
- * it.
- *
- * `prismaMockProvider` and `mailerMockProvider` hold the only casts, so this file
- * needs none. Both mocks are rebuilt in `beforeEach`, so no state crosses a test.
- *
- * `aUser()` returns a fixed row whose `passwordHash` is a real argon2id string,
- * so an assertion on a replaced hash compares against a value of the right shape.
+ * The two /users operations. `prismaMockProvider` and `mailerMockProvider`
+ * hold the only casts, rebuilt in `beforeEach`. `aUser()` carries a real
+ * Argon2id hash.
  */
 const PASSWORD = 'correct horse battery';
 
@@ -213,7 +206,7 @@ describe('UsersService', () => {
       expect(JSON.stringify(logged)).not.toContain('ana@example.com');
     });
 
-    it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure (openapi.yaml:452)', async () => {
+    it('rejects a wrong current password with a 401, because it is an authentication failure and not a permissions failure', async () => {
       const err = await service
         .changePassword(128, {
           currentPassword: 'not the current one',
@@ -228,7 +221,7 @@ describe('UsersService', () => {
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('deletes every refresh row for this user, including the row of the calling device (openapi.yaml:455)', async () => {
+    it('deletes every refresh row for this user, including the row of the calling device', async () => {
       await service.changePassword(128, {
         currentPassword: PASSWORD,
         newPassword: 'a brand new password',
@@ -247,7 +240,7 @@ describe('UsersService', () => {
       });
     });
 
-    it('sends mail to the account address (openapi.yaml:457)', async () => {
+    it('sends mail to the account address', async () => {
       await service.changePassword(128, {
         currentPassword: PASSWORD,
         newPassword: 'a brand new password',
