@@ -1,6 +1,6 @@
 # 31. Images live in a closed bucket, are served through the distribution, and are what their bytes say
 
-Status: accepted
+Status: accepted, revised 2026-09-03
 Date: 2026-09-02
 
 ## Context
@@ -29,6 +29,12 @@ map.
 
 **Gives up:** a deleted image can be served from the edge for up to a day, because an
 invalidation is a paid call. No resizing.
+
+**Revised 2026-09-03, from a test written by hand:** two primary uploads in the same moment
+could both commit as primary, because the demote cannot see a row the other transaction has
+not committed and no constraint states the one-primary rule. The transaction now locks
+the product row with `SELECT ... FOR UPDATE` before the demote, so the second upload waits
+and demotes what it can then see. ADR 34.
 
 **Switch:** signed URLs when an image belongs to one person, an invalidation per delete when a
 removed image must vanish now.

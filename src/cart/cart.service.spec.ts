@@ -112,18 +112,23 @@ describe('CartService', () => {
         variantId: 21,
       });
       expect(call.create).toEqual({ userId: USER, variantId: 21, quantity: 3 });
-      expect(call.update).toEqual({ quantity: 3 });
+      expect(call.update).toEqual({ quantity: { increment: 3 } });
     });
 
-    it('adds to the line that exists, because the body is an amount to add', async () => {
+    // Written by hand against the service, 2026-09-03. The body is an amount
+    // to add, so the write is an atomic increment on the row, and two adds in
+    // the same moment both count. The read feeds the stock check only.
+    it('adds to the line that exists as an increment, never as a computed total', async () => {
       prisma.cartItem.findUnique.mockResolvedValue({ quantity: 2 });
 
       await service.addCartItem(USER, { variantId: 21, quantity: 3 });
 
       const call = nthArg(prisma.cartItem.upsert) as {
-        update: { quantity: number };
+        create: { quantity: number };
+        update: { quantity: unknown };
       };
-      expect(call.update.quantity).toBe(5);
+      expect(call.create.quantity).toBe(3);
+      expect(call.update.quantity).toEqual({ increment: 3 });
     });
 
     it('answers 409 insufficient-stock when the sum is above the units on hand, and writes nothing', async () => {

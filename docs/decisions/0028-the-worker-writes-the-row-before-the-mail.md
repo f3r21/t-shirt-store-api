@@ -1,6 +1,6 @@
 # 28. The worker writes the row before the mail, and a failed send takes the row back
 
-Status: accepted
+Status: accepted, revised 2026-09-03
 Date: 2026-09-02
 
 ## Context
@@ -27,3 +27,8 @@ the failed set is the alert.
 
 **Gives up:** a crash between the row and the mail loses that one mail. A `P2003` on a
 deleted person or variant is a skip. A person clears the failed set by hand.
+
+**Revised 2026-09-03, from a test written by hand:** only a failed send took the row back. A
+lookup that rejected between the row and the send left the row, the retry met `P2002` and
+read it as already told, and the person was never mailed. Now any rejection after the row
+takes the row back and throws again.

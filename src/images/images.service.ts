@@ -71,6 +71,10 @@ export class ImagesService {
     try {
       const row = await this.prisma.$transaction(async (tx) => {
         if (isPrimary) {
+          // "One primary per product" spans rows and no constraint says it,
+          // so the product row is locked until the commit: a second primary
+          // upload waits here, then demotes the one it can now see. ADR 34.
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId} FOR UPDATE`;
           await tx.productImage.updateMany({
             where: { productId, isPrimary: true },
             data: { isPrimary: false },

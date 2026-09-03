@@ -224,6 +224,8 @@ describe('Checkout (e2e)', () => {
         'pending',
         'cancelled',
       ]);
+      // Nothing was taken from an unpaid order, so nothing comes back.
+      expect(await stockOf(fixture.variantId)).toBe(7);
     });
 
     it('refuses a client who tries to advance an order, with 403', async () => {
@@ -520,6 +522,30 @@ describe('Checkout (e2e)', () => {
       expect(row.paymentMethod).toBeNull();
       expect(await stockOf(fixture.variantId)).toBe(7);
       expect(await eventsRecorded()).toBe(1);
+    });
+
+    // Written by hand against the service, 2026-09-03. The contract lets a
+    // client cancel a paid order, and the webhook already took the units.
+    it('gives the units back when the client cancels a paid order', async () => {
+      const id = await placeOrder(token);
+      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      expect(await stockOf(fixture.variantId)).toBe(5);
+
+      await setStatus(token, id, 'cancelled').expect(200);
+
+      expect((await orderRow(id)).status).toBe('cancelled');
+      expect(await stockOf(fixture.variantId)).toBe(7);
+    });
+
+    it('gives the units back when the manager cancels a processing order', async () => {
+      const id = await placeOrder(token);
+      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      const manager = await signInAs(ctx, 'manager@example.com', 'manager');
+      await setStatus(manager, id, 'processing').expect(200);
+
+      await setStatus(manager, id, 'cancelled').expect(200);
+
+      expect(await stockOf(fixture.variantId)).toBe(7);
     });
 
     it('floors the stock at zero when the units are gone by the time the payment lands', async () => {

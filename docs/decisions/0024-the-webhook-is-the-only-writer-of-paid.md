@@ -1,6 +1,6 @@
 # 24. The webhook is the only writer of `paid`, and a retry is a unique violation
 
-Status: accepted, revised 2026-09-02
+Status: accepted, revised 2026-09-03
 Date: 2026-09-01
 
 ## Context
@@ -31,6 +31,11 @@ performs. A crash between the order and the link leaves a pending order with no 
 **Revised 2026-09-02, from a test written by hand:** a session completes `unpaid` for a
 delayed method, and the handler paid it. It now pays only when `payment_status` is `paid`,
 keeps the event row and warns `payment.unpaid-session`.
+
+**Revised 2026-09-03, from a test written by hand:** the floor to zero was an unguarded write
+after a read, so a restock landing in between was discarded. The floor now carries the stock
+it read, zero rows starts the round again from the decrement, and a third miss throws so the
+transaction rolls back and Stripe retries. ADR 34.
 
 **Switch:** handle `checkout.session.async_payment_succeeded` when a delayed method is
 enabled.

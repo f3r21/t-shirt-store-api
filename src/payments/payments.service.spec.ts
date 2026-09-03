@@ -453,15 +453,20 @@ describe('PaymentsService', () => {
     });
 
     it('floors the stock at zero when the units are gone, and warns with the shortfall', async () => {
-      prisma.productVariant.updateMany.mockResolvedValue({ count: 0 });
+      prisma.productVariant.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
       prisma.productVariant.findUniqueOrThrow.mockResolvedValue({ stock: 1 });
 
       await service.applyEvent(anEvent('payment_intent.succeeded'));
 
-      expect(nthArg(prisma.productVariant.update)).toEqual({
-        where: { id: 21 },
+      // The floor carries the stock it just read, so a write that landed in
+      // between matches nothing instead of being overwritten. ADR 34.
+      expect(nthArg(prisma.productVariant.updateMany, 0, 1)).toEqual({
+        where: { id: 21, stock: 1 },
         data: { stock: 0 },
       });
+      expect(prisma.productVariant.update).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'stock.oversold',
@@ -478,6 +483,50 @@ describe('PaymentsService', () => {
       expect(notify).toHaveBeenCalledWith([
         { variantId: 21, before: 1, after: 0 },
       ]);
+    });
+
+    // Written by hand against the service, 2026-09-03. A restock that lands
+    // between the read and the floor is a real write, and the floor must not
+    // discard it: the guarded floor matches nothing, and the decrement is
+    // tried again against the new stock.
+    it('tries the decrement again when the stock moved under the floor, and never floors it', async () => {
+      prisma.productVariant.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+      prisma.productVariant.findUniqueOrThrow
+        .mockResolvedValueOnce({ stock: 1 })
+        .mockResolvedValueOnce({ stock: 48 });
+
+      await service.applyEvent(anEvent('payment_intent.succeeded'));
+
+      expect(nthArg(prisma.productVariant.updateMany, 0, 1)).toEqual({
+        where: { id: 21, stock: 1 },
+        data: { stock: 0 },
+      });
+      expect(nthArg(prisma.productVariant.updateMany, 0, 2)).toEqual({
+        where: { id: 21, stock: { gte: 2 } },
+        data: { stock: { decrement: 2 } },
+      });
+      expect(prisma.productVariant.update).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'stock.oversold' }),
+      );
+      expect(notify).toHaveBeenCalledWith([
+        { variantId: 21, before: 50, after: 48 },
+      ]);
+    });
+
+    it('gives up after three rounds of the stock moving, so the transaction rolls back and Stripe retries', async () => {
+      prisma.productVariant.updateMany.mockResolvedValue({ count: 0 });
+      prisma.productVariant.findUniqueOrThrow.mockResolvedValue({ stock: 1 });
+
+      await expect(
+        service.applyEvent(anEvent('payment_intent.succeeded')),
+      ).rejects.toThrow('moved three times');
+
+      expect(prisma.productVariant.update).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
     });
 
     it('reads a metadata order id that is not a positive integer as none', async () => {

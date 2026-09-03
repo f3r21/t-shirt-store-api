@@ -96,6 +96,8 @@ describe('ImagesService', () => {
         prisma.productImage.create.mock.invocationCallOrder[0],
       );
       expect(prisma.productImage.updateMany).not.toHaveBeenCalled();
+      // No primary to replace, so no lock on the product row.
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
       expect(image).toEqual({
         id: 88,
         url: `${BASE}/${key}`,
@@ -103,13 +105,22 @@ describe('ImagesService', () => {
       });
     });
 
-    it('clears the previous primary before it writes a new one, when asked', async () => {
+    // Written by hand against the service, 2026-09-03. "One primary per
+    // product" spans rows, and no constraint the schema can express says it,
+    // so the transaction locks the product row first: a second primary upload
+    // waits for the first to commit, then demotes what it can now see. ADR 34.
+    it('locks the product row, then clears the previous primary, then writes the new one', async () => {
       await service.upload(7, { buffer: PNG }, true);
 
+      const lock = (nthArg(prisma.$queryRaw) as readonly string[]).join('?');
+      expect(lock).toContain('FOR UPDATE');
       expect(nthArg(prisma.productImage.updateMany)).toEqual({
         where: { productId: 7, isPrimary: true },
         data: { isPrimary: false },
       });
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.productImage.updateMany.mock.invocationCallOrder[0],
+      );
       expect(
         prisma.productImage.updateMany.mock.invocationCallOrder[0],
       ).toBeLessThan(prisma.productImage.create.mock.invocationCallOrder[0]);

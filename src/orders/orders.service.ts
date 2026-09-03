@@ -34,7 +34,8 @@ import {
  * Orders: placed from the cart, moved through the status flow, read back one
  * at a time or as a filtered page. Ownership is in the `where` the ability
  * gives, so another client's order is the same 404 as a missing one (ADR 25).
- * Stock is read here and never written; the webhook lowers it (ADR 23).
+ * The webhook lowers stock; this service writes it in one place, giving the
+ * units back when a paid order is cancelled (ADR 23).
  */
 @Injectable()
 export class OrdersService {
@@ -291,6 +292,21 @@ export class OrdersService {
       await tx.orderStatusChange.create({
         data: { orderId: id, status: dto.status },
       });
+      // The webhook took the units on `paid`. A cancel after that gives them
+      // back, one atomic increment per line. A rise is never a low-stock
+      // crossing, so the producer is not told.
+      if (dto.status === 'cancelled' && order.status !== 'pending') {
+        const lines = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { variantId: true, quantity: true },
+        });
+        for (const line of lines) {
+          await tx.productVariant.updateMany({
+            where: { id: line.variantId },
+            data: { stock: { increment: line.quantity } },
+          });
+        }
+      }
       return tx.order.findUniqueOrThrow({
         where: { id },
         include: ORDER_DETAIL_INCLUDE,

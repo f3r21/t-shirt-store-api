@@ -377,6 +377,41 @@ describe('OrdersService', () => {
       expect(order.status).toBe('cancelled');
     });
 
+    // Written by hand against the service, 2026-09-03. The webhook takes the
+    // units on `paid`, so a cancel of a paid or processing order gives them
+    // back, one atomic increment per line, in the same transaction.
+    it('gives each line its units back when a paid order is cancelled', async () => {
+      prisma.order.findFirst.mockResolvedValue(anOrder({ status: 'paid' }));
+      prisma.orderItem.findMany.mockResolvedValue([
+        { variantId: 21, quantity: 2 },
+        { variantId: 22, quantity: 1 },
+      ]);
+
+      await service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+        status: 'cancelled',
+      });
+
+      expect(nthArg(prisma.orderItem.findMany)).toMatchObject({
+        where: { orderId: 501 },
+      });
+      expect(nthArg(prisma.productVariant.updateMany, 0, 0)).toEqual({
+        where: { id: 21 },
+        data: { stock: { increment: 2 } },
+      });
+      expect(nthArg(prisma.productVariant.updateMany, 0, 1)).toEqual({
+        where: { id: 22 },
+        data: { stock: { increment: 1 } },
+      });
+    });
+
+    it('touches no stock when a pending order is cancelled, because none was taken', async () => {
+      await service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+        status: 'cancelled',
+      });
+
+      expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+    });
+
     it('answers 409 and writes no history when the order moved under it', async () => {
       prisma.order.updateMany.mockResolvedValue({ count: 0 });
 

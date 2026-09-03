@@ -144,6 +144,24 @@ describe('Product images (e2e)', () => {
       ]);
     });
 
+    // Written by hand against the service, 2026-09-03. Two primary uploads in
+    // the same moment must still leave one primary: the second waits on the
+    // product row and demotes the first once it can see it.
+    it('keeps one primary when two primary uploads land in the same moment', async () => {
+      const [first, second] = await Promise.all([
+        upload(manager, fixture.productId, PNG, { isPrimary: 'true' }),
+        upload(manager, fixture.productId, PNG, { isPrimary: 'true' }),
+      ]);
+
+      expect([first.status, second.status]).toEqual([201, 201]);
+      const stored = await rows();
+      expect(stored).toHaveLength(2);
+      expect(stored.filter((row) => row.isPrimary)).toHaveLength(1);
+      const res = await detail().expect(200);
+      const images = (res.body as { images: { isPrimary: boolean }[] }).images;
+      expect(images.map((image) => image.isPrimary)).toEqual([true, false]);
+    });
+
     it('answers 415 for a text file declared as an image, and stores nothing', async () => {
       const res = await upload(
         manager,

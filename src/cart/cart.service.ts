@@ -66,10 +66,10 @@ export class CartService {
   /**
    * Add a quantity to a line, creating it when absent.
    *
-   * The quantity in the body is an amount to add and not the amount wanted,
-   * so the existing line is read first and the sum is what the stock check
-   * sees. A sum above the stock throws before the upsert, so the cart does not
-   * change.
+   * The quantity in the body is an amount to add, so the existing line is
+   * read and the sum is what the stock check sees; a sum above the stock
+   * throws before any write. The write itself is an atomic increment on the
+   * row, so two adds in the same moment both count. ADR 22, ADR 34.
    */
   async addCartItem(userId: number, dto: AddCartItemDto): Promise<CartDto> {
     const variant = await this.findSellableVariantOr404(dto.variantId);
@@ -83,7 +83,11 @@ export class CartService {
       throw insufficientStock(variant.stock, quantity);
     }
 
-    await this.upsertLine(userId, variant.id, quantity);
+    await this.prisma.cartItem.upsert({
+      where: { userId_variantId: { userId, variantId: variant.id } },
+      create: { userId, variantId: variant.id, quantity: dto.quantity },
+      update: { quantity: { increment: dto.quantity } },
+    });
     return this.getCart(userId);
   }
 

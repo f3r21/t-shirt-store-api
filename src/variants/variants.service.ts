@@ -43,6 +43,15 @@ export class VariantsService {
     });
   }
 
+  /** A count that raced another stock write. The remedy is to count again. */
+  private stockChanged(): ConflictException {
+    return new ConflictException({
+      title: 'Conflict',
+      detail:
+        'The stock changed while you were counting. Read it and send the count again.',
+    });
+  }
+
   /**
    * The parent product, or 404. Disabled passes, because a manager works on a
    * disabled product; deleted is 404 for everyone. ADR 15.
@@ -168,7 +177,8 @@ export class VariantsService {
   /**
    * Set the units on hand, an absolute value bounded at zero by the DTO. The
    * second stock writer, so the values before and after go to the low-stock
-   * producer. ADR 27.
+   * producer. The write carries the stock it read, so the pair is exact and a
+   * count that raced another write is refused with 409. ADR 27, ADR 34.
    */
   async setVariantStock(
     id: number,
@@ -176,13 +186,19 @@ export class VariantsService {
   ): Promise<ProductVariantDto> {
     const current = await this.findVariantOr404(id);
 
-    const row = await this.prisma.productVariant.update({
-      where: { id },
+    const written = await this.prisma.productVariant.updateMany({
+      where: { id, stock: current.stock },
       data: { stock: dto.stock },
     });
+    if (written.count === 0) {
+      throw this.stockChanged();
+    }
     await this.lowStock.notify([
       { variantId: id, before: current.stock, after: dto.stock },
     ]);
+    const row = await this.prisma.productVariant.findUniqueOrThrow({
+      where: { id },
+    });
     return toProductVariantDto(row);
   }
 }
