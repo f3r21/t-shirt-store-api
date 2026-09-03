@@ -59,6 +59,7 @@ contract's and the data model's records live in the Week 2 repository.
 - [30. Every push to main releases through a role GitHub assumes, and the stack changes through a role of its own](0030-every-push-releases-through-an-assumed-role.md)
 - [31. Images live in a closed bucket, are served through the distribution, and are what their bytes say](0031-images-live-in-a-closed-bucket.md)
 - [32. Mail leaves through SES from the task role, Stripe delivers to the distribution, and main is the release](0032-mail-through-ses-and-main-is-the-release.md)
+- [35. The pool size is chosen in the environment, and the ceiling is measured](0035-the-pool-size-is-chosen-and-the-ceiling-measured.md)
 
 ## Tooling and tests
 

@@ -267,4 +267,21 @@ describe('AppModule', () => {
     expect(parsed.SMTP_PORT).toBe(1025);
     expect(parsed.JWT_ACCESS_TTL).toBe(900);
   });
+
+  /**
+   * The pool size is chosen in the environment, beside the replica count it
+   * is measured against, and never inherited from the driver. ADR 35.
+   */
+  it('reads DATABASE_POOL_SIZE as a positive integer, and defaults it to 10', () => {
+    expect(validateEnv(REQUIRED).DATABASE_POOL_SIZE).toBe(10);
+    expect(
+      validateEnv({ ...REQUIRED, DATABASE_POOL_SIZE: '25' }).DATABASE_POOL_SIZE,
+    ).toBe(25);
+    expect(() => validateEnv({ ...REQUIRED, DATABASE_POOL_SIZE: '0' })).toThrow(
+      /DATABASE_POOL_SIZE/,
+    );
+    expect(() =>
+      validateEnv({ ...REQUIRED, DATABASE_POOL_SIZE: 'ten' }),
+    ).toThrow(/DATABASE_POOL_SIZE/);
+  });
 });

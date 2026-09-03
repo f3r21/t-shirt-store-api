@@ -155,6 +155,15 @@ export class EnvironmentVariables {
   CORS_ORIGINS: string = '';
 
   /**
+   * Connections each process opens to Postgres. The ceiling is the database's
+   * `max_connections` less its reserved three, divided by this times the
+   * processes per task; `ARCHITECTURE.md` carries the measured number. ADR 35.
+   */
+  @IsInt()
+  @Min(1)
+  DATABASE_POOL_SIZE: number = 10;
+
+  /**
    * Reverse proxies in front of this process. A count and never a boolean:
    * Express reads the nth address from the right, and `true` lets any client
    * forge `X-Forwarded-For`. 0 on a laptop and in the e2e suite, 1 behind
