@@ -135,6 +135,23 @@ describe('LowStockProcessor', () => {
     });
   });
 
+  // Written by hand against the processor, 2026-09-03. A lookup that rejects
+  // for a transient reason must take the row back too: with the row left in
+  // place, the retry meets `P2002` and reads it as "already told", and the
+  // person is never mailed.
+  it('deletes the row and rethrows when the lookup fails, so the retry can send', async () => {
+    prisma.productVariant.findUnique.mockRejectedValue(
+      new Error('pool exhausted'),
+    );
+
+    await expect(processor.process(JOB)).rejects.toThrow('pool exhausted');
+
+    expect(mailer.sendLowStock).not.toHaveBeenCalled();
+    expect(nthArg(prisma.stockNotification.deleteMany)).toEqual({
+      where: { userId: 128, variantId: 21 },
+    });
+  });
+
   it('deletes the row and sends nothing when the person is gone', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
 
