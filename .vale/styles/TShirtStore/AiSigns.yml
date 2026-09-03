@@ -1,0 +1,34 @@
+# Words and formulas that mark machine-written prose, from Wikipedia's
+# "Signs of AI writing". None of them appears in the pages today, so one
+# recurrence fails the build.
+extends: existence
+message: "'%s' marks machine-written prose. Rewrite the sentence."
+level: error
+ignorecase: true
+tokens:
+  - delve
+  - tapestry
+  - testament
+  - underscore
+  - pivotal
+  - crucial
+  - vibrant
+  - landscape
+  - realm
+  - showcase
+  - foster
+  - garner
+  - intricate
+  - meticulous
+  - seamless
+  - multifaceted
+  - leverage
+  - utilize
+  - streamline
+  - moreover
+  - furthermore
+  - additionally
+  - not only
+  - not just
+  - it is important to note
+  - in conclusion

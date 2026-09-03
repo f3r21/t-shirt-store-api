@@ -141,11 +141,8 @@ jobs:
       - name: Build the runtime image
         run: docker build --tag t-shirt-store-api:${{ github.sha }} .
 
-  # The two pages a reviewer reads, linted with the Google developer style
-  # through Vale. The rule selection and the vocabulary live in .vale.ini and
-  # .vale/styles/config; the action downloads the Google package itself. Vale
-  # exits non-zero only on error-level alerts, so the gate is exactly the rules
-  # .vale.ini promotes to that level. `checks: write` is what the check reporter
+  # Vale over the pages and the decision records, with the rules .vale.ini names;
+  # the action downloads the packages. `checks: write` is what the check reporter
   # needs on a workflow that runs on push and never on a pull request.
   prose:
     name: Prose
@@ -161,7 +158,7 @@ jobs:
 
       - uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
         with:
-          files: README.md,ARCHITECTURE.md,docs/decisions
+          files: README.md,ARCHITECTURE.md,contract/README.md,docs/decisions
           separator: ','
           reporter: github-check
           filter_mode: nofilter

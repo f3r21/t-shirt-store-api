@@ -1,0 +1,20 @@
+# Phrases this repository's prose leans on. A warning, never a red build: a
+# contrast stays where the alternative is the subject, and goes where it only
+# persuades.
+extends: existence
+message: "'%s' is a register phrase. Keep it only where the alternative is the subject."
+level: warning
+ignorecase: true
+tokens:
+  - said plainly
+  - on purpose
+  - deliberately?
+  - which is why
+  - the whole point
+  - measured, not assumed
+  - not a style choice
+  - rather than
+  - and not
+  - the day
+  - nothing else
+  - by hand

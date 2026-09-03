@@ -9,9 +9,10 @@
 # Written by `prisma generate`
 /src/generated/
 
-# The style package `vale sync` downloads; the config and the project vocabulary
-# beside it are committed
+# The style packages `vale sync` downloads; the config, the project vocabulary
+# and the project rules beside them are committed
 /.vale/styles/Google/
+/.vale/styles/Readability/
 
 *.log
 .DS_Store

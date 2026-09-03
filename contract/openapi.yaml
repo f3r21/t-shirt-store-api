@@ -1,39 +1,22 @@
-# The contract (paths, schemas, status codes, error shape) is written against
-# DECISIONS.md. Run both linters from the repository root before every commit:
+# The contract this service implements, authored as the Week 2 deliverable against
+# that repository's design ledger. README.md beside this file says where it came
+# from and why it lives here. Lint it from the repository root:
 #
-#   npx --yes @redocly/cli@latest lint 5-api-design/openapi.yaml
-#   npx --yes @stoplight/spectral-cli@6 lint 5-api-design/openapi.yaml \
-#     --ruleset 5-api-design/.spectral.yaml
+#   npx --yes @redocly/cli lint contract/openapi.yaml
 #
-# `--ruleset` is not optional. Spectral resolves the ruleset against the working
-# directory, not against the document, so it exits with "No ruleset has been found"
-# when you omit the flag. README.md says the same.
+# Measured 2026-09-03: 0 errors and 4 warnings, none silenced with placeholder data.
 #
-# Measured 2026-08-28, with all 37 operations authored: Redocly 0 errors and 4 warnings,
-# Spectral 0 errors and 1 warning. Re-measured, not carried over, and the same 4 come back
-# on the file as it stood before this round of edits, so this round added none. Nothing is
-# silenced with placeholder data. Re-measure before you quote either number.
+#   1 info-license           Coursework, not a published API.
+#   1 no-server-example.com  The server really is localhost.
+#   2 no-illogical-          A one-member `allOf` around a `$ref`, at the `MinTotal`
+#     composition-keywords   and `MaxTotal` parameters. 3.0 ignores a sibling of `$ref`,
+#                            so this is the only way to attach an example to a
+#                            referenced schema.
 #
-#   1 info-license           Redocly only. This is coursework, not a published API.
-#   1 info-contact           Spectral only. The two tools ask for different info fields.
-#   1 no-server-example.com  The server really is localhost. That rule guards public
-#                            descriptions.
-#   2 no-illogical-          A one-member `allOf` around a `$ref`, at the two Money
-#     composition-keywords   examples. 3.0 ignores a sibling of `$ref`, so this is the
-#                            only way to attach an example to a referenced schema.
-#
-# The unused-component warnings are gone, and that is the number worth watching. It stood
-# at 8 when only the auth block existed, and each one named a component waiting for an
-# operation nobody had written. At 0, every component in this file is referenced, so no
-# feature was left behind.
-#
-# 3.0.3, not 3.1: @nestjs/swagger emits 3.0.0, so Week 3's generated document stays
-# diffable against this one. The concrete tell is nullability: 3.0 spells it
-# `nullable: true`, 3.1 spells it `type: [string, "null"]`.
-#
-# No field in this document declares nullability. An optional value is ABSENT from the
-# body, never present and null.
-# Re-derive: `grep -cE '^ +nullable:' openapi.yaml` returns 0.
+# 3.0.3, not 3.1: @nestjs/swagger emits 3.0.0, so the generated document stays
+# diffable against this one. No field declares nullability: an optional value is
+# absent from the body, never present and null.
+# Re-derive: `rg -n '^ +nullable:' openapi.yaml` prints nothing.
 openapi: 3.0.3
 
 info:
