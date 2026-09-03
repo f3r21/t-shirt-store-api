@@ -71,7 +71,7 @@ describe('Likes (e2e)', () => {
       expect(res.body).toMatchObject({ status: 404 });
     });
 
-    it('answers 404 for a variant whose product is not on sale', async () => {
+    it('answers 404 for a like on a variant whose product is not on sale', async () => {
       const disabled = await seedProductWithVariant(ctx.prisma, {
         name: 'Withdrawn Tee',
         isActive: false,

@@ -192,7 +192,7 @@ describe('CartService', () => {
       expect(call.update.quantity).toBe(1);
     });
 
-    it('answers 409 insufficient-stock above the units on hand, and writes nothing', async () => {
+    it('throws insufficient-stock above the units on hand, before any write', async () => {
       const err = await caught(() =>
         service.setCartItem(USER, 21, { quantity: 8 }),
       );

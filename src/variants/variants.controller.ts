@@ -29,6 +29,9 @@ import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
  * which nothing maps, so the caller reads 500 instead of 400.
  */
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 403, description: 'The role is not permitted.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('products')
 export class ProductVariantsController {
   constructor(private readonly variants: VariantsService) {}
@@ -47,11 +50,8 @@ export class ProductVariantsController {
     },
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
   @ApiResponse({ status: 404, description: 'The product does not exist.' })
   @ApiResponse({ status: 409, description: 'The variant already exists.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post(':id/variants')
   @HttpCode(HttpStatus.CREATED)
   async createVariant(
@@ -66,6 +66,9 @@ export class ProductVariantsController {
 }
 
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 403, description: 'The role is not permitted.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('variants')
 export class VariantsController {
   constructor(private readonly variants: VariantsService) {}
@@ -78,11 +81,8 @@ export class VariantsController {
     type: ProductVariantDto,
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
   @ApiResponse({ status: 409, description: 'The variant conflicts.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateVariant(
     @Param('id', ParseIdPipe) id: number,
@@ -94,11 +94,8 @@ export class VariantsController {
   @CheckPolicies(can('manage', 'ProductVariant'))
   @ApiOperation({ summary: 'Remove a variant' })
   @ApiResponse({ status: 204, description: 'The variant is removed.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
   @ApiResponse({ status: 409, description: 'The variant is in use.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteVariant(@Param('id', ParseIdPipe) id: number): Promise<void> {
@@ -113,10 +110,7 @@ export class VariantsController {
     type: ProductVariantDto,
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 403, description: 'The role is not permitted.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id/stock')
   setVariantStock(
     @Param('id', ParseIdPipe) id: number,

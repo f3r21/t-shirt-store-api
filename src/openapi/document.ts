@@ -3,6 +3,24 @@ import type { OpenAPIObject } from '@nestjs/swagger';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Problem } from '../common/problem/problem.dto';
 
+type Responses = Record<string, Record<string, unknown> | undefined>;
+
+/** Visit the responses of every operation, with the path template it is keyed on. */
+function forEachOperation(
+  document: OpenAPIObject,
+  visit: (path: string, responses: Responses) => void,
+): void {
+  for (const [path, item] of Object.entries(document.paths)) {
+    if (item === null || typeof item !== 'object') continue;
+
+    for (const operation of Object.values(item)) {
+      const responses = (operation as { responses?: Responses } | null)
+        ?.responses;
+      if (responses !== undefined) visit(path, responses);
+    }
+  }
+}
+
 /**
  * Give every failure the `Problem` body, in one place: `ProblemFilter` is
  * global, so this is one rule and not a decorator per response. It only fills;
@@ -17,27 +35,17 @@ function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
     },
   };
 
-  type Responses = Record<string, { content?: unknown } | undefined>;
-
-  for (const item of Object.values(document.paths)) {
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined) continue;
-
-      for (const [status, response] of Object.entries(responses)) {
-        if (
-          response !== undefined &&
-          Number(status) >= 400 &&
-          response.content === undefined
-        ) {
-          Object.assign(response, problem);
-        }
+  forEachOperation(document, (_path, responses) => {
+    for (const [status, response] of Object.entries(responses)) {
+      if (
+        response !== undefined &&
+        Number(status) >= 400 &&
+        response.content === undefined
+      ) {
+        Object.assign(response, problem);
       }
     }
-  }
+  });
 
   return document;
 }
@@ -48,24 +56,15 @@ function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
  * contract keys on.
  */
 function declarePathParamBadRequest(document: OpenAPIObject): OpenAPIObject {
-  type Responses = Record<string, unknown>;
+  forEachOperation(document, (path, responses) => {
+    if (!path.includes('{') || responses['400'] !== undefined) return;
 
-  for (const [path, item] of Object.entries(document.paths)) {
-    if (!path.includes('{')) continue;
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined || responses['400'] !== undefined) continue;
-
-      responses['400'] = {
-        description:
-          'A path segment that must be an integer is not one. ' +
-          'An integer that matches no row returns 404.',
-      };
-    }
-  }
+    responses['400'] = {
+      description:
+        'A path segment that must be an integer is not one. ' +
+        'An integer that matches no row returns 404.',
+    };
+  });
 
   return document;
 }
@@ -93,26 +92,19 @@ function declareUniversalHeaders(document: OpenAPIObject): OpenAPIObject {
     },
   };
 
-  type Responses = Record<string, { headers?: unknown } | undefined>;
-
-  for (const item of Object.values(document.paths)) {
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined) continue;
-
-      for (const [status, response] of Object.entries(responses)) {
-        const headers = byStatus[status];
-        // It only fills. A response that already names its headers keeps them,
-        // so the four `Location` headers on the 201s are untouched.
-        if (response !== undefined && headers !== undefined) {
-          response.headers = { ...headers, ...(response.headers ?? {}) };
-        }
+  forEachOperation(document, (_path, responses) => {
+    for (const [status, response] of Object.entries(responses)) {
+      const headers = byStatus[status];
+      // It only fills. A response that already names its headers keeps them,
+      // so the four `Location` headers on the 201s are untouched.
+      if (response !== undefined && headers !== undefined) {
+        response.headers = {
+          ...headers,
+          ...(response.headers as Record<string, unknown> | undefined),
+        };
       }
     }
-  }
+  });
 
   return document;
 }

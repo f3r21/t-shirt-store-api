@@ -33,6 +33,8 @@ import { ApiPageResponse } from '../common/dto/api-page-response';
  * order is 404. Each handler is named after its operation id. ADR 25.
  */
 @ApiTags('orders')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('orders')
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
@@ -50,12 +52,10 @@ export class OrdersController {
       },
     },
   })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 409,
     description: 'The cart is empty, or a line is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createOrder(
@@ -71,9 +71,7 @@ export class OrdersController {
   @ApiOperation({ summary: 'List every order' })
   @ApiPageResponse(OrderSummaryDto, 'One page of orders.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listAllOrders(
     @CurrentUser() user: AccessTokenPayload,
@@ -86,12 +84,10 @@ export class OrdersController {
   @ApiOperation({ summary: 'Get one order' })
   @ApiResponse({ status: 200, description: 'The order.', type: OrderDto })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 404,
     description: 'The order does not exist, or belongs to another client.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get(':id')
   getOrder(
     @CurrentUser() user: AccessTokenPayload,
@@ -109,7 +105,6 @@ export class OrdersController {
     type: OrderDto,
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 403,
     description: 'The caller may not send this status.',
@@ -122,7 +117,6 @@ export class OrdersController {
     status: 409,
     description: 'The current status does not allow this move.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id/status')
   setOrderStatus(
     @CurrentUser() user: AccessTokenPayload,
@@ -136,6 +130,8 @@ export class OrdersController {
 
 /** The client's own history, on the path the contract puts it. */
 @ApiTags('orders')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('users/me/orders')
 export class MyOrdersController {
   constructor(private readonly orders: OrdersService) {}
@@ -144,8 +140,6 @@ export class MyOrdersController {
   @ApiOperation({ summary: 'List the orders of this user' })
   @ApiPageResponse(OrderSummaryDto, 'One page of orders.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listMyOrders(
     @CurrentUser() user: AccessTokenPayload,

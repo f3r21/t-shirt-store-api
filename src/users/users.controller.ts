@@ -23,6 +23,7 @@ import { CheckPolicies } from '../authz/check-policies.decorator';
 import { can } from '../authz/policies';
 
 @ApiTags('auth')
+@ApiResponse({ status: 500, description: 'Unexpected server error.' })
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
@@ -50,7 +51,6 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 409, description: 'The email address is taken.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'Unexpected server error.' })
   /**
    * The sign-in tier on sign-up: the 409 for a taken address is an
    * enumeration oracle, and the contract requires it, so the limit is the
@@ -81,7 +81,6 @@ export class UsersController {
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'Unexpected server error.' })
   @Patch('me/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   changePassword(

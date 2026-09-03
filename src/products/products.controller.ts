@@ -29,6 +29,7 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
 import { NonEmptyBodyPipe } from '../common/non-empty-body.pipe';
 
 @ApiTags('catalog')
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('products')
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
@@ -49,7 +50,6 @@ export class ProductsController {
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listProducts(
     @CurrentAbility() ability: AppAbility,
@@ -68,7 +68,6 @@ export class ProductsController {
   })
   @ApiResponse({ status: 401, description: 'The token is invalid.' })
   @ApiResponse({ status: 404, description: 'The product does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get(':id')
   getProduct(
     @CurrentAbility() ability: AppAbility,
@@ -94,7 +93,6 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
   @ApiResponse({ status: 422, description: 'The request body fails a rule.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createProduct(
@@ -118,7 +116,6 @@ export class ProductsController {
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
   @ApiResponse({ status: 404, description: 'The product does not exist.' })
   @ApiResponse({ status: 422, description: 'The request body fails a rule.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Patch(':id')
   updateProduct(
     @Param('id', ParseIdPipe) id: number,
@@ -133,7 +130,6 @@ export class ProductsController {
   @ApiResponse({ status: 401, description: 'The token is absent or invalid.' })
   @ApiResponse({ status: 403, description: 'The caller is not a manager.' })
   @ApiResponse({ status: 404, description: 'The product does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteProduct(@Param('id', ParseIdPipe) id: number): Promise<void> {

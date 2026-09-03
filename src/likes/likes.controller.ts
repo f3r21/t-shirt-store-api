@@ -27,6 +27,8 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
  * handler is named after its operation id.
  */
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('variants')
 export class LikesController {
   constructor(private readonly likes: LikesService) {}
@@ -35,12 +37,10 @@ export class LikesController {
   @ApiOperation({ summary: 'Like a variant' })
   @ApiResponse({ status: 204, description: 'The user likes this variant.' })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 404,
     description: 'The variant does not exist, or its product is not on sale.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Put(':id/like')
   @HttpCode(HttpStatus.NO_CONTENT)
   likeVariant(
@@ -57,9 +57,7 @@ export class LikesController {
     description: 'The user does not like this variant.',
   })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id/like')
   @HttpCode(HttpStatus.NO_CONTENT)
   unlikeVariant(
@@ -72,6 +70,8 @@ export class LikesController {
 
 /** The liked products, on the path the contract puts them. */
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('users/me/likes')
 export class MyLikesController {
   constructor(private readonly likes: LikesService) {}
@@ -80,8 +80,6 @@ export class MyLikesController {
   @ApiOperation({ summary: 'List the products this user likes' })
   @ApiPageResponse(ProductSummaryDto, 'One page of liked products.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listLikedProducts(
     @CurrentUser() user: AccessTokenPayload,

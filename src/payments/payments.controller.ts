@@ -38,6 +38,7 @@ import { ParseIdPipe } from '../common/parse-id.pipe';
  * authentication.
  */
 @ApiTags('payments')
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller()
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
@@ -65,7 +66,6 @@ export class PaymentsController {
     status: 409,
     description: 'The quantity is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('payment-links')
   @HttpCode(HttpStatus.CREATED)
   async createPaymentLink(
@@ -96,7 +96,6 @@ export class PaymentsController {
     description:
       'The order is not pending, or a line is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('orders/:id/payments')
   @HttpCode(HttpStatus.CREATED)
   createPaymentIntent(
@@ -124,7 +123,6 @@ export class PaymentsController {
     status: 400,
     description: 'The signature does not verify against the body.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('webhooks/stripe')
   @HttpCode(HttpStatus.OK)
   receiveStripeEvent(
