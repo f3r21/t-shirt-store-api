@@ -206,6 +206,26 @@ describe('PaymentsService', () => {
 
       expect(nthArg(prisma.order.delete)).toEqual({ where: { id: 502 } });
     });
+
+    // Written by hand, 2026-09-03. The cleanup must not replace the error
+    // that caused it: the caller reads why Stripe failed, and the row left
+    // behind is a warning with its id.
+    it('keeps the Stripe error and warns when the cleanup delete fails too', async () => {
+      gateway.createPaymentLink.mockRejectedValue(new Error('stripe down'));
+      prisma.order.delete.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.createPaymentLink(AS_CLIENT, { variantId: 21, quantity: 1 }),
+      ).rejects.toThrow('stripe down');
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'payment.link-orphan',
+          orderId: 502,
+          reason: 'db down',
+        }),
+      );
+    });
   });
 
   describe('createPaymentIntent', () => {

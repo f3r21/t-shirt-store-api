@@ -16,8 +16,6 @@ export class AbilityFactory {
     const { can, build } = new AbilityBuilder<AppAbility>(createPrismaAbility);
 
     can('read', 'Product', { deletedAt: null, isActive: true });
-    can('read', 'ProductVariant');
-    can('read', 'Category');
 
     if (viewer === undefined) {
       return build();

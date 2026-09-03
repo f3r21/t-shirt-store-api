@@ -53,6 +53,10 @@ export class StripeGateway {
         },
       ],
       metadata: { orderId: String(input.orderId) },
+      // Card only, in code: a delayed method needs
+      // `checkout.session.async_payment_succeeded` handled first, and the
+      // dashboard alone must not be able to enable one. ADR 24.
+      payment_method_types: ['card'],
     });
     return { url: link.url };
   }
@@ -70,7 +74,7 @@ export class StripeGateway {
       amount: input.amount,
       currency: CURRENCY,
       metadata: { orderId: String(input.orderId) },
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ['card'],
     });
     if (intent.client_secret === null) {
       throw new Error(
