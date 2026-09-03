@@ -24,7 +24,7 @@ export enum Environment {
 /**
  * pino's six levels, and `silent`, which the end-to-end suite sets.
  */
-export const LOG_LEVELS = [
+const LOG_LEVELS = [
   'fatal',
   'error',
   'warn',
@@ -39,7 +39,7 @@ export type LogLevel = (typeof LOG_LEVELS)[number];
  * How mail leaves the process: a relay the `SMTP_*` variables describe, or
  * Amazon SES with whatever credentials the environment carries.
  */
-export const MAIL_TRANSPORTS = ['smtp', 'ses'] as const;
+const MAIL_TRANSPORTS = ['smtp', 'ses'] as const;
 export type MailTransport = (typeof MAIL_TRANSPORTS)[number];
 
 /**

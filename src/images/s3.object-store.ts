@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { EnvironmentVariables } from '../config/env.validation';
+import type { EnvironmentVariables } from '../config/env.validation';
 import { OBJECT_STORE } from './object-store';
 import type { ObjectStore } from './object-store';
 

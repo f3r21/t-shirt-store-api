@@ -2,7 +2,8 @@ import type {
   Role as RoleRow,
   User as UserRow,
 } from '../generated/prisma/client';
-import { ROLE_NAMES, RoleName, UserDto } from './dto/user.dto';
+import type { RoleName, UserDto } from './dto/user.dto';
+import { ROLE_NAMES } from './dto/user.dto';
 
 /**
  * A `users` row with its `roles` row loaded. The mapper needs the role name, so

@@ -1,5 +1,5 @@
-import { Prisma } from '../generated/prisma/client';
-import { AccessTokenPayload } from '../auth/access-token-payload';
+import type { Prisma } from '../generated/prisma/client';
+import type { AccessTokenPayload } from '../auth/access-token-payload';
 
 export function isManager(viewer: AccessTokenPayload | undefined): boolean {
   return viewer?.role === 'manager';

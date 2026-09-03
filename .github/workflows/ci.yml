@@ -1,8 +1,7 @@
 name: CI
 
-# Every branch, on push. `main` has never taken a merge and the one pull request
-# is the working branch itself, so a `push` plus `pull_request` pair would run
-# every job twice on every push to it.
+# Every branch, on push. A `pull_request` trigger would run every job a second
+# time on the same commit, so there is none.
 on:
   push:
     branches: ['**']
@@ -10,12 +9,11 @@ on:
 permissions:
   contents: read
 
-# A newer push makes an older run obsolete, except where a run may be releasing:
-# on main and on the working branch the run is the record of what that commit
-# passed, and a release in flight is never cancelled halfway.
+# A newer push makes an older run obsolete, except on main, where a run may be
+# releasing and is never cancelled halfway.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !contains(fromJSON('["refs/heads/main", "refs/heads/feat/week-3-auth"]'), github.ref) }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   verify:
@@ -40,14 +38,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-      # The queue's Redis, the same major as docker-compose.yml. Database 1 is
-      # what test/setup-e2e.ts falls back to.
+      # The queue's Valkey, the engine and major the stack runs and the image
+      # docker-compose.yml runs. Database 1 is what test/setup-e2e.ts falls back to.
       redis:
-        image: redis:7-alpine
+        image: valkey/valkey:9-alpine
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "valkey-cli ping"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -180,7 +178,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [verify, image]
-    if: github.ref == 'refs/heads/feat/week-3-auth' || github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     permissions:

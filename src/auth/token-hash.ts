@@ -24,7 +24,7 @@ import { createHmac, randomBytes } from 'node:crypto';
  * rotating the signing key would otherwise invalidate every stored hash at the
  * same moment.
  */
-export const REFRESH_TOKEN_BYTES = 32;
+const REFRESH_TOKEN_BYTES = 32;
 
 export function generateToken(): string {
   return randomBytes(REFRESH_TOKEN_BYTES).toString('hex');

@@ -4,16 +4,16 @@ import type Stripe from 'stripe';
 import { PaymentsService } from './payments.service';
 import { StripeGateway } from './stripe.gateway';
 import { LowStockProducer } from '../stock-notifications/low-stock.producer';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER, aVariant } from '../products/products.fixtures';
 import { AbilityFactory } from '../authz/ability.factory';
 import { nthArg } from '../common/mock-args';
 import { Prisma } from '../generated/prisma/client';
-import { ProblemException } from '../common/problem/problem.exception';
+import type { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 
 /** Run a call that is expected to throw, and hand the error back typed. */

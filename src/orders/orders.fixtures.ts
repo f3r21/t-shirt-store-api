@@ -56,7 +56,7 @@ export function aStatusChange(
   };
 }
 
-export function aCustomer(overrides: Partial<CustomerRow> = {}): CustomerRow {
+function aCustomer(overrides: Partial<CustomerRow> = {}): CustomerRow {
   return {
     id: 128,
     email: 'ana@example.com',

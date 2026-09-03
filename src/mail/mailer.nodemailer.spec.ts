@@ -1,9 +1,9 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import { createTransport } from 'nodemailer';
 import { NodemailerMailer } from './mailer.nodemailer';
-import { EnvironmentVariables } from '../config/env.validation';
+import type { EnvironmentVariables } from '../config/env.validation';
 import { nthArg } from '../common/mock-args';
 
 // `jest.spyOn` cannot reach this one: nodemailer's exports are non-configurable

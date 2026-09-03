@@ -1,10 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { ProductsService } from './products.service';
 import { CategoriesService } from '../categories/categories.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import {
   anImage,

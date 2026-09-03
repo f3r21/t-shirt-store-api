@@ -1,4 +1,4 @@
-import { ValidationPipeOptions } from '@nestjs/common';
+import type { ValidationPipeOptions } from '@nestjs/common';
 import { validationExceptionFactory } from './problem/validation-exception.factory';
 
 /**

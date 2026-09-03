@@ -1,9 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { VariantsService } from './variants.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { aProduct, aVariant } from '../products/products.fixtures';
 import { nthArg } from '../common/mock-args';

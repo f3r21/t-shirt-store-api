@@ -14,7 +14,7 @@
 # and env.validation.ts stops the boot when a required variable is missing.
 # Migrations do not run here. They are a release step before the new image takes
 # traffic, so the Prisma CLI and prisma/migrations stay out of the runtime stage.
-ARG NODE_IMAGE=node:22-alpine
+ARG NODE_IMAGE=node:22.23.1-alpine
 
 # ---- deps: the tree the runtime stage keeps --------------------------------
 FROM ${NODE_IMAGE} AS deps

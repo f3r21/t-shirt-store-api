@@ -1,6 +1,6 @@
 import { createPrismaAbilityFor } from '@casl/prisma';
 import type { PrismaModel, PrismaQueryOf, Subjects } from '@casl/prisma';
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   CartItem,
   Category,

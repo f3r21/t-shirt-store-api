@@ -1,4 +1,4 @@
-import { ProblemType } from './problem-type';
+import type { ProblemType } from './problem-type';
 import { Prisma } from '../../generated/prisma/client';
 import { HttpException } from '@nestjs/common';
 import { ProblemException } from './problem.exception';

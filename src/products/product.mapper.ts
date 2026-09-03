@@ -1,12 +1,12 @@
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   Product as ProductRow,
   ProductVariant as ProductVariantRow,
   ProductImage as ProductImageRow,
   Category as CategoryRow,
 } from '../generated/prisma/client';
-import { ProductDto, ProductImageDto } from './dto/product.dto';
-import { ProductSummaryDto } from './dto/product-summary.dto';
+import type { ProductDto, ProductImageDto } from './dto/product.dto';
+import type { ProductSummaryDto } from './dto/product-summary.dto';
 import { toProductVariantDto } from '../variants/variant.mapper';
 import { toCategoryDto } from '../categories/category.mapper';
 

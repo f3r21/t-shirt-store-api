@@ -1,14 +1,18 @@
-import { INestApplication } from '@nestjs/common';
-import { Test, TestingModuleBuilder } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import type { TestingModuleBuilder } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import Stripe from 'stripe';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { LowStockMail, MAILER, Mailer } from '../src/mail/mailer';
-import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
-import { OBJECT_STORE, ObjectStore } from '../src/images/object-store';
+import type { LowStockMail, Mailer } from '../src/mail/mailer';
+import { MAILER } from '../src/mail/mailer';
+import type { StripeClient } from '../src/payments/stripe.client';
+import { STRIPE_CLIENT } from '../src/payments/stripe.client';
+import type { ObjectStore } from '../src/images/object-store';
+import { OBJECT_STORE } from '../src/images/object-store';
 
 /**
  * Every message the application tried to send during a test.

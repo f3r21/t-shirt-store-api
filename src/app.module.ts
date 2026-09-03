@@ -2,8 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { seconds, ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { HealthController } from './health.controller';
 import { LoggerModule } from 'nestjs-pino';
 import { EnvironmentVariables } from './config/env.validation';
 import { CONFIG_MODULE_OPTIONS } from './config/config-module-options';
@@ -90,9 +89,8 @@ import { ProblemFilter } from './common/problem/problem.filter';
     LikesModule,
     ImagesModule,
   ],
-  controllers: [AppController],
+  controllers: [HealthController],
   providers: [
-    AppService,
     { provide: APP_FILTER, useClass: ProblemFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],

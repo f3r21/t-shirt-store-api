@@ -1,14 +1,16 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
-import { EnvironmentVariables } from '../config/env.validation';
-import { JwtService, TokenExpiredError } from '@nestjs/jwt';
-import { Request } from 'express';
+import type { ExecutionContext } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
+import type { Reflector } from '@nestjs/core';
+import type { PrismaService } from '../prisma/prisma.service';
+import type { ConfigService } from '@nestjs/config';
+import type { EnvironmentVariables } from '../config/env.validation';
+import type { JwtService } from '@nestjs/jwt';
+import { TokenExpiredError } from '@nestjs/jwt';
+import type { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { AccessTokenGuard } from './access-token.guard';
-import { AccessTokenPayload } from './access-token-payload';
+import type { AccessTokenPayload } from './access-token-payload';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { IS_OPTIONAL_AUTH_KEY } from './decorators/optional-auth.decorator';
 

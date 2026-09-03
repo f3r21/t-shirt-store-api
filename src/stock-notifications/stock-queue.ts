@@ -1,7 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import { EnvironmentVariables } from '../config/env.validation';
+import type { EnvironmentVariables } from '../config/env.validation';
 
 export const STOCK_QUEUE = Symbol('STOCK_QUEUE');
 

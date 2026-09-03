@@ -1,5 +1,5 @@
 import type { RefreshToken as RefreshTokenRow } from '../generated/prisma/client';
-import { SessionDto } from './dto/session.dto';
+import type { SessionDto } from './dto/session.dto';
 
 /**
  * Map a `refresh_tokens` row to one entry of the device list.

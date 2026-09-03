@@ -1,4 +1,4 @@
-import { ConfigModuleOptions } from '@nestjs/config';
+import type { ConfigModuleOptions } from '@nestjs/config';
 import { validateEnv } from './env.validation';
 
 /**

@@ -1,5 +1,5 @@
+import type { ArgumentsHost } from '@nestjs/common';
 import {
-  ArgumentsHost,
   BadRequestException,
   ForbiddenException,
   Logger,
@@ -8,7 +8,7 @@ import {
 import { ThrottlerException } from '@nestjs/throttler';
 import { ProblemFilter } from './problem.filter';
 import { nthArg } from '../mock-args';
-import { AccessTokenPayload } from '../../auth/access-token-payload';
+import type { AccessTokenPayload } from '../../auth/access-token-payload';
 
 /** The object a log spy was handed, typed by the caller. */
 function line(spy: jest.SpyInstance, call = 0): Record<string, unknown> {

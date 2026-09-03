@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, TokenExpiredError } from '@nestjs/jwt';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { AccessTokenPayload } from './access-token-payload';

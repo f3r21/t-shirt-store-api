@@ -1,10 +1,10 @@
 import request from 'supertest';
+import type { TestApp } from './app-factory';
 import {
   createTestApp,
   ensureRoles,
   resetThrottleCounter,
   truncateAll,
-  TestApp,
 } from './app-factory';
 
 /**

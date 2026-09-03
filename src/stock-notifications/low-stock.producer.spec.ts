@@ -2,10 +2,10 @@ import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { LowStockProducer } from './low-stock.producer';
 import { STOCK_QUEUE } from './stock-queue';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { nthArg } from '../common/mock-args';
 

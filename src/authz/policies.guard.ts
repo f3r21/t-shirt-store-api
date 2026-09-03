@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { IS_OPTIONAL_AUTH_KEY } from '../auth/decorators/optional-auth.decorator';
 import { AbilityFactory } from './ability.factory';

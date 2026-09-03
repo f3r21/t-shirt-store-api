@@ -1,14 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { CartService } from './cart.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { aVariant } from '../products/products.fixtures';
 import { aCartLine } from './cart.fixtures';
 import { nthArg } from '../common/mock-args';
-import { ProblemException } from '../common/problem/problem.exception';
+import type { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 
 const USER = 128;

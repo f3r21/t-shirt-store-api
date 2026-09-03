@@ -10,7 +10,7 @@
  * 409 and 422 each cover more than one cause, and the contract gives a different
  * detail for each, so the thrower supplies it.
  */
-export const STATUS_TITLES: Record<number, string> = {
+const STATUS_TITLES: Record<number, string> = {
   400: 'Validation failed',
   401: 'Unauthorized',
   403: 'Forbidden',

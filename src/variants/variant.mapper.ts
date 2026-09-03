@@ -1,5 +1,5 @@
 import type { ProductVariant as ProductVariantRow } from '../generated/prisma/client';
-import { ProductVariantDto } from './dto/product-variant.dto';
+import type { ProductVariantDto } from './dto/product-variant.dto';
 
 /**
  * Map a `product_variants` row to the response shape.

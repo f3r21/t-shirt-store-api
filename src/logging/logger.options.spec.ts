@@ -1,7 +1,7 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Options } from 'pino-http';
-import { EnvironmentVariables } from '../config/env.validation';
+import type { EnvironmentVariables } from '../config/env.validation';
 import {
   buildLoggerOptions,
   completionLevel,

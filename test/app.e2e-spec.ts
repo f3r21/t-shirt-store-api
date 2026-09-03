@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import request from 'supertest';
 import { parse as parseYaml } from 'yaml';
-import { createTestApp, TestApp } from './app-factory';
+import type { TestApp } from './app-factory';
+import { createTestApp } from './app-factory';
 
 describe('AppController (e2e)', () => {
   let ctx: TestApp;

@@ -1,11 +1,7 @@
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
-import {
-  createTestApp,
-  ensureRoles,
-  truncateAll,
-  TestApp,
-} from './app-factory';
+import type { TestApp } from './app-factory';
+import { createTestApp, ensureRoles, truncateAll } from './app-factory';
 
 /**
  * The authentication flow, end to end, against a real database.

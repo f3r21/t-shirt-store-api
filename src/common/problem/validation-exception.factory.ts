@@ -1,5 +1,6 @@
-import { BadRequestException, ValidationError } from '@nestjs/common';
-import { ProblemField } from './problem';
+import type { ValidationError } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
+import type { ProblemField } from './problem';
 
 /**
  * Turn the pipe's errors into the `errors` member the contract declares.

@@ -1,17 +1,17 @@
 import request from 'supertest';
 import { Queue } from 'bullmq';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { MAILER } from '../src/mail/mailer';
 import { WorkerModule } from '../src/stock-notifications/worker.module';
+import type { CatalogFixture, TestApp } from './app-factory';
 import {
-  CatalogFixture,
   createTestApp,
   ensureRoles,
   seedOrderLineFor,
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 import { STOCK_QUEUE_NAME } from '../src/stock-notifications/stock-queue';
 

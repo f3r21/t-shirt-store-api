@@ -1,4 +1,5 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import type { Express } from 'express';
@@ -6,7 +7,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoNestLogger } from 'nestjs-pino';
 import { VALIDATION_PIPE_OPTIONS } from './common/validation-pipe-options';
 import { buildOpenApiDocument } from './openapi/document';
-import { EnvironmentVariables } from './config/env.validation';
+import type { EnvironmentVariables } from './config/env.validation';
 
 /**
  * Everything the application needs beyond its modules.

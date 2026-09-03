@@ -1,9 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { OrdersService } from './orders.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER } from '../products/products.fixtures';
 import { AbilityFactory } from '../authz/ability.factory';
@@ -14,7 +14,7 @@ import {
   anOrderWithSummary,
 } from './orders.fixtures';
 import { nthArg } from '../common/mock-args';
-import { ProblemException } from '../common/problem/problem.exception';
+import type { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 
 /** Run a call that is expected to throw, and hand the error back typed. */

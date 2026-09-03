@@ -3,25 +3,23 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
 import { AuthService } from './auth.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
-import {
-  createMailerMock,
-  mailerMockProvider,
-  MailerMock,
-} from '../mail/mailer.mock';
+import type { MailerMock } from '../mail/mailer.mock';
+import { createMailerMock, mailerMockProvider } from '../mail/mailer.mock';
 import { aRefreshToken } from './auth.fixtures';
 import { aUser } from '../users/users.fixtures';
 import { hashToken } from './token-hash';
 import { nthArg } from '../common/mock-args';
-import { HttpException, Logger } from '@nestjs/common';
+import type { HttpException } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 import { PageQueryDto } from '../common/dto/page-query.dto';
-import { AccessTokenPayload } from './access-token-payload';
+import type { AccessTokenPayload } from './access-token-payload';
 
 /**
  * The seven /auth operations.

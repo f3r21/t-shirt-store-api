@@ -1,6 +1,6 @@
 import { HttpException } from '@nestjs/common';
-import { ProblemType } from './problem-type';
-import { ProblemField } from './problem';
+import type { ProblemType } from './problem-type';
+import type { ProblemField } from './problem';
 
 /**
  * An error that names its own problem document.

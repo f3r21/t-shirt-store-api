@@ -1,4 +1,5 @@
 import request from 'supertest';
+import type { TestApp } from './app-factory';
 import {
   createTestApp,
   ensureCategory,
@@ -6,7 +7,6 @@ import {
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 
 /**

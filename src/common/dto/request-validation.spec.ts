@@ -7,7 +7,7 @@ import { CreateSessionDto } from '../../auth/dto/create-session.dto';
 import { RefreshSessionDto } from '../../auth/dto/refresh-session.dto';
 import { RequestPasswordResetDto } from '../../auth/dto/request-password-reset.dto';
 import { ResetPasswordDto } from '../../auth/dto/reset-password.dto';
-import { ProblemField } from '../problem/problem';
+import type { ProblemField } from '../problem/problem';
 
 /**
  * The request DTOs, exercised through the pipe the application actually runs.

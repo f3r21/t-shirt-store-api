@@ -1,11 +1,11 @@
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   CartItem as CartItemRow,
   Product as ProductRow,
   ProductImage as ProductImageRow,
   ProductVariant as ProductVariantRow,
 } from '../generated/prisma/client';
-import { CartDto, CartItemDto } from './dto/cart.dto';
+import type { CartDto, CartItemDto } from './dto/cart.dto';
 
 /** A cart row with its variant, that variant's product, and the primary image. */
 export type CartLine = CartItemRow & {

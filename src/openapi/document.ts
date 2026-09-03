@@ -1,5 +1,6 @@
-import { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import type { INestApplication } from '@nestjs/common';
+import type { OpenAPIObject } from '@nestjs/swagger';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Problem } from '../common/problem/problem.dto';
 
 /**

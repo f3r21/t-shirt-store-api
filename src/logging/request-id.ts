@@ -10,7 +10,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
  * line or a shell pipeline that greps one. Anything else is replaced, not
  * rejected: the request goes through and only the id is ours.
  */
-export const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
  * The id every log line of this request carries, and the response echoes.

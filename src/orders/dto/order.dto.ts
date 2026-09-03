@@ -5,7 +5,7 @@ import { OrderStatus, PaymentMethod } from '../../generated/prisma/enums';
 export const ORDER_STATUSES = Object.values(OrderStatus);
 
 /** The two Stripe flows, for the document. */
-export const PAYMENT_METHODS = Object.values(PaymentMethod);
+const PAYMENT_METHODS = Object.values(PaymentMethod);
 
 /**
  * One line of an order. See `openapi.yaml:2207-2240`.

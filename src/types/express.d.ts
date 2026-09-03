@@ -1,4 +1,4 @@
-import { AccessTokenPayload } from '../auth/access-token-payload';
+import type { AccessTokenPayload } from '../auth/access-token-payload';
 import type { AppAbility } from '../authz/ability';
 
 /**

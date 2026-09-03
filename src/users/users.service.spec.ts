@@ -2,21 +2,18 @@ import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import argon2 from 'argon2';
 import { UsersService } from './users.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
-import {
-  createMailerMock,
-  mailerMockProvider,
-  MailerMock,
-} from '../mail/mailer.mock';
+import type { MailerMock } from '../mail/mailer.mock';
+import { createMailerMock, mailerMockProvider } from '../mail/mailer.mock';
 import { aUser } from './users.fixtures';
 import { nthArg } from '../common/mock-args';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
-import { CreateUserDto } from './dto/create-user.dto';
+import type { CreateUserDto } from './dto/create-user.dto';
 import { Prisma } from '../generated/prisma/client';
 
 /**

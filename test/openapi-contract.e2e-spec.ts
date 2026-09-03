@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { OpenAPIObject } from '@nestjs/swagger';
+import type { OpenAPIObject } from '@nestjs/swagger';
 import { buildOpenApiDocument } from '../src/openapi/document';
-import { createTestApp, TestApp } from './app-factory';
+import type { TestApp } from './app-factory';
+import { createTestApp } from './app-factory';
 
 /**
  * The generated document against the hand written contract.
