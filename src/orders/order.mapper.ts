@@ -1,4 +1,4 @@
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   Order as OrderRow,
   OrderItem as OrderItemRow,
@@ -6,16 +6,16 @@ import type {
 } from '../generated/prisma/client';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { isManager } from '../products/product-visibility';
-import {
+import type {
   OrderCustomerDto,
   OrderDto,
   OrderItemDto,
   OrderStatusChangeDto,
 } from './dto/order.dto';
-import { OrderSummaryDto } from './dto/order-summary.dto';
+import type { OrderSummaryDto } from './dto/order-summary.dto';
 
 /** The four columns of `users` a manager sees on an order, and no more. */
-export const CUSTOMER_SELECT = {
+const CUSTOMER_SELECT = {
   id: true,
   email: true,
   firstName: true,
@@ -92,7 +92,7 @@ export function toOrderStatusChangeDto(
   return { status: row.status, changedAt: row.changedAt.toISOString() };
 }
 
-export function toOrderCustomerDto(row: CustomerRow): OrderCustomerDto {
+function toOrderCustomerDto(row: CustomerRow): OrderCustomerDto {
   return {
     id: row.id,
     email: row.email,

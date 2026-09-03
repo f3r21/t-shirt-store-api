@@ -14,28 +14,10 @@ import { INT4_MAX } from '../../common/int4';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
- * Request body of PATCH /products/{id}. See `openapi.yaml:667-690`.
- *
- * `categoryIds` replaces the whole set. The contract states this, so a caller
- * who sends one id leaves the product in one category.
- *
- * Set `isActive` to false to disable the product. Disabling is not deleting. A
- * disabled product stays visible to a manager and disappears for every other
- * caller.
- *
- * The contract also declares `minProperties: 1`, and this class still does not
- * enforce it, because class-validator cannot. Version 0.15.1 types
- * `registerDecorator`'s `propertyName` as a required string, so there is no
- * class level constraint, and hanging the rule on a property fails too: every
- * field here is optional, and an optional property short circuits its remaining
- * validators the moment the value is absent, which is the case being caught.
- * `NonEmptyBodyPipe` enforces it instead, at
- * `src/common/non-empty-body.pipe.ts`, and `products.controller.ts` applies it
- * to this operation.
- *
- * Every optional property carries `@IsOptionalNotNull` and not `@IsOptional`.
- * This body is where the difference was measured: `{"categoryIds": null}`
- * answered 500 and `{"description": null}` answered 200 and erased the column.
+ * Request body of `updateProduct`. `categoryIds` replaces the whole set.
+ * `isActive` false disables, which is not deleting. `minProperties: 1` is
+ * enforced by `NonEmptyBodyPipe`, and every optional property carries
+ * `@IsOptionalNotNull`.
  */
 export class UpdateProductDto {
   @IsOptionalNotNull()

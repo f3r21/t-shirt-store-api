@@ -10,32 +10,9 @@ import { ProblemException } from './problem.exception';
 import { ProblemType } from './problem-type';
 
 /**
- * The mapper every failure in this API passes through.
- *
- * It had no spec at all. Measured before this file existed:
- *
- *     npx jest --ci --coverage --coverageReporters=json-summary
- *       src/common/problem/problem.ts   12.82% stmt   0% fn   0% branch
- *
- *     rg -N -l "toProblem|ProblemFilter" --glob '*.spec.ts' src test
- *       -> one type-only import of ProblemField, and nothing else
- *       control: rg -N -l "ParseIdPipe|NonEmptyBodyPipe" --glob '*.spec.ts'
- *       -> parse-id.pipe.spec.ts, non-empty-body.pipe.spec.ts
- *
- * That is a `@Catch()`-all filter with five branches, named by the capstone as a
- * Mandatory Implementation at line 167, and every 4xx and 5xx in the API runs
- * through it.
- *
- * Two properties matter more than the individual cases, and each has its own
- * block below:
- *
- * 1. **No request text reaches `title`.** RFC 9457 requires a title that does
- *    not change between occurrences. Nest fills `err.message` with the path for
- *    an unrouted request and with a parse fragment for a bad body, so a mapper
- *    that read the message would answer with a title that changes every time.
- * 2. **Nothing unrecognised is described to the caller.** Whatever falls past
- *    every branch is a 500 with the table's own wording, never the thrown
- *    object's.
+ * The mapper every failure passes through. Two properties matter more than
+ * the cases: no request text reaches `title` (RFC 9457), and nothing
+ * unrecognised is described to the caller.
  */
 describe('toProblem', () => {
   const INSTANCE = '/v1/products/7';

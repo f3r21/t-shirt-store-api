@@ -19,16 +19,8 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * The production binding for the `MAILER` token.
- *
- * Local development points at the Mailpit container from `docker-compose.yml`,
- * which accepts any message on 1025 and shows it on 8025. No credentials and no
- * TLS, because nothing leaves the machine.
- *
- * The reset mail carries the raw token. That value exists in exactly two places,
- * this message and the caller's inbox, because the row stores only its hash.
- * Nothing here is logged: the logging rule for this project names tokens among
- * the things that never reach a log line.
+ * The production binding for `MAILER`. The reset mail carries the raw token,
+ * which exists only in this message and the inbox, so nothing here is logged.
  */
 @Injectable()
 export class NodemailerMailer implements Mailer {
@@ -40,33 +32,11 @@ export class NodemailerMailer implements Mailer {
   constructor(
     private readonly config: ConfigService<EnvironmentVariables, true>,
   ) {
-    // **`ignoreTLS` used to be hard coded here, and it does more than allow a
-    // plaintext connection: it refuses STARTTLS even when the relay offers it.**
-    // So a server willing to encrypt was talked to in the clear anyway, and the
-    // reset message carries a raw bearer credential for the account. There was
-    // also no `SMTP_USER` or `SMTP_PASS` in the schema, so **no configuration
-    // path to an authenticated relay existed at all**: the only deployment this
-    // class could reach was an open one.
-    //
-    // The default is still plaintext because Mailpit is what `docker-compose`
-    // runs and it speaks no TLS. What changed is that a deployment can now say
-    // otherwise. `secure` is implicit TLS and belongs to port 465. A 587 relay
-    // upgrades with STARTTLS, which nodemailer does on its own when the relay
-    // offers it, and `requireTLS` is what turns a relay that does not offer it
-    // into a failed send rather than a plaintext one. `env.validation.ts` says
-    // which to set where.
-    //
-    // `user !== undefined` is safe only because `ConfigModule` runs with
-    // `skipProcessEnv`. Without it a pair the shell exported empty arrived
-    // here as `''` and became a request to authenticate with no credentials.
-    //
-    // The SES branch is here and not a second class because everything above
-    // the transport is the same message: nodemailer builds the same MIME from
-    // the same fields and hands it to SES's `SendEmail` as raw content. The
-    // credentials are whatever the environment carries, the task role in the
-    // container, so no relay password exists to store or to leak. The region
-    // is the schema's rather than the client's own default, so the one the
-    // boot validated is the one that sends.
+    // `secure`, `requireTLS` and the credentials come from the environment,
+    // and `env.validation.ts` says which to set where. `user !== undefined`
+    // holds because `ConfigModule` runs with `skipProcessEnv`. The SES branch
+    // builds the same MIME and hands it to `SendEmail` with the task role's
+    // credentials. ADR 32.
     if (this.config.get<MailTransport>('MAIL_TRANSPORT') === 'ses') {
       this.transporter = createTransport({
         SES: {
@@ -127,15 +97,9 @@ export class NodemailerMailer implements Mailer {
   }
 
   /**
-   * The low-stock mail, with the product's image when there is one.
-   *
-   * The one method here that throws. The caller is a queue job, the job's
-   * attempts are the retry, and a send that failed quietly would count as
-   * done. So this calls `deliver` and not `send`, and the processor deletes
-   * the row it wrote when this rejects.
-   *
-   * The name is escaped because a manager typed it, and the image is a plain
-   * `img` so a client that blocks remote images still shows the text.
+   * The low-stock mail, with the product's image. The one method that throws:
+   * the job's attempts are the retry. The name is escaped because a manager
+   * typed it, and the text body carries the image URL too. ADR 28.
    */
   async sendLowStock(to: string, mail: LowStockMail): Promise<void> {
     const options = [mail.size, mail.color].filter((o) => o !== '').join(' ');
@@ -166,29 +130,10 @@ export class NodemailerMailer implements Mailer {
   }
 
   /**
-   * A failed send is logged and never thrown, and the two callers need that for
-   * two different reasons.
-   *
-   * **The changed-password mail.** The password already changed and the
-   * transaction committed. Throwing would answer with an error for a request
-   * that succeeded, and the caller would reasonably retry with a password that
-   * no longer works. This is the case the previous version of this comment
-   * described, and it described it as though it covered both callers.
-   *
-   * **The reset mail, which it does not cover.** There the message *is* the
-   * deliverable: with SMTP down, `requestPasswordReset` has written the token
-   * hash and its expiry, answers 202, and nobody receives anything. Swallowing
-   * that is worse, and it is still right, because **the 202 is unconditional on
-   * purpose**. Answering 500 when the send fails would answer 500 for a
-   * registered address and 202 for an unknown one, which rebuilds exactly the
-   * enumeration oracle the unconditional 202 exists to close, and it would
-   * rebuild it on the route this repository already hardened twice.
-   *
-   * So the caller cannot be told and the operator has to be. The error log is
-   * the only signal, and that is thin: **the durable answer is the queue**, one
-   * job per recipient with a failed set whose size is the alert, which is what
-   * `ARCHITECTURE.md` describes and nothing has built. Until then, a send
-   * failure is a line in a log somebody has to be watching.
+   * A failed send is logged and never thrown. The changed-password mail
+   * follows a committed transaction, and the reset request must answer 202
+   * either way, or a 500 on failure would say which addresses are registered.
+   * README's Known gaps names it.
    */
   private async send(message: OutgoingMessage): Promise<void> {
     try {

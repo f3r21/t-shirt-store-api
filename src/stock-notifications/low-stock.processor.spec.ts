@@ -1,16 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { LowStockProcessor } from './low-stock.processor';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
-import {
-  createMailerMock,
-  mailerMockProvider,
-  MailerMock,
-} from '../mail/mailer.mock';
+import type { MailerMock } from '../mail/mailer.mock';
+import { createMailerMock, mailerMockProvider } from '../mail/mailer.mock';
 import { nthArg } from '../common/mock-args';
 import { Prisma } from '../generated/prisma/client';
 

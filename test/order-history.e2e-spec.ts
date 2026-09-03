@@ -1,27 +1,17 @@
 import request from 'supertest';
+import type { CatalogFixture, TestApp } from './app-factory';
 import {
-  CatalogFixture,
   createTestApp,
   ensureRoles,
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 
 /**
- * Order history, end to end: the third flow the Week 3 & 4 page names.
- *
- * Its own words: "A client sees their own orders and cannot see anyone else's.
- * Create orders for two different clients, then assert that client A's request
- * returns only A's orders and that a direct request for one of B's order IDs is
- * refused. A test that only checks the happy path here is not testing
- * authorization at all." The first describe is that test. The rest is feature
- * 9: the five filters, the pagination, and the manager's view with the client
- * on every entry.
- *
- * Three orders with known instants and totals, set through Prisma after they
- * are placed, so every filter has a boundary to be proven on.
+ * Order history: a client sees their own orders and nobody else's, then the
+ * five filters, the pagination, and the manager's view. Three orders with
+ * known instants and totals, so every filter has a boundary.
  */
 describe('Order history (e2e)', () => {
   let ctx: TestApp;

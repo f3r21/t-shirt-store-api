@@ -1,9 +1,6 @@
-import {
-  ExecutionContext,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import type { ExecutionContext } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import type { Reflector } from '@nestjs/core';
 import { PoliciesGuard } from './policies.guard';
 import { AbilityFactory } from './ability.factory';
 import { CHECK_POLICIES_KEY } from './check-policies.decorator';

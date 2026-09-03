@@ -1,6 +1,6 @@
 import { createPrismaAbilityFor } from '@casl/prisma';
 import type { PrismaModel, PrismaQueryOf, Subjects } from '@casl/prisma';
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   CartItem,
   Category,
@@ -13,18 +13,9 @@ import type {
 } from '../generated/prisma/client';
 
 /**
- * CASL pointed at the generated client.
- *
- * `@casl/prisma`'s default entry reads its types from `@prisma/client`, which
- * the Prisma 7 `prisma-client` generator no longer fills: the client lives
- * under `src/generated`. This is the wrapper the package's README gives for
- * that layout, "Custom PrismaClient output path (Prisma 7 default)": the
- * ability factory and the condition type are built from our own
- * `Prisma.TypeMap`, so a condition is checked against the real `WhereInput`
- * of the model it names, and `accessibleBy` produces one.
- *
- * `RefreshToken` is what the contract calls a session; the subject keeps the
- * model's name so `accessibleBy` can map it.
+ * CASL pointed at the generated client, the wrapper the package's README gives
+ * for a custom output path, so a condition is checked against the real
+ * `WhereInput`. `RefreshToken` is what the contract calls a session.
  */
 export const createPrismaAbility = createPrismaAbilityFor<Prisma.TypeMap>();
 

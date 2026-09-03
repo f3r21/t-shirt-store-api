@@ -1,15 +1,8 @@
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 
 /**
- * One line of the cart. See `openapi.yaml:2064-2095`.
- *
- * A cart is a live view and not a record. Every field here is read from the
- * variant and its product at the moment of the request: a manager who renames a
- * product or changes a price changes what a cart that holds it says. The order
- * copies these values when it is placed, and that copy is `OrderItem`.
- *
- * `size`, `color` and `imageUrl` are absent rather than null, the rule
- * `ProductVariantDto` and `ProductSummaryDto` already follow.
+ * One line of the cart, the contract's `CartItem`. A live view: every field is
+ * read from the variant now, and the order copies them when it is placed.
  */
 @ApiSchema({ name: 'CartItem' })
 export class CartItemDto {
@@ -45,11 +38,8 @@ export class CartItemDto {
 }
 
 /**
- * Response shape of every cart operation that answers a body. See
- * `openapi.yaml:2050-2062`.
- *
- * A user who never added anything receives `{ items: [], subtotal: 0 }` and
- * not a 404. The cart exists because the user exists.
+ * The contract's `Cart`. An empty cart is `{ items: [], subtotal: 0 }`, never
+ * a 404.
  */
 @ApiSchema({ name: 'Cart' })
 export class CartDto {

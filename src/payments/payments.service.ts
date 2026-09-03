@@ -61,20 +61,8 @@ function lineName(variant: {
 }
 
 /**
- * The two Stripe flows, and the webhook that applies their result.
- *
- * See `openapi.yaml:1587-1742` and `ARCHITECTURE.md`, "Where a request fails
- * halfway": this file is that seam. The webhook is the only writer of `paid`
- * and of the stock, the event id is inserted first so a retry is a unique
- * violation, and the whole of it is one transaction.
- *
- * **One event kind per flow.** A payment link carries the order id in its own
- * metadata, which Stripe copies to the Checkout Session, so
- * `checkout.session.completed` pays a link order as `payment_link`. A payment
- * intent carries it in its metadata, so `payment_intent.succeeded` pays a cart
- * order as `payment_intent`. The link deliberately puts nothing in
- * `payment_intent_data`, so the intent event a link purchase also fires names
- * no order and is ignored, and each order is paid by exactly one kind.
+ * The two Stripe flows and the webhook that applies them: one event kind per
+ * flow, the event id inserted first, the whole of it one transaction. ADR 24.
  */
 @Injectable()
 export class PaymentsService {
@@ -87,14 +75,9 @@ export class PaymentsService {
   ) {}
 
   /**
-   * An order for one variant, and a Stripe page that sells it.
-   *
-   * The order is written first, in one nested create, because the link needs
-   * the order id in its metadata. If Stripe then fails, the order is deleted
-   * (the cascade takes its line and its history) and the error goes to the
-   * filter, so a link that was never returned leaves no `pending` order
-   * behind. Stock is checked and not touched: it falls on
-   * `checkout.session.completed`.
+   * An order for one variant and a Stripe page that sells it. The order is
+   * written first, because the link carries its id; if Stripe fails, the
+   * order is deleted. Stock is checked and not touched.
    */
   async createPaymentLink(
     viewer: AccessTokenPayload,
@@ -156,20 +139,16 @@ export class PaymentsService {
   }
 
   /**
-   * One payment attempt for a pending order of the caller's.
-   *
-   * Every line is checked against the units on hand before Stripe is asked,
-   * because the brief says so and because an intent for stock that is gone
-   * would charge for a line the webhook then cannot fill. The amount is the
-   * order's total, never a caller's number.
+   * One payment attempt for a pending order. Every line is checked against
+   * the stock first, and the amount is the order's total, never the caller's.
    */
   async createPaymentIntent(
     viewer: AccessTokenPayload,
     ability: AppAbility,
     orderId: number,
   ): Promise<PaymentIntentDto> {
-    // The rows this caller may pay, from the ability: their own for a client,
-    // any for a manager. Another client's order is a 404 by construction.
+    // The rows this caller may pay, from the ability: another client's order
+    // is a 404. ADR 25.
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, AND: [accessibleBy(ability, 'pay').Order] },
       include: { items: { select: { variantId: true, quantity: true } } },
@@ -224,12 +203,8 @@ export class PaymentsService {
   }
 
   /**
-   * Which flow an event belongs to, the order it names, or nothing, and
-   * whether money was taken. A session completes `unpaid` when the buyer chose
-   * a delayed payment method; the money arrives later, on
-   * `checkout.session.async_payment_succeeded`, or never, and this service
-   * does not handle that event. A succeeded intent is paid by definition.
-   * Found by a hand-written test, 2026-09-02; DECISIONS 24.
+   * Which flow an event belongs to, the order it names, and whether money was
+   * taken: a session completes `unpaid` for a delayed payment method. ADR 24.
    */
   private paymentOf(
     event: Stripe.Event,
@@ -252,22 +227,11 @@ export class PaymentsService {
   }
 
   /**
-   * Apply a verified event. It always resolves: the caller answers 200
-   * whatever happened, because anything else makes Stripe retry, and a retry
-   * cannot change any of the answers below.
-   *
-   * The statements, in order: the event id is looked up and then inserted
-   * first, so a replay is either seen here or fails the insert as a unique
-   * violation and rolls the rest back. Then the order moves to `paid` only if
-   * it is still `pending`, in one conditional write, so the other event kind
-   * or a cancel that landed first leaves it alone. Then the history row.
-   * Then each line's stock comes down, conditional on the units being there;
-   * when they are not, the money is already taken, so the stock floors at
-   * zero and a warning names the shortfall rather than refusing a payment
-   * that happened. The stock of every line before and after is read back,
-   * because the low-stock producer decides on the pair and this is the only
-   * place it is known; it is handed over after the commit, so a queue outage
-   * cannot fail a paid order, and it never throws.
+   * Apply a verified event. It always resolves, because Stripe retries
+   * anything but 200. The event id first, then one conditional move to
+   * `paid`, the history row, then each line's stock, floored at zero with a
+   * warning when the units are gone. The stocks go to the low-stock producer
+   * after the commit. ADR 24.
    */
   async applyEvent(event: Stripe.Event): Promise<void> {
     const payment = this.paymentOf(event);

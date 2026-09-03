@@ -10,15 +10,8 @@ export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * The category list. Public, because a shopper filters by category before
-   * signing in.
-   *
-   * `total` counts every row, before limit and offset apply, so it comes from
-   * its own count rather than the length of the page.
-   *
-   * The contract names no order. Name ascending is ours, because a list a human
-   * reads should be alphabetical, and the tiebreak on `id` is what stops a page
-   * under LIMIT from returning an unpredictable subset when two names match.
+   * The category list, public. Name ascending with an `id` tiebreak, because
+   * the contract names no order and a page under LIMIT must be stable.
    */
   async listCategories(
     query: PageQueryDto,

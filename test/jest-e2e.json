@@ -16,16 +16,7 @@
       {
         "astTransformers": {
           "before": [
-            {
-              "path": "<rootDir>/swagger-ast-transformer.js",
-              "options": {
-                "classValidatorShim": true,
-                "introspectComments": true,
-                "dtoFileNameSuffix": [
-                  ".dto.ts"
-                ]
-              }
-            }
+            "<rootDir>/swagger-ast-transformer.js"
           ]
         }
       }

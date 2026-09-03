@@ -1,12 +1,9 @@
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Params } from 'nestjs-pino';
 import type { Options } from 'pino-http';
-import {
-  Environment,
-  EnvironmentVariables,
-  LogLevel,
-} from '../config/env.validation';
+import type { EnvironmentVariables, LogLevel } from '../config/env.validation';
+import { Environment } from '../config/env.validation';
 import { requestId } from './request-id';
 
 /**
@@ -86,7 +83,7 @@ export function skipCompletionLine(req: IncomingMessage): boolean {
 }
 
 /**
- * pino, and how every line is shaped. The reasons are in DECISIONS 21.
+ * pino, and how every line is shaped. The reasons are in ADR 21.
  *
  * `quietReqLogger` binds only the request id to lines written inside the
  * request, so a service's line is the event, the id and the context, and not

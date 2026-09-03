@@ -25,24 +25,15 @@ export class ProductsService {
   ) {}
 
   /**
-   * The product list. Authentication is optional here.
-   *
-   * Three states, and they are the reason this operation is spelled the way it
-   * is in the contract. A caller with no token sees the enabled products. A
-   * manager may ask for the disabled ones too. A client who asks for them is
-   * refused, and an anonymous caller who asks is refused differently: 401,
-   * because the server cannot know whether they are a manager until they say
-   * who they are.
+   * The product list. Who may ask for the inactive ones was decided at the
+   * controller. ADR 16, ADR 25.
    */
   async listProducts(
     ability: AppAbility,
     query: ListProductsQueryDto,
   ): Promise<{ data: ProductSummaryDto[]; meta: PageMetaDto }> {
-    // The visibility rule is the ability's own condition: a shopper's reads
-    // active products that are not deleted, a manager's every product that is
-    // not deleted. A manager who did not ask for the inactive ones gets the
-    // shopper's view of their own rule. Who may ask was decided at the
-    // controller, by the policy that reads the flag.
+    // The visibility rule is the ability's own condition. A manager who did
+    // not ask for the inactive ones gets the shopper's view.
     const where: Prisma.ProductWhereInput = {
       AND: [accessibleBy(ability).Product],
       ...(query.includeInactive ? {} : { isActive: true }),
@@ -55,14 +46,8 @@ export class ProductsService {
   }
 
   /**
-   * One page of product summaries under any predicate.
-   *
-   * The product list and the list of liked products are one shape with two
-   * predicates, so the page is assembled here once: the rows and the count
-   * under the same `where`, then the cheapest variant and the primary image
-   * of each row in one query each, then the mapping. A second copy in the
-   * likes service would drift from this one on the order or on the two
-   * lookups.
+   * One page of summaries under any predicate, shared with the liked list.
+   * ADR 26.
    */
   async pageOf(
     where: Prisma.ProductWhereInput,
@@ -97,21 +82,8 @@ export class ProductsService {
   }
 
   /**
-   * The primary image of each product on this page, in one query.
-   *
-   * The same shape as `cheapestVariantByProduct`, for the same reason: one
-   * round trip per page and never one per row. A product with no primary image
-   * is absent from the map, so `primaryImageUrl` is absent from its entry,
-   * which is what the contract asks for.
-   *
-   * The schema has no unique index on `(product_id, is_primary)`, so two rows
-   * of one product could both claim primary. The lowest id wins, by the
-   * `orderBy` and the `has` check, so the answer is stable rather than
-   * whichever row the planner returned first.
-   *
-   * Nothing writes `product_images` until `uploadProductImage` lands, so every
-   * page built through the API gets an empty map today. It is wired now so
-   * that operation lands into a working list.
+   * The primary image of each product on the page, in one query. The lowest
+   * id wins when two rows claim primary, so the answer is stable.
    */
   private async primaryImageByProduct(
     productIds: readonly number[],
@@ -136,12 +108,8 @@ export class ProductsService {
   }
 
   /**
-   * The cheapest variant of each product on this page, in one query.
-   *
-   * A `groupBy` over the page's ids rather than a query per row. Without it the
-   * list costs one round trip per product, which is the N+1 this endpoint is
-   * most likely to grow. A product with no variants is absent from the result
-   * and therefore absent from the response, which is what the contract asks for.
+   * The cheapest variant of each product on the page, in one query. A product
+   * with no variants is absent. ADR 17.
    */
   private async cheapestVariantByProduct(
     productIds: readonly number[],
@@ -165,13 +133,7 @@ export class ProductsService {
     return cheapest;
   }
 
-  /**
-   * One product, with its variants and categories.
-   *
-   * A manager sees a disabled product and nobody else does. There is no flag on
-   * this operation, so the manager's view is unconditional rather than
-   * requested, which is why `includeInactive` is passed as true here.
-   */
+  /** One product with its variants and categories; a manager sees a disabled one. */
   async getProduct(ability: AppAbility, id: number): Promise<ProductDto> {
     const product = await this.prisma.product.findFirst({
       where: { id, AND: [accessibleBy(ability).Product] },
@@ -184,11 +146,8 @@ export class ProductsService {
   }
 
   /**
-   * Create a product, optionally in categories.
-   *
-   * The categories are checked before the write, because a category id that
-   * names nothing is 422 and not a foreign key violation, which nothing maps
-   * and which would surface as 500.
+   * Create a product. The categories are checked first, so an unknown id is
+   * 422 and not a foreign key violation.
    */
   async createProduct(dto: CreateProductDto): Promise<ProductDto> {
     const categoryIds = dto.categoryIds ?? [];
@@ -209,11 +168,8 @@ export class ProductsService {
   }
 
   /**
-   * Update a product, and replace its categories when the body names them.
-   *
-   * `categoryIds` absent means leave them alone; present means this is now the
-   * whole set. Replacement happens inside one transaction with the update, so a
-   * failure cannot leave a product with its categories deleted and not rewritten.
+   * Update a product. A present `categoryIds` replaces the whole set, in the
+   * same transaction as the update.
    */
   async updateProduct(id: number, dto: UpdateProductDto): Promise<ProductDto> {
     await this.assertProductExists(id);
@@ -248,15 +204,8 @@ export class ProductsService {
   }
 
   /**
-   * Withdraw a product from the catalog.
-   *
-   * Soft, because order history points at the variants of products that may
-   * since have been withdrawn, so the row has to survive while the catalog
-   * stops showing it. Disabling and deleting are different acts: a disabled
-   * product is coming back, a deleted one is not.
-   *
-   * A second delete answers 404, because the visibility filter already excludes
-   * the row.
+   * Withdraw a product: soft, because order history points at its variants.
+   * A second delete is 404. ADR 15.
    */
   async deleteProduct(id: number): Promise<void> {
     await this.assertProductExists(id);

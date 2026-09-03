@@ -3,19 +3,9 @@ import { INT4_MAX } from '../../common/int4';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
- * Request body of PATCH /variants/{id}. See `openapi.yaml:1014-1032`.
- *
- * The body carries no `stock`. The contract gives the stock its own operation,
- * because the payment webhook writes that value too. A request that sends
- * `stock` here loses it to `whitelist: true`, which `src/common/validation-pipe-options.ts:17` sets.
- *
- * The contract also declares `minProperties: 1`. This class does not enforce
- * that rule and cannot. `NonEmptyBodyPipe` does, and the reason it is a pipe
- * rather than a validator is recorded in `update-product.dto.ts`.
- *
- * `price` carries the `int4` bound for the reason `create-variant.dto.ts`
- * records, and every optional property carries `@IsOptionalNotNull` for the
- * reason `is-optional-not-null.ts` records.
+ * Request body of `updateVariant`. No `stock`: it has its own operation,
+ * because the webhook writes it too, and `whitelist` drops it here.
+ * `minProperties: 1` is enforced by `NonEmptyBodyPipe`.
  */
 export class UpdateVariantDto {
   @IsOptionalNotNull()

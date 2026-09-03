@@ -3,13 +3,8 @@ import { CategoryDto } from '../../categories/dto/category.dto';
 import { ProductVariantDto } from '../../variants/dto/product-variant.dto';
 
 /**
- * One image of a product. See `openapi.yaml:2021-2033`.
- *
- * The table exists since migration `20260829023040` and the detail read maps
- * it, primary first. Nothing writes it until `uploadProductImage` lands, which
- * needs object storage and is Week 4 work, so a product created through the API
- * carries an empty array. The contract makes the array required, so the key is
- * always present.
+ * One image of a product, the contract's `ProductImage`. The array is
+ * required, so the key is always present.
  */
 @ApiSchema({ name: 'ProductImage' })
 export class ProductImageDto {
@@ -21,15 +16,8 @@ export class ProductImageDto {
 }
 
 /**
- * Response shape of GET /products/{id}, POST /products and PATCH /products/{id}.
- * See `openapi.yaml:1822-1852`.
- *
- * The contract makes `variants`, `images` and `categories` required, so each
- * key is present and holds an array. A new product carries three empty arrays,
- * which is the state `createProduct` leaves it in.
- *
- * The `products` row also holds `deleted_at`. It does not reach a response. The
- * contract answers 404 for a deleted product instead.
+ * The contract's `Product`. The three arrays are required, so a new product
+ * carries three empty ones, and `deleted_at` never reaches a response.
  */
 @ApiSchema({ name: 'Product' })
 export class ProductDto {
@@ -46,14 +34,9 @@ export class ProductDto {
   createdAt!: string;
 
   /**
-   * The three composite arrays carry an explicit `@ApiProperty` with a lazy
-   * `type`, and that is not decoration. The Swagger compiler plugin infers a
-   * lazy resolver of its own for a class-valued property, and when the document
-   * is built it explores `ProductDto` before the classes it points at are
-   * registered, then reports a circular dependency that does not exist:
-   * `ProductVariantDto` imports nothing. Naming the type here resolves it at the
-   * point of use rather than by inference, so the document builds the same way
-   * under `nest build` and under the test runner.
+   * A lazy `type` on the three arrays, because the plugin's own inference
+   * explores this class before the ones it points at are registered and
+   * reports a circular dependency that does not exist.
    */
   @ApiProperty({ type: () => ProductVariantDto, isArray: true })
   variants!: ProductVariantDto[];

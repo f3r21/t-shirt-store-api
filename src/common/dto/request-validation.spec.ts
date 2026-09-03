@@ -7,18 +7,12 @@ import { CreateSessionDto } from '../../auth/dto/create-session.dto';
 import { RefreshSessionDto } from '../../auth/dto/refresh-session.dto';
 import { RequestPasswordResetDto } from '../../auth/dto/request-password-reset.dto';
 import { ResetPasswordDto } from '../../auth/dto/reset-password.dto';
-import { ProblemField } from '../problem/problem';
+import type { ProblemField } from '../problem/problem';
 
 /**
- * The request DTOs, exercised through the pipe the application actually runs.
- *
- * The options come from `VALIDATION_PIPE_OPTIONS`, the same object
- * `configure-app.ts` builds the global pipe from. A spec that declared its own
- * would test a pipe the application does not run, and both would still pass.
- *
- * The pipe resolves when the body passes and rejects with a `BadRequestException`
- * when it fails. `getResponse()` carries the problem body, which is where
- * `errors[]` lives.
+ * The request DTOs through the pipe the application runs, built from
+ * `VALIDATION_PIPE_OPTIONS`. A rejection's `getResponse()` carries the
+ * problem body.
  */
 export function runPipe(
   metatype: new () => object,
@@ -142,20 +136,8 @@ describe('request validation', () => {
     });
 
     /**
-     * **The one message a caller receives has to be the one that explains the
-     * failure.**
-     *
-     * The three assertions above are the shape this test had, and they pass on
-     * any string. `POST /users` with `{"password": 12345}` answered "must be at
-     * most 128 characters" about a five digit number, because class-validator
-     * keys `constraints` in reverse declaration order and the factory read the
-     * first entry, which is the constraint declared last.
-     *
-     * A caller reads that and shortens a password that was never too long.
-     *
-     * The second row is the control. Without it this would pass on a factory
-     * that had started returning the type message for everything, including
-     * fields where the type is right and the length is genuinely wrong.
+     * The one message a caller receives has to name the failure to fix first,
+     * not the constraint declared last. The second row is the control.
      */
     it.each([
       [

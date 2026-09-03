@@ -1,4 +1,5 @@
 import request from 'supertest';
+import type { TestApp } from './app-factory';
 import {
   createTestApp,
   ensureCategory,
@@ -6,7 +7,6 @@ import {
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 
 /**
@@ -155,27 +155,8 @@ describe('Catalog reads (e2e)', () => {
     });
 
     /**
-     * The regression `ARCHITECTURE.md:131-139` names as the largest gap left,
-     * written the way that section asks for it. The 21 product unit tests assert
-     * the `where` object handed to a mocked client, so they prove the service
-     * composed a filter and not that a disabled row stays hidden from a real
-     * request against a real database.
-     */
-    /**
-     * A header that is present and unusable is not the same as no header.
-     *
-     * `GET /products` is the optional-auth route, so an anonymous call is a
-     * 200. That made a broken `Authorization` header a 200 as well, because
-     * the guard could not tell "sent nothing" from "sent something I cannot
-     * read": both arrived as an undefined token.
-     *
-     * The reader this hurt is a manager whose client mangles the header. They
-     * asked for the catalog as themselves, got the anonymous one, and nothing
-     * in the response said so.
-     *
-     * The last row is the control. Without it four 401s would also pass on a
-     * guard that had started refusing every anonymous read, which is the
-     * opposite failure and a worse one.
+     * A header that is present and unusable is not the same as no header, on
+     * the optional-auth route. The last row is the control.
      */
     it.each([
       ['a scheme that is not Bearer', 'Basic abc', 401],
@@ -255,19 +236,9 @@ describe('Catalog reads (e2e)', () => {
     });
 
     /**
-     * A malformed id and an impossible id are different answers, at run time.
-     *
-     * `ParseIdPipe` draws that line and its docstring argues it: `abc` is a bad
-     * request, while an integer above the `int4` ceiling is a lookup that finds
-     * nothing, which is what a negative id and a zero id already answer. Both
-     * documents now declare the 400, and **a document is not a response**.
-     * `openapi-contract.e2e-spec.ts` compares two descriptions of this API and
-     * never calls it, so the two could agree with each other and disagree with
-     * the server. This is the test that calls it.
-     *
-     * The two 404 rows are the control. Without them a 400 on every input would
-     * pass the first two lines, and the distinction the pipe exists to draw
-     * would be untested.
+     * A malformed id is 400 and an impossible id is 404, through a real
+     * request, because the contract suite compares documents and never calls
+     * the server. The 404 rows are the control.
      */
     it.each([
       ['a segment that is not a number', 'abc', 400],
@@ -346,15 +317,8 @@ describe('Catalog reads (e2e)', () => {
   });
 
   /**
-   * Images come from `product_images`, which exists and which nothing writes
-   * until the upload operation lands. The mapper answered `[]` under a comment
-   * saying the table did not exist, so a row in it was invisible and the list's
-   * `primaryImageUrl` was never set. The rows here are seeded straight into the
-   * table, the way `seedOrderLineFor` seeds an order line, because no operation
-   * can create one yet.
-   *
-   * The primary is seeded second, so it has the higher id. The first assertion
-   * passes only if the order is primary first and not by id.
+   * Images seeded straight into the table. The primary is seeded second, so
+   * the first assertion passes only if the order is primary first, not by id.
    */
   describe('images, from a table nothing writes yet', () => {
     interface Detail {
@@ -405,19 +369,9 @@ describe('Catalog reads (e2e)', () => {
   });
 
   /**
-   * An integer the column cannot hold, on the two routes that need no token.
-   *
-   * These are unit tested at `src/common/dto/catalog-validation.spec.ts` and
-   * `src/common/parse-id.pipe.spec.ts`, which prove the DTO and the pipe refuse
-   * the value. Neither can prove what the caller receives, because the defect
-   * was never in the validators. It was that the value passed them, reached
-   * Postgres, came back as `P2020`, and fell through the exception filter as a
-   * 500. Only a real request through the whole pipeline shows that.
-   *
-   * Measured before the bounds existed, both without a token:
-   *
-   *     GET /v1/products?categoryId=2147483648   500
-   *     GET /v1/products/-2147483649             500
+   * An integer the column cannot hold, on the two routes with no token,
+   * through the whole pipeline: the unit specs prove the refusal, and only a
+   * request proves the status the caller receives.
    */
   describe('an id past the int4 bounds, with no token', () => {
     beforeEach(async () => {

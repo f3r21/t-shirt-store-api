@@ -1,14 +1,18 @@
-import { INestApplication } from '@nestjs/common';
-import { Test, TestingModuleBuilder } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import type { TestingModuleBuilder } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ThrottlerStorage } from '@nestjs/throttler';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import Stripe from 'stripe';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { LowStockMail, MAILER, Mailer } from '../src/mail/mailer';
-import { STRIPE_CLIENT, StripeClient } from '../src/payments/stripe.client';
-import { OBJECT_STORE, ObjectStore } from '../src/images/object-store';
+import type { LowStockMail, Mailer } from '../src/mail/mailer';
+import { MAILER } from '../src/mail/mailer';
+import type { StripeClient } from '../src/payments/stripe.client';
+import { STRIPE_CLIENT } from '../src/payments/stripe.client';
+import type { ObjectStore } from '../src/images/object-store';
+import { OBJECT_STORE } from '../src/images/object-store';
 
 /**
  * Every message the application tried to send during a test.
@@ -63,15 +67,9 @@ export class MailerSpy implements Mailer {
 }
 
 /**
- * The Stripe SDK with its two network calls replaced and its signer kept.
- *
- * The Week 3 & 4 page names the Stripe API as the honest thing a test cannot
- * run, and says to stub it. This records what the service asked Stripe for,
- * so a test can assert the order id rode along, and answers the shapes the
- * service reads. `webhooks` is the real SDK's, because `constructEvent` is
- * pure HMAC over the body and the signature check is the production code
- * path: a test signs with `webhooks.generateTestHeaderString` and the same
- * secret `setup-e2e.ts` sets, and the server verifies for real.
+ * The Stripe SDK with its two network calls replaced and its signer kept: a
+ * test signs with `generateTestHeaderString` and the same secret, and the
+ * server verifies for real.
  */
 export class StripeStub implements StripeClient {
   readonly links: Stripe.PaymentLinkCreateParams[] = [];
@@ -141,17 +139,9 @@ export interface TestApp {
 }
 
 /**
- * A counter that never blocks.
- *
- * Every supertest request arrives from 127.0.0.1, so the whole suite shares one
- * bucket, and the password routes carry a fifteen minute window that does not
- * reset between tests. Without this, an assertion twenty requests into an
- * unrelated spec starts answering 429.
- *
- * The storage is replaced rather than the guard, because the guard is provided
- * under the `APP_GUARD` token rather than by its own class, and `overrideGuard`
- * does not reach it there. This leaves the real guard running, so the throttler
- * is still wired and still emits its headers, and only the counting is neutral.
+ * A counter that never blocks, because every request arrives from 127.0.0.1.
+ * The storage is replaced and not the guard, which `overrideGuard` cannot
+ * reach under `APP_GUARD`, so the throttler still emits its headers.
  */
 class NeverBlocks implements ThrottlerStorage {
   increment(): Promise<{
@@ -170,15 +160,9 @@ class NeverBlocks implements ThrottlerStorage {
 }
 
 /**
- * Boot the real application, configured the way `main.ts` configures it.
- *
- * `configureApp` is shared with `main.ts` on purpose. A suite that built
- * `AppModule` on its own would get no global prefix and no validation pipe, so
- * every assertion about a 400 would pass for the wrong reason.
- *
- * The throttler's counter is replaced by default, for the reason on
- * `NeverBlocks` above. A rate limit spec passes `{ throttle: true }` to keep the
- * real one.
+ * Boot the real application through `configureApp`, so the suite gets the
+ * prefix and the pipe the server runs. The counter is replaced unless
+ * `{ throttle: true }`.
  */
 export async function createTestApp(
   options: { throttle?: boolean } = {},
@@ -218,26 +202,8 @@ export async function createTestApp(
 }
 
 /**
- * Empty the rate limiter's counter, the way `truncateAll` empties the tables.
- *
- * The throttler holds state across tests exactly as the database does, and the
- * suite that uses the real counter had no way to reset it. It varied
- * `X-Forwarded-For` per test instead, under a comment saying the counter is
- * keyed on the source address. It is, and the header never reaches it: the
- * tracker reads `req.ip`, Express does not populate that from the header unless
- * `trust proxy` is set, and `rg -n 'trust proxy|trustProxy' src test` exits 1.
- * The comment on `NeverBlocks` above had the truth written down the whole time.
- *
- * What that cost, measured:
- *
- *     jest --config ./test/jest-e2e.json test/rate-limit.e2e-spec.ts
- *       -> 5 passed
- *     the same, --randomize --seed=3
- *       -> 1 failed: "refuses the sixth reset-password from one address"
- *
- * Five tests shared one bucket per handler and passed only in the order they
- * were written. This resets the real counter instead of pretending to isolate
- * it, so the tier being asserted is still the real one.
+ * Empty the rate limiter's counter between tests, the way `truncateAll`
+ * empties the tables, so the tier asserted is still the real one.
  */
 export function resetThrottleCounter(ctx: TestApp): void {
   const storage = ctx.app.get<ThrottlerStorage>(ThrottlerStorage);
@@ -252,27 +218,8 @@ export function resetThrottleCounter(ctx: TestApp): void {
     );
   }
 
-  // **The timers go before the map, and that order is the whole fix.**
-  //
-  // `increment` schedules a `setTimeout` per record that decrements the entry
-  // when its window closes. Clearing the map on its own leaves those timers
-  // alive holding a key that is no longer there, and the callback destructures
-  // the missing record. Reproduced against the installed package:
-  //
-  //     new ThrottlerStorageService()
-  //       .increment('k', 50, 5, 0, 'default')
-  //       .then(() => s.storage.clear())
-  //     -> Cannot destructure property 'totalHits' of 'this.storage.get(...)'
-  //        as it is undefined
-  //
-  // It threw inside a timer, so it is an uncaught exception in the worker
-  // rather than a failed assertion. This suite survived on timing alone: every
-  // window is 60 seconds or more and the run finished first. A slower machine
-  // turns a green suite into a dead worker with nothing explaining why.
-  //
-  // `onApplicationShutdown` is the package's own teardown and clears both the
-  // timeouts and the records, so this stops reaching past its API into a field
-  // whose invariants it does not know.
+  // The package's own teardown first: it clears the timers that would
+  // otherwise fire on a cleared map and throw inside the worker.
   service.onApplicationShutdown?.();
   service.storage.clear();
 }
@@ -288,18 +235,9 @@ export function resetThrottleCounter(ctx: TestApp): void {
  * saves naming the child tables in dependency order.
  */
 export async function truncateAll(prisma: PrismaService): Promise<void> {
-  // Products join the list because the authorization suite creates one to prove
-  // a manager is allowed through. CASCADE reaches variants and the join rows.
-  // `consumed_refresh_tokens` is named rather than left to CASCADE. It would be
-  // reached anyway through its user foreign key, and a table that is emptied
-  // only as a side effect of another one is a table nobody remembers when the
-  // foreign key changes.
-  // `stripe_events` has no foreign key at all, so CASCADE would never reach
-  // it, and a replay test in one spec would see an event id another spec
-  // applied.
-  // `product_likes` and `stock_notifications` are named for the reason
-  // `consumed_refresh_tokens` is: both hang off users and variants and would
-  // be reached, and both have a writer now.
+  // Named and not left to CASCADE: `consumed_refresh_tokens`, `product_likes`
+  // and `stock_notifications` would be reached only as a side effect, and
+  // `stripe_events` has no foreign key at all.
   await prisma.$executeRawUnsafe(
     'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events" RESTART IDENTITY CASCADE',
   );

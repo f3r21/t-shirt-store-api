@@ -22,21 +22,10 @@ export interface UploadedImage {
 }
 
 /**
- * The two image operations. See `openapi.yaml:911-1000`.
- *
- * **The object first, then the row; the row first, then the object.** An
- * upload writes the object and then the row in one transaction, and a row
- * that fails takes its object back down, so the API never shows a URL with
- * nothing behind it. A delete removes the row and then the object, and an
- * object that will not go is logged and left, because a URL the API still
- * shows is worse than one object nobody references.
- *
- * **One primary per product**, kept by the transaction that clears the
- * previous flag before it sets the new one. Removing the primary leaves the
- * product with none, which is what the contract says.
- *
- * **The type is read from the bytes**, in `image-type.ts`, never from the
- * header the client declared. DECISIONS 31.
+ * The two image operations. An upload writes the object, then the row, and
+ * takes the object down if the row fails; a delete removes the row, then the
+ * object, and logs an object that will not go. One primary per product. The
+ * type is read from the bytes. ADR 31.
  */
 @Injectable()
 export class ImagesService {

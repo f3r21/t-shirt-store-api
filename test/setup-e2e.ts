@@ -1,14 +1,7 @@
 /**
- * The environment the end-to-end suite runs against.
- *
- * Set here rather than in a `.env.test` file for two reasons. `.gitignore`
- * covers `.env` and `.env.test.local` but not `.env.test`, so that file would be
- * committed. And `@nestjs/config` reads `.env` when a key is absent from
- * `process.env`, so a file alone would not reliably win: assigning here does,
- * because process.env takes precedence over the file.
- *
- * The database is a separate one. The suite truncates between tests, and doing
- * that to the development database would delete the seed on every run.
+ * The e2e environment, set here because a `.env.test` file would be
+ * committed and `process.env` wins over `.env`. The database is a separate
+ * one, because the suite truncates it.
  */
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL =

@@ -1,9 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { VariantsService } from './variants.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { aProduct, aVariant } from '../products/products.fixtures';
 import { nthArg } from '../common/mock-args';
@@ -199,10 +199,7 @@ describe('VariantsService', () => {
       });
     });
 
-    /**
-     * The contract's 409 at `openapi.yaml:1084`. Order history points at the
-     * variant row, so removing it would rewrite what a customer bought.
-     */
+    /** The contract's 409 on `deleteVariant`: order history points at the row. */
     it('answers 409 when an order line points at the variant', async () => {
       prisma.productVariant.findFirst.mockResolvedValue(aVariant());
       prisma.orderItem.count.mockResolvedValue(1);

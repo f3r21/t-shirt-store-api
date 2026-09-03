@@ -1,5 +1,5 @@
 import type { Category as CategoryRow } from '../generated/prisma/client';
-import { CategoryDto } from './dto/category.dto';
+import type { CategoryDto } from './dto/category.dto';
 
 /** Map a `categories` row to the response shape. */
 export function toCategoryDto(row: CategoryRow): CategoryDto {

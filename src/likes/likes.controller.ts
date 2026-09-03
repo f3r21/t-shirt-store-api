@@ -22,15 +22,13 @@ import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
- * A like on a variant. See `openapi.yaml:772-839`.
- *
- * Every signed-in caller may like and unlike: the contract declares no 403 on
- * either operation, and the ability grants `manage ProductLike` on the
- * caller's own rows. Both answer 204, and a second call answers the same 204
- * because the primary key makes the write idempotent. Each handler is named
- * after its contract operation id, which the drift suite compares.
+ * The likes. Every signed-in caller may like and unlike, as the contract
+ * declares no 403; both answer 204, and a repeat answers the same. Each
+ * handler is named after its operation id.
  */
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('variants')
 export class LikesController {
   constructor(private readonly likes: LikesService) {}
@@ -39,12 +37,10 @@ export class LikesController {
   @ApiOperation({ summary: 'Like a variant' })
   @ApiResponse({ status: 204, description: 'The user likes this variant.' })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 404,
     description: 'The variant does not exist, or its product is not on sale.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Put(':id/like')
   @HttpCode(HttpStatus.NO_CONTENT)
   likeVariant(
@@ -61,9 +57,7 @@ export class LikesController {
     description: 'The user does not like this variant.',
   })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete(':id/like')
   @HttpCode(HttpStatus.NO_CONTENT)
   unlikeVariant(
@@ -76,6 +70,8 @@ export class LikesController {
 
 /** The liked products, on the path the contract puts them. */
 @ApiTags('catalog')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('users/me/likes')
 export class MyLikesController {
   constructor(private readonly likes: LikesService) {}
@@ -84,8 +80,6 @@ export class MyLikesController {
   @ApiOperation({ summary: 'List the products this user likes' })
   @ApiPageResponse(ProductSummaryDto, 'One page of liked products.')
   @ApiResponse({ status: 400, description: 'The query is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   listLikedProducts(
     @CurrentUser() user: AccessTokenPayload,

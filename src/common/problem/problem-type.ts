@@ -1,4 +1,4 @@
-export const PROBLEM_BASE = 'https://tshirt.store/problems';
+const PROBLEM_BASE = 'https://tshirt.store/problems';
 
 export const ProblemType = {
   InvalidCredentials: `${PROBLEM_BASE}/invalid-credentials`,

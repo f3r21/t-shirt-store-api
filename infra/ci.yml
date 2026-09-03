@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   t-shirt-store-api, the trust that lets a GitHub Actions run release the tshirt stack with no
   stored key: GitHub's OIDC provider, the role the job assumes, and the role CloudFormation
-  assumes to update the stack. Deployed once, by a person. DECISIONS 30.
+  assumes to update the stack. Deployed once, by a person. ADR 30.
 
 Parameters:
   Repository:
@@ -14,10 +14,6 @@ Parameters:
       repository by its names alone and STS refused it; CloudTrail showed the ids. A rename
       of the repository or of the account changes nothing here, and a new repository under
       the same name gets a new id and no trust.
-  Branch:
-    Type: String
-    Default: feat/week-3-auth
-    Description: The working branch, whose pushes release.
   DefaultBranch:
     Type: String
     Default: main
@@ -45,7 +41,7 @@ Resources:
       ClientIdList:
         - sts.amazonaws.com
 
-  # What a run may do, and only a run of this repository on one of two refs: push the image,
+  # What a run may do, and only a run of this repository on its default branch: push the image,
   # ask CloudFormation for a change set on the one stack, run the migrate task, read its log.
   # Nothing here touches an instance, a database or a role directly.
   DeployRole:
@@ -66,7 +62,6 @@ Resources:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
                 token.actions.githubusercontent.com:sub:
-                  - !Sub repo:${Repository}:ref:refs/heads/${Branch}
                   - !Sub repo:${Repository}:ref:refs/heads/${DefaultBranch}
       Policies:
         - PolicyName: release-the-stack
@@ -143,11 +138,10 @@ Resources:
                   - logs:DescribeLogStreams
                 Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}:*
 
-  # What CloudFormation may do when it executes a change set on the stack: everything the
-  # stack manages, which is most of what an administrator did on the first release, plus the
-  # stack's own roles and instance profile in IAM and nothing else there. Only CloudFormation
-  # in this account can assume it, and the job can only pass it to a change set on the one
-  # stack. Powerful on purpose, and reachable through the stack alone.
+  # What CloudFormation may do when it executes a change set: everything the stack manages,
+  # plus the stack's own roles and instance profile in IAM and nothing else there. Only
+  # CloudFormation in this account can assume it, and only through a change set on the one
+  # stack.
   StackRole:
     Type: AWS::IAM::Role
     Properties:

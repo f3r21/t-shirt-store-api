@@ -1,5 +1,5 @@
+import type { ArgumentsHost } from '@nestjs/common';
 import {
-  ArgumentsHost,
   BadRequestException,
   ForbiddenException,
   Logger,
@@ -8,7 +8,7 @@ import {
 import { ThrottlerException } from '@nestjs/throttler';
 import { ProblemFilter } from './problem.filter';
 import { nthArg } from '../mock-args';
-import { AccessTokenPayload } from '../../auth/access-token-payload';
+import type { AccessTokenPayload } from '../../auth/access-token-payload';
 
 /** The object a log spy was handed, typed by the caller. */
 function line(spy: jest.SpyInstance, call = 0): Record<string, unknown> {
@@ -19,21 +19,9 @@ function line(spy: jest.SpyInstance, call = 0): Record<string, unknown> {
 }
 
 /**
- * The filter, which is the half of the mapper that touches the response.
- *
- * `problem.spec.ts` covers what document each throwable becomes. This file
- * covers the four things only the filter decides, and each one is invisible to
- * a test of `toProblem`:
- *
- * 1. the media type on the wire is `application/problem+json`, which RFC 9457
- *    requires and which a plain `res.json()` would not set,
- * 2. `WWW-Authenticate` goes out on a 401 and on nothing else, which RFC 9110
- *    requires of every 401,
- * 3. `instance` is the request path, taken from the request rather than guessed,
- * 4. what reaches the log: a 500 at error with the error itself, a 401, a 403
- *    and a 429 at warn under their security events, every other 4xx at info,
- *    each line carrying the event, the status, the method and the path, and
- *    the user id once a token verified.
+ * The four things only the filter decides: the media type, `WWW-Authenticate`
+ * on a 401 alone, `instance` from the request path, and what reaches the log
+ * at which level. `problem.spec.ts` covers the documents.
  */
 describe('ProblemFilter', () => {
   interface Harness {
@@ -234,18 +222,8 @@ describe('ProblemFilter', () => {
 
   describe('what it refuses to carry, and where it refuses to run', () => {
     /**
-     * **The query string reaches a log line and a response body, and it is the
-     * caller's to fill.**
-     *
-     * `req.url` is the path plus everything after the `?`. It went into the
-     * debug log, which is on by default, and into the `instance` member of the
-     * problem document. An anonymous caller can send eight kilobytes of
-     * anything in a query string, collect a 400 from `forbidNonWhitelisted`,
-     * and have it written down. A path names the operation, which is all either
-     * use needs.
-     *
-     * The second half is the control: the path still arrives, so this is not
-     * passing because the filter stopped logging anything.
+     * The query string reaches neither the log nor `instance`: it is the
+     * caller's to fill. The path still arrives, which is the control.
      */
     it('logs the path and never the query string', () => {
       const h = harness('/v1/products?secret=leaked&big=' + 'x'.repeat(200));

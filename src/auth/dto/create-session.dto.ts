@@ -2,12 +2,9 @@ import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 import { IsOptionalNotNull } from '../../common/is-optional-not-null';
 
 /**
- * Request body of POST /auth/sessions.
- *
- * Bounds from the contract, at `openapi.yaml:110-137`. The password carries the
- * same minimum as sign-up, so a five-character attempt returns 400 and not 401.
- * That answer names the password policy. It does not say whether the account
- * exists.
+ * Request body of `createSession`. The password carries the sign-up minimum,
+ * so a short attempt is 400 and not 401: that names the policy, not the
+ * account.
  */
 export class CreateSessionDto {
   @IsEmail({}, { message: 'must be a valid email address' })
@@ -19,13 +16,7 @@ export class CreateSessionDto {
   @MaxLength(128, { message: 'must be at most 128 characters' })
   password!: string;
 
-  /**
-   * A label for this device. The user sees it in the device list.
-   *
-   * This property is where the codebase first found that `@IsOptional()` treats
-   * null as missing, and it carried the condition inline. The rule now lives in
-   * `src/common/is-optional-not-null.ts` and every optional property uses it.
-   */
+  /** A label for this device, shown in the device list. */
   @IsOptionalNotNull()
   @IsString({ message: 'must be a string' })
   @MaxLength(64, { message: 'must be at most 64 characters' })

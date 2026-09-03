@@ -1,12 +1,6 @@
 import type { RefreshToken as RefreshTokenRow } from '../generated/prisma/client';
 
-/**
- * Build a `refresh_tokens` row.
- *
- * The id and both dates match the contract's own examples, at
- * `openapi.yaml:1629`, `:1627` and `:1632`, so a spec reads against the same
- * numbers the contract shows.
- */
+/** A `refresh_tokens` row. The id and the dates match the contract's `Session` example. */
 export function aRefreshToken(
   overrides: Partial<RefreshTokenRow> = {},
 ): RefreshTokenRow {

@@ -1,11 +1,9 @@
 import type { OrderStatus } from '../generated/prisma/enums';
 
 /**
- * The statuses a caller may send. See `openapi.yaml:1530-1586`.
- *
- * `pending` is where an order starts, `paid` is written by the payment webhook
- * alone because Stripe confirms a payment and a request does not, and
- * `delivered` belongs to the optional delivery feature the contract leaves out.
+ * The statuses `setOrderStatus` accepts. `pending` is where an order starts,
+ * `paid` is the webhook's alone, and `delivered` belongs to the optional
+ * delivery feature.
  */
 export const REQUESTABLE_STATUSES = [
   'processing',
@@ -16,17 +14,9 @@ export const REQUESTABLE_STATUSES = [
 export type RequestableStatus = (typeof REQUESTABLE_STATUSES)[number];
 
 /**
- * What a requested move is, given the order's current status.
- *
- * - `ok`: write it.
- * - `not-cancellable`: a cancel after the order shipped. 409 with the
- *   `order-not-cancellable` problem type, the one 409 the contract names here.
- * - `illegal`: the current status does not allow this move. 409.
- *
- * Who may ask is not this table's business. The ability decides that before
- * the table is consulted: a client may cancel their own order and a manager
- * may advance any, and the service answers 403 from the ability, then 409
- * from here.
+ * What a requested move is from the current status: `ok`, `not-cancellable`
+ * (a cancel after shipping, the contract's own 409 type), or `illegal`. Who
+ * may ask is the ability's business, answered before this table.
  */
 export type MoveVerdict = 'ok' | 'not-cancellable' | 'illegal';
 
@@ -50,13 +40,10 @@ const SHIPPED_OR_LATER: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
 ]);
 
 /**
- * The status flow, as one pure function the service asks before it writes.
- *
- * The brief's core flow is `pending, paid, processing, shipped`, with
- * `cancelled` reachable before `shipped`. An advance goes from `paid`, not
- * from `pending`: an unpaid order has nothing to process, and the webhook is
- * the only writer of `paid`, so `pending` to `processing` is illegal rather
- * than a shortcut. `cancelled` and `delivered` are terminal.
+ * The status flow as one pure function: `pending, paid, processing,
+ * shipped`, with `cancelled` reachable before `shipped`. An advance goes from
+ * `paid`, because the webhook is the only writer of it. `cancelled` and
+ * `delivered` are terminal.
  */
 export function nextStatus(
   from: OrderStatus,

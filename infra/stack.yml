@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   t-shirt-store-api, one environment: ECS on one EC2 instance behind CloudFront, a managed
-  Postgres, a managed Valkey cache, an image registry and an object bucket. DECISIONS 29.
+  Postgres, a managed Valkey cache, an image registry and an object bucket. ADR 29.
 
 # Deployed and torn down with one command each, see README.md, "Deploy". Every value that is
 # a secret arrives through a NoEcho parameter or an SSM SecureString the operator wrote
@@ -16,10 +16,10 @@ Parameters:
     Type: AWS::EC2::Image::Id
     Default: ami-0a4e17e19b87f7763
     Description: >-
-      The ECS-optimized Amazon Linux 2023 image for arm64, pinned. Read from the SSM path
-      /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id on
-      2026-09-02, and bumped on purpose: a change here replaces the instance, and an SSM
-      parameter type would do that on whatever release followed AWS's next publication.
+      The ECS-optimized Amazon Linux 2023 image for arm64, pinned and bumped by hand: a
+      change here replaces the instance, and an SSM parameter type would do that on whatever
+      release followed AWS's next publication. Read on 2026-09-02 from the SSM path
+      /aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id.
   VpcId:
     Type: AWS::EC2::VPC::Id
     Default: vpc-0d4ed7e3163b081a1
@@ -497,8 +497,7 @@ Resources:
         - Name: migrate
           Image: !Sub ${Repository.RepositoryUri}:${MigrateImageTag}-migrate
           Essential: true
-          # It runs beside the live task, which reserves 448 of the host's 916 MiB, so it must
-          # fit in what is left; 512 did not, the first release proved it.
+          # The live task reserves 448 of the host's 916 MiB, so this one asks for what is left.
           Memory: 384
           Environment:
             - Name: NODE_ENV

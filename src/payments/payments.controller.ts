@@ -33,17 +33,12 @@ import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
- * The two Stripe flows and the webhook. See `openapi.yaml:1587-1742`.
- *
- * Three paths with three roots, so the controller sits at the root and each
- * handler carries its whole path. Each is named after its contract operation
- * id, which the drift suite compares.
- *
- * The webhook is `@Public()` because Stripe calls it and a person does not:
- * the signature over the raw body is its authentication, and `parseEvent`
- * refuses anything that does not verify before a byte of it is read.
+ * The two Stripe flows and the webhook, three paths at three roots. The
+ * webhook is `@Public()`: the signature over the raw body is its
+ * authentication.
  */
 @ApiTags('payments')
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller()
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
@@ -71,7 +66,6 @@ export class PaymentsController {
     status: 409,
     description: 'The quantity is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('payment-links')
   @HttpCode(HttpStatus.CREATED)
   async createPaymentLink(
@@ -102,7 +96,6 @@ export class PaymentsController {
     description:
       'The order is not pending, or a line is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('orders/:id/payments')
   @HttpCode(HttpStatus.CREATED)
   createPaymentIntent(
@@ -130,7 +123,6 @@ export class PaymentsController {
     status: 400,
     description: 'The signature does not verify against the body.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('webhooks/stripe')
   @HttpCode(HttpStatus.OK)
   receiveStripeEvent(

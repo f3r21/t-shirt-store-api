@@ -31,22 +31,10 @@ import {
 } from './order.mapper';
 
 /**
- * Orders: placed from the cart, moved through the status flow, and read back
- * as one order or as a filtered page. See `openapi.yaml:1375-1586`.
- *
- * **Ownership is in the `where`, not in an `if`, and the `where` comes from
- * the ability.** `accessibleBy(ability).Order` is the rule's own condition as
- * a Prisma clause: a client's own rows, every row for a manager. A client's
- * reads and writes resolve the order through it, so another client's order
- * and a missing order are the same 404 and no branch can leak that an id
- * exists. The contract asks for exactly this: 404 and not 403, because an
- * integer id can be guessed.
- *
- * **Stock is read here and never written.** The contract says an unpaid order
- * reserves nothing and the stock falls when the payment webhook reports
- * success, so `createOrder` checks every line against the units on hand and
- * leaves the number alone. The webhook is the only writer of `paid` and of
- * the stock, which is the halfway seam `ARCHITECTURE.md` describes.
+ * Orders: placed from the cart, moved through the status flow, read back one
+ * at a time or as a filtered page. Ownership is in the `where` the ability
+ * gives, so another client's order is the same 404 as a missing one (ADR 25).
+ * Stock is read here and never written; the webhook lowers it (ADR 23).
  */
 @Injectable()
 export class OrdersService {
@@ -79,7 +67,7 @@ export class OrdersService {
     });
   }
 
-  /** Title and detail follow the contract's example at `openapi.yaml:2568-2574`. */
+  /** Title and detail follow the contract's `order-not-cancellable` example. */
   private notCancellable(): ProblemException {
     return new ProblemException(
       ProblemType.OrderNotCancellable,
@@ -103,18 +91,11 @@ export class OrdersService {
   }
 
   /**
-   * Place an order from the cart, and empty the cart, in one transaction.
-   *
-   * The order of the statements is the point. The lines are read through the
-   * cart's own predicate, so a withdrawn product's line is not ordered
-   * (DECISIONS 22). Then the lines are **deleted before the order is created**,
-   * and the delete has to remove exactly the lines that were read: two
-   * checkouts of one cart both read the lines, the second blocks on the
-   * first's delete, finds nothing left, and rolls back instead of placing a
-   * second order. A second delete then clears what the read did not show, so
-   * the cart is empty as the contract promises. Only then is the order
-   * written, with the four snapshots copied from what the read returned, so
-   * the order records the price the check ran against.
+   * Place an order from the cart and empty it, in one transaction. The lines
+   * are deleted before the order is created, and the delete must remove
+   * exactly the lines read: the second of two racing checkouts deletes
+   * nothing and rolls back. The snapshots come from the rows the check saw.
+   * ADR 22, ADR 23.
    */
   async createOrder(viewer: AccessTokenPayload): Promise<OrderDto> {
     const userId = viewer.sub;
@@ -266,18 +247,9 @@ export class OrdersService {
   }
 
   /**
-   * Move an order to another status.
-   *
-   * Two questions, in order. The ability says who: a cancel needs `cancel`
-   * on this order, which a client has on their own and a manager on any, and
-   * an advance needs `update`, which only a manager has; 403 otherwise. Then
-   * the table says whether the move is legal from where the order stands
-   * (`order-status.ts`), 409 otherwise. The write is conditional on the status
-   * the table saw: `updateMany` with the old status in its `where`, so a
-   * cancel and a ship racing on one order cannot both land, and the loser
-   * reads 409 rather than overwriting a `shipped` with a `cancelled`. The
-   * history row is written in the same transaction, then the order is read
-   * back with it.
+   * Move an order. The ability says who (403), `order-status.ts` says whether
+   * the move is legal (409), and the write is conditional on the status the
+   * table saw, with the history row in the same transaction. ADR 23, ADR 25.
    */
   async setOrderStatus(
     viewer: AccessTokenPayload,

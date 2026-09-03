@@ -1,8 +1,6 @@
 import { ApiSchema } from '@nestjs/swagger';
 
-/**
- * Response shape of POST /orders/{id}/payments. See `openapi.yaml:2271-2288`.
- */
+/** The contract's `PaymentIntent`. */
 @ApiSchema({ name: 'PaymentIntent' })
 export class PaymentIntentDto {
   orderId!: number;

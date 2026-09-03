@@ -6,7 +6,7 @@ import { crossesLowStock, LOW_STOCK_THRESHOLD } from './low-stock';
  * red rather than moving the cases with it.
  */
 describe('crossesLowStock', () => {
-  it("is three, the brief's number", () => {
+  it('is three', () => {
     expect(LOW_STOCK_THRESHOLD).toBe(3);
   });
 

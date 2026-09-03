@@ -2,17 +2,8 @@ import type { ProductVariant as ProductVariantRow } from '../generated/prisma/cl
 import { toProductVariantDto, toStoredOption } from './variant.mapper';
 
 /**
- * The two spellings of an absent option, and the seam where they meet.
- *
- * `size` and `color` are NOT NULL columns whose empty string means "this
- * variant has no size", and the reason is the unique index: PostgreSQL treats
- * two NULLs as distinct, so a nullable column cannot enforce one pair per
- * product. That decision is defended in `schema.prisma:94-100` and it costs
- * exactly one thing, the translation in this file.
- *
- * Nothing tested it. Rewrite either guard to always fire and the stored empty
- * string reaches the wire as `size: ""`, which contradicts the contract's
- * absent-means-none reading, and the whole suite stays green.
+ * The two spellings of an absent option meet here: the empty string in the
+ * column, absence on the wire. ADR 14.
  */
 describe('variant.mapper', () => {
   const row = (over: Partial<ProductVariantRow> = {}): ProductVariantRow =>

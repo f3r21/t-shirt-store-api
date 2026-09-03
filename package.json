@@ -1,29 +1,30 @@
 {
   "name": "t-shirt-store-api",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "T-shirt store API: catalog, cart, orders, Stripe payments and low-stock mail on NestJS and Prisma",
+  "author": "Fabian Espinoza",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
     "build": "nest build",
     "prebuild": "prisma generate",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
-    "docs:lint": "vale README.md ARCHITECTURE.md",
+    "docs:lint": "vale README.md ARCHITECTURE.md contract/README.md docs/decisions",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
     "start:worker": "node dist/src/worker",
     "start:worker:dev": "nest start --entryFile worker --watch",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "lint:ci": "eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings=0",
+    "lint": "eslint \"{src,test}/**/*.ts\" --fix",
+    "lint:ci": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config ./test/jest-e2e.json",
     "prepare": "husky",
     "docker:up": "docker compose up -d",
@@ -64,7 +65,6 @@
     "stripe": "^22.6.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
@@ -87,12 +87,8 @@
     "pino-pretty": "^13.1.3",
     "prettier": "^3.4.2",
     "prisma": "^7.10.0",
-    "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
-    "ts-loader": "^9.5.2",
-    "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0",
     "yaml": "^2.9.0"
@@ -115,7 +111,10 @@
       "**/*.(t|j)s"
     ],
     "coveragePathIgnorePatterns": [
-      "/src/generated/"
+      "/src/generated/",
+      "\\.fixtures\\.ts$",
+      "\\.mock\\.ts$",
+      "/src/common/mock-args\\.ts$"
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"

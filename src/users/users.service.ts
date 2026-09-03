@@ -12,11 +12,8 @@ import { toUserDto } from './user.mapper';
 import { normalizeEmail } from '../common/email';
 
 /**
- * The two operations under /users.
- *
- * `MAILER` is an injection token and not a class, because `Mailer` is a
- * TypeScript interface and Nest cannot resolve a type that carries no runtime
- * value.
+ * The two operations under /users. `MAILER` is a token, because `Mailer` is an
+ * interface with no runtime value.
  */
 @Injectable()
 export class UsersService {
@@ -37,18 +34,9 @@ export class UsersService {
   }
 
   /**
-   * Create a client account. See `openapi.yaml:389`.
-   *
-   * The request does not accept a role. Every account this operation creates is
-   * a client account, so the role comes from the `roles` table and never from
-   * the body.
-   *
-   * A registered address returns 409 with the `email-taken` type. The read is
-   * the common path and reads better, and the catch is what makes it correct:
-   * two simultaneous sign-ups both pass the read, and the loser hits the unique
-   * index. Without the catch that loser falls through to the generic `P2002`
-   * branch, which answers a bare 409 carrying no type, and the contract says a
-   * client branches on the type and on nothing else.
+   * Create a client account; the role never comes from the body. The pre-read
+   * answers the common `email-taken` 409, and the `P2002` catch covers two
+   * sign-ups racing past it.
    */
   async createUser(dto: CreateUserDto): Promise<UserDto> {
     const email = normalizeEmail(dto.email);
@@ -92,22 +80,9 @@ export class UsersService {
   }
 
   /**
-   * Replace the password of the signed-in user. See `openapi.yaml:461`.
-   *
-   * A wrong current password returns 401. It is an authentication failure and
-   * not a permissions failure.
-   *
-   * The method deletes every refresh row for this user, including the row of
-   * the device that sent this request. Every device must sign in again.
-   *
-   * The method also clears any live password reset token. A user who reacts to
-   * an unexpected reset mail by changing their own password would otherwise
-   * leave the attacker's link working for the rest of its window.
-   *
-   * `argon2.verify` takes the digest first and the plain text second, which is
-   * the opposite order of `bcrypt.compare`. The wrong order does not return
-   * false, it throws `TypeError: pchstr must contain a $ as first char`, because
-   * the first argument goes straight into the PHC parser before any comparison.
+   * Replace the signed-in user's password. A wrong current password is 401.
+   * Every session ends, and a live reset token is cleared, so an attacker's
+   * link stops working. `argon2.verify` takes the digest first.
    */
   async changePassword(userId: number, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -130,11 +105,7 @@ export class UsersService {
       );
     }
 
-    // The new password and the revocation commit together, or neither does.
-    // They were two statements, so a failure between them left the account with
-    // a password the user did not choose to keep and every existing session
-    // still working. `auth.service.ts` records the same reasoning for the reset
-    // path, which had the identical shape.
+    // The new password and the session wipe commit together, or neither does.
     const passwordHash = await argon2.hash(dto.newPassword);
 
     await this.prisma.$transaction(async (tx) => {
@@ -147,10 +118,7 @@ export class UsersService {
         },
       });
       await tx.refreshToken.deleteMany({ where: { userId } });
-      // Every family of this user has just ended, so every consumed row of
-      // this user is a trigger with nothing left behind it: sent again after
-      // the grace window, it would wipe the sessions this user creates next.
-      // `auth.service.ts` explains the shape at `deleteCurrentSession`.
+      // Every family has ended, so its consumed rows are only triggers.
       await tx.consumedRefreshToken.deleteMany({ where: { userId } });
     });
 

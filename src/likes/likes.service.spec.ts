@@ -2,10 +2,10 @@ import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { LikesService } from './likes.service';
 import { ProductsService } from '../products/products.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER, aVariant } from '../products/products.fixtures';
 import { nthArg } from '../common/mock-args';

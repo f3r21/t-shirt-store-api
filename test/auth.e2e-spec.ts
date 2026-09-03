@@ -1,20 +1,11 @@
 import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
-import {
-  createTestApp,
-  ensureRoles,
-  truncateAll,
-  TestApp,
-} from './app-factory';
+import type { TestApp } from './app-factory';
+import { createTestApp, ensureRoles, truncateAll } from './app-factory';
 
 /**
- * The authentication flow, end to end, against a real database.
- *
- * The brief names this as the flow every other test depends on, so it goes in
- * first. What it covers that no unit test can: the guard actually running, the
- * global pipe actually validating, the problem filter actually shaping the body,
- * and the rotation being one statement against real Postgres rather than a mock
- * that answers whatever the test told it to.
+ * The authentication flow against a real database: the guard, the pipe, the
+ * filter, and the rotation as one statement against real Postgres.
  */
 describe('Authentication (e2e)', () => {
   let ctx: TestApp;
@@ -190,12 +181,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * The scheme name is case-insensitive, and the server used to disagree.
-     *
-     * RFC 7235 section 2.1 states it, and the contract selects that scheme by
-     * name at `openapi.yaml:1697-1699`. Before this, `bearer <jwt>` answered 401
-     * on every protected route with a body that said nothing about why, and the
-     * guard's own spec had a row pinning that 401 as correct.
+     * The scheme name is case-insensitive, per RFC 7235 section 2.1 and the
+     * contract's `bearerAuth` scheme.
      */
     it.each(['Bearer', 'bearer', 'BEARER', 'BeArEr'])(
       'accepts the %s spelling of the scheme through a real request',
@@ -234,23 +221,9 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * A token that is structurally perfect and signed with the wrong key.
-     *
-     * The test above used to claim this in its own name and never do it: it
-     * sent `Bearer not.a.token` and a `Basic` header, neither of which reaches
-     * the signature check, and no test in this repository minted a foreign
-     * token. **Verifying the signature is the guard's entire purpose**, and it
-     * was covered only by a unit spec whose `verifyAsync` was a mock
-     * programmed to reject, which asserts that the guard handles a rejection
-     * rather than that a real forged token produces one.
-     *
-     * `JwtService` mints it rather than `jsonwebtoken` directly, because
-     * `@nestjs/jwt` is a declared dependency of this project and its signing
-     * library is not.
-     *
-     * The second call is the control. The same payload signed with the real
-     * secret has to be accepted, or a guard that refused every token would pass
-     * the first line.
+     * A structurally perfect token signed with the wrong key, minted through
+     * `JwtService`. The same payload signed with the real secret is the
+     * control.
      */
     it('refuses a token signed with another key, and accepts the same payload signed with the real one', async () => {
       const { accessToken } = await signUpAndIn();
@@ -273,17 +246,9 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **The token that expired, through the real guard.**
-     *
-     * The audit found this branch proven only by `access-token.guard.spec.ts`
-     * with a mocked `verifyAsync`, which asserts the guard handles a
-     * `TokenExpiredError` and not that a real expired token produces one. The
-     * payload is the signed-in user's own, so the only thing wrong with the
-     * token is the clock, and `exp` is an explicit claim with no `expiresIn`,
-     * so nothing else decides the expiry.
-     *
-     * The control is the same payload fifteen minutes ahead, which proves the
-     * secret and the session are real and only the clock differed.
+     * An expired token through the real guard: `exp` is an explicit claim, so
+     * only the clock is wrong. The same payload fifteen minutes ahead is the
+     * control.
      */
     it('refuses an expired token with the access-token-expired type, and accepts the same payload before expiry', async () => {
       const { accessToken } = await signUpAndIn();
@@ -346,16 +311,9 @@ describe('Authentication (e2e)', () => {
       expect(after.body.meta.total).toBe(1);
     });
     /**
-     * **The control for the grace window, and it is worth more than the happy
-     * path below it.** A window that never closed would satisfy every two-tab
-     * test on this page and would have silently deleted reuse detection, which
-     * is the failure this whole design could introduce with nothing saying so.
-     *
-     * The replay is aged past the window rather than sent immediately, because
-     * an immediate replay is now the honest-tab case. `consumed_at` is what the
-     * window is measured from, so that is the column moved back, and it is the
-     * only way to reach the far side without sleeping the suite for
-     * `REFRESH_GRACE_SECONDS`.
+     * The control for the grace window: a replay aged past it, by moving
+     * `consumed_at` back, must still end every session. A window that never
+     * closed would pass every two-tab test.
      */
     it('ends every session when a token is presented again after the grace window', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -380,16 +338,9 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * A token this server never issued is a string, not a replay.
-     *
-     * The previous version looked the presented hash up in
-     * `previous_token_hash` with no liveness filter and no time bound, so
-     * anything that happened to sit in that column ended every live session the
-     * user had. Nothing may be deleted on the strength of a value the server
-     * has no record of ever issuing.
-     *
-     * The second half is the control: the live session is still usable
-     * afterwards, so this is not passing because the account was already empty.
+     * A token this server never issued is a string, not a replay: nothing is
+     * deleted, and the live session still works afterwards, which is the
+     * control.
      */
     it('deletes nothing when a token it never issued is presented', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -405,19 +356,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * Two honest tabs, no attacker, and the account survives.
-     *
-     * Rotation is one conditional write, so exactly one of two concurrent
-     * refreshes of the same token can match. That is correct and it was only
-     * half the story: the loser went to reuse detection, which found its hash
-     * and did what the contract says to do with a stolen token, which is delete
-     * every refresh row for that user. **One person with two tabs signed
-     * themselves out of every device.** It reproduced on the first attempt, as
-     * `200 401` with zero rows left.
-     *
-     * Two rows and one family is the shape that matters. The first fix kept one
-     * row and rotated it for the loser, which passed a test exactly like this
-     * one and left the winner holding a token that was about to look stolen.
+     * Two honest tabs refresh the same token at once and the account
+     * survives: two rows, one family. ADR 2.
      */
     it('lets two tabs refresh the same token at once, as one device', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -437,22 +377,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **The test that would have caught the first fix, and did not exist.**
-     *
-     * Both tests written for the grace window refreshed again immediately, so
-     * both ran inside the window. The winner of a real race does not: it
-     * refreshes when its access token expires, fifteen minutes later, long
-     * after the window has closed.
-     *
-     * The first fix rotated the winner's row for the loser and wrote the
-     * winner's live token into `previous_token_hash`. At that point the
-     * two-tab bug had not gone away, it had moved: instead of ending every
-     * session immediately, it ended every session a quarter of an hour later,
-     * where it was much harder to attribute to two tabs.
-     *
-     * A review in a session with none of this context found it. The tests
-     * written by the author of the fix could not, because they were written
-     * from the same picture of how it worked.
+     * The race winner refreshes after the window has closed, fifteen minutes
+     * later in practice, and is still served.
      */
     it('still serves the race winner after the window has closed', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -483,26 +409,9 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **The test that was missing, and the reason it was missing.**
-     *
-     * Three tests race two tabs and assert statuses, row counts and families.
-     * **Not one of them sends the `accessToken` anywhere.** `rg -n accessToken
-     * test/auth.e2e-spec.ts` jumps straight over the whole race region, so the
-     * token those 200s hand back was never once used.
-     *
-     * It was worthless: `refreshSession` signed it with `row.id`, and on the
-     * grace path that row is a child in an existing family, so the guard's
-     * lookup found neither a family with that id nor a founder with it. The
-     * loser of an honest race got 200 and a token that answered 401 on every
-     * protected route until it expired, and never recovered.
-     *
-     * The defect needed two commits that were each correct alone: one made a
-     * session a family, the other made the guard read the session on every
-     * request. **No test crossed that seam**, because each commit's tests
-     * covered its own change.
-     *
-     * Both tokens, because Promise.all preserves position and not completion
-     * order, so which one is the grace child is decided by the database.
+     * Both racing tabs get an access token that works: the grace child's
+     * token must name the family and not its own row. Both tokens, because
+     * `Promise.all` keeps position and not completion order.
      */
     it('gives both racing tabs an access token that works', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -522,20 +431,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **A token spent longer ago than a session can live is not a replay.**
-     *
-     * Nothing prunes `consumed_refresh_tokens`, so a hash spent weeks ago used
-     * to sit there for ever while the reuse branch deleted every refresh row
-     * for its owner. One stolen token was a **permanent, anonymous lever**: end
-     * the account, wait for the victim to sign in, send it again, repeat. On a
-     * public route.
-     *
-     * A token spent past the absolute cap comes from a session that cannot be
-     * alive, so there is nothing left for it to be a replay of.
-     *
-     * The two rows are the whole test. The second is the control: the same
-     * token spent recently still ends every session, or this would pass on a
-     * server that had simply stopped detecting reuse.
+     * A token spent longer ago than the absolute cap is not a replay, or one
+     * stolen token would be a permanent lever. The recent row is the control.
      */
     it.each([
       ['older than the absolute cap', 31 * 86400 * 1000, 1],
@@ -554,18 +451,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **The same token, sent again after the wipe, deletes nothing.**
-     *
-     * The case above proves one replay inside the cap ends every session. This
-     * proves it ends them once. The wipe used to leave the consumed row that
-     * triggered it, so the owner signed in again, the same string arrived
-     * again, and the new session was gone, for the life of the cap. No
-     * attacker is needed: a browser that signed out on a shared machine and
-     * later retries the refresh it still holds did this to the owner's phone.
-     *
-     * The first round is the control and repeats the assertion above. The
-     * second is the fix: a fresh sign-in survives the replay, and the replay
-     * still answers 401.
+     * The same token, sent again after the wipe, deletes nothing: the wipe
+     * takes the consumed rows with it. The first round is the control.
      */
     it('a token spent inside the cap ends every session once, and never again', async () => {
       const { refreshToken } = await signUpAndIn();
@@ -625,18 +512,8 @@ describe('Authentication (e2e)', () => {
    */
   describe('the device list, with a dead row in the table', () => {
     /**
-     * **Two devices, and the dead one is not the one asking.**
-     *
-     * This used to kill the only session and then list with that session's own
-     * token, which stopped working the moment the guard started checking that a
-     * session is alive. That is the guard being right: a device whose window
-     * closed cannot call a protected route. The behaviour this test is about is
-     * a different one, that `listSessions` filters dead rows, and it needs a
-     * live caller to ask.
-     *
-     * The old shape conflated the two. This one separates them, and it is
-     * closer to production, where a user with a dead session still has a live
-     * one somewhere or they would be signing in again.
+     * Two devices, and the dead one is not the one asking: the list filters
+     * dead rows, and a live caller has to ask.
      */
     it('hides a session whose expiry has passed', async () => {
       const dead = await signUpAndIn();
@@ -768,18 +645,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **The mail has to be true, and it was not.**
-     *
-     * `mailer.nodemailer.ts` tells the reader every device was signed out. The
-     * reset deleted the refresh rows, and nothing checked the access token
-     * against a session, so a token already in a thief's hand kept working for
-     * the rest of its fifteen minutes. That sentence is read by somebody who
-     * has just decided their account is compromised, which is the worst place
-     * in this repository for a false statement.
-     *
-     * The order is the whole test. The token is proven to work first, so a
-     * guard that had started refusing everything would fail here rather than
-     * pass the assertion below it.
+     * The mail says every device was signed out, so an access token issued
+     * before the reset must stop. The token is proven to work first.
      */
     it('stops an access token issued before the reset', async () => {
       const { accessToken } = await signUpAndIn();
@@ -968,15 +835,8 @@ describe('Authentication (e2e)', () => {
     });
 
     /**
-     * **A token from a device that signed out is not a replay.**
-     *
-     * Signing out deleted the family's refresh rows and left its consumed
-     * rows, so the token that device spent last stayed a trigger: sent again
-     * after the grace window, by the device itself or by anyone who had it,
-     * reuse detection wiped every other device of the user. A backgrounded
-     * tab that wakes up and retries its old refresh did this to the phone.
-     *
-     * The phone is the assertion. The 401 alone passes on the old code too.
+     * A token spent by a device that signed out ends nothing else, because the
+     * family's consumed rows went with it. The phone is the assertion.
      */
     it('a token spent by a device that signed out ends nothing else', async () => {
       const laptop = await signUpAndIn();

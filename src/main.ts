@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { configureApp } from './configure-app';
-import { EnvironmentVariables } from './config/env.validation';
+import type { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap() {
   // `bufferLogs`, so the lines Nest writes while the modules load wait for the

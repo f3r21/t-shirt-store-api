@@ -1,12 +1,8 @@
 import type { UserWithRole } from './user.mapper';
 
 /**
- * Build a `users` row with its `roles` row loaded.
- *
- * Every default is fixed, so two calls in one test return the same values and an
- * assertion on an id is explicit. Pass `overrides` for the field under test.
- *
- * The date matches the contract's own example, at `openapi.yaml:1782`.
+ * A `users` row with its `roles` row. Every default is fixed; pass `overrides`
+ * for the field under test. The date is the contract's `User` example.
  */
 export function aUser(overrides: Partial<UserWithRole> = {}): UserWithRole {
   return {

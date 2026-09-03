@@ -1,5 +1,5 @@
 import { ArgumentsHost, Catch, ExceptionFilter, Logger } from '@nestjs/common';
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import { toProblem } from './problem';
 
 /**
@@ -44,33 +44,11 @@ export class ProblemFilter implements ExceptionFilter {
     const { status, body } = toProblem(err, path);
 
     /**
-     * One structured line per failure, at the level that says what it is.
-     *
-     * The OWASP logging cheat sheet asks each entry for the when, the where, the
-     * who and the what. The timestamp and the request id are pino's: the id is
-     * bound to every line written inside the request, so it is on this one
-     * without being named here. The where is the method and the path. The what
-     * is the status, the problem type and the reason. The who is the user id
-     * once the guard has verified a token, and the source address always.
-     *
-     * The levels are that list read against a public API. A 401, a 403 and a
-     * 429 are the entries it calls security events, so they are warnings. Every
-     * other 4xx is what the caller sent, a validation failure or a 404: worth a
-     * line at info, because the same list asks for validation failures, and not
-     * worth an alert, because an anonymous caller can produce as many as the
-     * rate limit allows. A 500 is the server's fault and carries the error
-     * itself, so pino prints the stack.
-     *
-     * Nothing here is interpolated from the body or from a header, so no token,
-     * password or address can reach a log line through this call. `reason` is
-     * the exception's message, which for a validation failure is
-     * class-validator's sentence about the field and never the value sent.
-     *
-     * No `instanceof` guard below 500. Every status there comes from a branch of
-     * `toProblem` that matched an `Error`: a `ProblemException`, an
-     * `HttpException`, an exposed http-error, or a mapped Prisma code. Anything
-     * else is a 500, so a non-Error cannot reach those branches and a guard
-     * would be a branch no test could turn red.
+     * One structured line per failure: the when and the request id are
+     * pino's, the where is the method and the path, the what is the status,
+     * the type and the reason, the who is the user id and the address. A 401,
+     * 403 and 429 are warnings, every other 4xx is info, a 500 carries the
+     * error. Nothing is interpolated from the body or a header. ADR 21.
      */
     const line = {
       msg: `${req.method} ${path} ${status}`,

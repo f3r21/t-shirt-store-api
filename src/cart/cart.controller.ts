@@ -21,19 +21,13 @@ import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 /**
- * The cart of the signed-in user. See `openapi.yaml:1197-1374`.
- *
- * Every signed-in caller may call every operation here: the contract declares
- * no 403 on any of the five, and a manager has a cart for the same reason a
- * client does. The ability grants `manage CartItem` on the caller's own rows,
- * the guard denies by default without a policy, and the rows are the caller's
- * by construction because every read and write takes the user id from the
- * token.
- *
- * Each handler is named after its contract operation id, because the served
- * document names operations from the method and the drift suite compares them.
+ * The cart of the signed-in user. Every signed-in caller may call every
+ * operation, as the contract declares no 403 here, and the rows are the
+ * caller's by construction. Each handler is named after its operation id.
  */
 @ApiTags('cart')
+@ApiResponse({ status: 401, description: 'The request has no valid token.' })
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('users/me/cart')
 export class CartController {
   constructor(private readonly cart: CartService) {}
@@ -45,8 +39,6 @@ export class CartController {
     description: 'The cart of this user.',
     type: CartDto,
   })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get()
   getCart(@CurrentUser() user: AccessTokenPayload): Promise<CartDto> {
     return this.cart.getCart(user.sub);
@@ -55,8 +47,6 @@ export class CartController {
   @CheckPolicies(can('manage', 'CartItem'))
   @ApiOperation({ summary: 'Empty the cart' })
   @ApiResponse({ status: 204, description: 'The cart is empty.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   clearCart(@CurrentUser() user: AccessTokenPayload): Promise<void> {
@@ -71,7 +61,6 @@ export class CartController {
     type: CartDto,
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 404,
     description: 'The variant does not exist, or its product is not on sale.',
@@ -80,7 +69,6 @@ export class CartController {
     status: 409,
     description: 'The resulting quantity is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('items')
   @HttpCode(HttpStatus.OK)
   addCartItem(
@@ -98,7 +86,6 @@ export class CartController {
     type: CartDto,
   })
   @ApiResponse({ status: 400, description: 'The request body is invalid.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({
     status: 404,
     description: 'The variant does not exist, or its product is not on sale.',
@@ -107,7 +94,6 @@ export class CartController {
     status: 409,
     description: 'The quantity is above the units on hand.',
   })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Put('items/:variantId')
   setCartItem(
     @CurrentUser() user: AccessTokenPayload,
@@ -124,9 +110,7 @@ export class CartController {
     description: 'The cart holds no line for this variant.',
   })
   @ApiResponse({ status: 400, description: 'The id is not an integer.' })
-  @ApiResponse({ status: 401, description: 'The request has no valid token.' })
   @ApiResponse({ status: 404, description: 'The variant does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete('items/:variantId')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteCartItem(

@@ -1,21 +1,30 @@
-import { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import type { INestApplication } from '@nestjs/common';
+import type { OpenAPIObject } from '@nestjs/swagger';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Problem } from '../common/problem/problem.dto';
 
+type Responses = Record<string, Record<string, unknown> | undefined>;
+
+/** Visit the responses of every operation, with the path template it is keyed on. */
+function forEachOperation(
+  document: OpenAPIObject,
+  visit: (path: string, responses: Responses) => void,
+): void {
+  for (const [path, item] of Object.entries(document.paths)) {
+    if (item === null || typeof item !== 'object') continue;
+
+    for (const operation of Object.values(item)) {
+      const responses = (operation as { responses?: Responses } | null)
+        ?.responses;
+      if (responses !== undefined) visit(path, responses);
+    }
+  }
+}
+
 /**
- * Give every failure the problem schema, in one place.
- *
- * The contract gives all 94 error responses a `Problem` body, and that is one
- * rule rather than 94 decisions: `ProblemFilter` is global, so every failure
- * this service can produce leaves as `application/problem+json`. Writing
- * `type: Problem` on 75 `@ApiResponse` decorators would state the same rule 75
- * times and let it rot in 75 places, which is how the five stale comments this
- * repository already carried came to exist.
- *
- * It only fills. A response that already describes its content is left alone,
- * so an operation that answers something other than a problem document still
- * says so. `openapi-contract.e2e-spec.ts` asserts the result rather than
- * trusting this function.
+ * Give every failure the `Problem` body, in one place: `ProblemFilter` is
+ * global, so this is one rule and not a decorator per response. It only fills;
+ * a response that names its content keeps it.
  */
 function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
   const problem = {
@@ -26,95 +35,44 @@ function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
     },
   };
 
-  type Responses = Record<string, { content?: unknown } | undefined>;
-
-  for (const item of Object.values(document.paths)) {
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined) continue;
-
-      for (const [status, response] of Object.entries(responses)) {
-        if (
-          response !== undefined &&
-          Number(status) >= 400 &&
-          response.content === undefined
-        ) {
-          Object.assign(response, problem);
-        }
+  forEachOperation(document, (_path, responses) => {
+    for (const [status, response] of Object.entries(responses)) {
+      if (
+        response !== undefined &&
+        Number(status) >= 400 &&
+        response.content === undefined
+      ) {
+        Object.assign(response, problem);
       }
     }
-  }
+  });
 
   return document;
 }
 
 /**
- * Declare the 400 that a path id can produce, on every route that takes one.
- *
- * `ParseIdPipe` wraps `ParseIntPipe`, which answers 400 to a segment that is
- * not an integer, and that is deliberate: its docstring argues that `abc` is a
- * bad request while an id above the `int4` ceiling is a lookup that finds
- * nothing, so the second answers 404 instead. What was missing is that neither
- * document said the 400 existed, on any of the seventeen operations that carry
- * a path parameter.
- *
- * Ten of those seventeen declared no 400 at all in the contract, so a generated
- * client modelled a status the server has always been able to send. The other
- * seven declared one for body validation only. Both now point at the same
- * `BadRequest`, whose description covers the two causes, because one status
- * code cannot carry two component definitions and splitting it would have left
- * those seven describing half of their own 400.
- *
- * Keyed on the path template rather than on the parameter list, because that is
- * what the contract is keyed on and a difference in how the two documents spell
- * "this route takes an id" would show up as drift that is not real.
+ * Declare the 400 that `ParseIdPipe` answers to a non-integer id, on every
+ * route with a path parameter. Keyed on the path template, which is what the
+ * contract keys on.
  */
 function declarePathParamBadRequest(document: OpenAPIObject): OpenAPIObject {
-  type Responses = Record<string, unknown>;
+  forEachOperation(document, (path, responses) => {
+    if (!path.includes('{') || responses['400'] !== undefined) return;
 
-  for (const [path, item] of Object.entries(document.paths)) {
-    if (!path.includes('{')) continue;
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined || responses['400'] !== undefined) continue;
-
-      responses['400'] = {
-        description:
-          'A path segment that must be an integer is not one. ' +
-          'An integer that matches no row returns 404.',
-      };
-    }
-  }
+    responses['400'] = {
+      description:
+        'A path segment that must be an integer is not one. ' +
+        'An integer that matches no row returns 404.',
+    };
+  });
 
   return document;
 }
 
 /**
- * Declare the two headers this service sends on every 401 and every 429.
- *
- * Same argument as `describeFailuresAsProblems` above, and the same shape. The
- * runtime sends both unconditionally: `ProblemFilter` sets `WWW-Authenticate`
- * on any 401 and `ThrottlerGuard` sets `Retry-After` on any 429, so this is one
- * rule rather than 19 decorators that would state it 19 times and rot in 19
- * places.
- *
- * The contract agrees, through `components/responses/Unauthorized`, whose
- * `WWW-Authenticate` is described as "Required on every 401", and
- * `TooManyRequests`, which carries `Retry-After`.
- *
- * **Filling every 401 and 429 is safe here, and that was measured rather than
- * assumed.** The contract declares 32 `'401':` responses and refs
- * `responses/Unauthorized` 32 times, and declares 4 `'429':` and refs
- * `responses/TooManyRequests` 4 times. Not one of either is spelled inline, so
- * there is no operation whose contract entry omits these headers and which this
- * would push the other way. If one ever appears, this rule needs a condition and
- * `openapi-contract.e2e-spec.ts` is what will say so.
+ * Declare `WWW-Authenticate` on every 401 and `Retry-After` on every 429, which
+ * the runtime sends unconditionally. It only fills, and the contract suite is
+ * what says so if an operation ever omits them.
  */
 function declareUniversalHeaders(document: OpenAPIObject): OpenAPIObject {
   const byStatus: Record<string, Record<string, unknown>> = {
@@ -134,57 +92,30 @@ function declareUniversalHeaders(document: OpenAPIObject): OpenAPIObject {
     },
   };
 
-  type Responses = Record<string, { headers?: unknown } | undefined>;
-
-  for (const item of Object.values(document.paths)) {
-    if (item === null || typeof item !== 'object') continue;
-
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses === undefined) continue;
-
-      for (const [status, response] of Object.entries(responses)) {
-        const headers = byStatus[status];
-        // It only fills. A response that already names its headers keeps them,
-        // so the four `Location` headers on the 201s are untouched.
-        if (response !== undefined && headers !== undefined) {
-          response.headers = { ...headers, ...(response.headers ?? {}) };
-        }
+  forEachOperation(document, (_path, responses) => {
+    for (const [status, response] of Object.entries(responses)) {
+      const headers = byStatus[status];
+      // It only fills. A response that already names its headers keeps them,
+      // so the four `Location` headers on the 201s are untouched.
+      if (response !== undefined && headers !== undefined) {
+        response.headers = {
+          ...headers,
+          ...(response.headers as Record<string, unknown> | undefined),
+        };
       }
     }
-  }
+  });
 
   return document;
 }
 
 /**
- * The OpenAPI document this service generates from its own controllers.
- *
- * **It is not the contract.** `contract/openapi.yaml`, in this repository, is
- * hand written, was agreed before any of this existed, and wins wherever the two
- * disagree. This document exists because the challenge asks the running service
- * to describe itself, and because a generated description is the only one that
- * cannot drift from the code by accident. It can drift from the contract, which
- * is what `test/openapi-contract.e2e-spec.ts` exists to catch.
- *
- * One factory, called by `configure-app.ts` to serve it and by that spec to
- * compare it. A spec that built its own document would check something the
- * server does not serve, and the drift would be invisible because both would
- * pass. This is the same argument as `VALIDATION_PIPE_OPTIONS`.
- *
- * `ignoreGlobalPrefix` is the detail that makes the comparison possible. Nest
- * puts `/v1` on every route through `setGlobalPrefix`, while the contract keeps
- * its path keys bare and carries the prefix in `servers.url`. Stripping it here
- * makes the two documents describe paths the same way, so a difference in the
- * diff is a real difference rather than a spelling one.
- *
- * `operationIdFactory` is the second such detail. Nest's default names an
- * operation `${controllerKey}_${methodKey}`, so every one of the 19 implemented
- * operations was served under a name the contract does not use, and a client
- * generated from this document would not compile against one generated from the
- * contract. Every handler is already named after its contract `operationId`, so
- * handing the method name through is the whole fix and renames nothing.
+ * The document this service generates from its controllers. It is not the
+ * contract: `contract/openapi.yaml` wins where the two disagree, and
+ * `test/openapi-contract.e2e-spec.ts` compares the two. One factory serves and
+ * compares it. `ignoreGlobalPrefix` makes the path keys match the contract's,
+ * and `operationIdFactory` hands the method name through, which is the
+ * contract's `operationId`.
  */
 export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
@@ -202,9 +133,8 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     )
     .build();
 
-  // `extraModels` is what puts `Problem` in `components.schemas`. No decorator
-  // references it, because the filling below is what references it, and a schema
-  // nothing points at is dropped from the document.
+  // `extraModels` puts `Problem` in `components.schemas`; no decorator
+  // references it, and a schema nothing points at is dropped.
   const document = SwaggerModule.createDocument(app, config, {
     ignoreGlobalPrefix: true,
     operationIdFactory: (_controllerKey, methodKey) => methodKey,

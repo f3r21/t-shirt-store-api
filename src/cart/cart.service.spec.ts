@@ -1,14 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { CartService } from './cart.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { aVariant } from '../products/products.fixtures';
 import { aCartLine } from './cart.fixtures';
 import { nthArg } from '../common/mock-args';
-import { ProblemException } from '../common/problem/problem.exception';
+import type { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
 
 const USER = 128;
@@ -192,7 +192,7 @@ describe('CartService', () => {
       expect(call.update.quantity).toBe(1);
     });
 
-    it('answers 409 insufficient-stock above the units on hand, and writes nothing', async () => {
+    it('throws insufficient-stock above the units on hand, before any write', async () => {
       const err = await caught(() =>
         service.setCartItem(USER, 21, { quantity: 8 }),
       );

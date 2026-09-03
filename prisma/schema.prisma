@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -53,41 +48,20 @@ model RefreshToken {
   expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  // When the row last rotated, which is what the grace window is measured from.
-  // Neither existing column could carry it: `created_at` is the start of the
-  // device session and never moves, and `expires_at` is rewritten on every
-  // rotation, so deriving the moment as `expires_at` minus the TTL would tie the
-  // window to a configuration value and break in silence the day that value
-  // changes.
-  //
-  // Nullable, so the migration is additive and a rollback to the previous image
-  // still runs. A row that has never rotated has nothing to be inside the window
-  // of, and the grace branch requires a value, so null reads as "not eligible"
-  // rather than as "eligible forever".
+  // When the row last rotated: the grace window is measured from it. `created_at`
+  // is the start of the device session and `expires_at` is rewritten on every
+  // rotation, so neither can carry it. Nullable so the migration is additive; a
+  // row that never rotated is inside no window. See ADR 2.
   rotatedAt         DateTime? @map("rotated_at") @db.Timestamptz(6)
 
   // The device session this row belongs to, named by the id of the row that
-  // started it.
-  //
-  // **A device is a family, not a row.** One row per device could not hold two
-  // live tokens, and two live tokens are exactly what two browser tabs
-  // refreshing in the same moment need. The grace path now adds a row to the
-  // family instead of overwriting the one the winner is holding.
-  //
-  // **An `Int` rather than a uuid, and that is not cosmetic.** `sid` in the
-  // access token is typed `number` (`access-token-payload.ts:20`) and
-  // `auth.controller.ts` hands it to `deleteCurrentSession`. Naming the family
-  // by its founding row keeps `sid` the same type and the same value, so the
-  // contract's promise that "the session id does not change" survives.
-  //
-  // **Null means "I am the founder", and that is the whole reason it is
-  // nullable.** A row cannot reference its own id on insert, so a sign-in would
-  // otherwise need a second write to name its own family. It also makes the
-  // migration purely additive with no backfill: every row written before
-  // families reads as its own family under the same rule, and a rollback to the
-  // previous image still inserts, which the forward-only rule in
-  // `ARCHITECTURE.md` requires. `AuthService.familyOf` and `familyWhere` are the
-  // two places that encode it.
+  // started it. A device is a family, so two tabs refreshing in the same moment
+  // each hold a live token. An `Int`, because `sid` in the access token is a
+  // `number` (`access-token-payload.ts`) and the session id must not change.
+  // Null means the row is its own founder: a row cannot reference its own id on
+  // insert, and every row written before families reads as its own family, so
+  // the migration needs no backfill. `AuthService.familyOf` and `familyWhere`
+  // encode the rule. See ADR 2.
   familyId          Int?      @map("family_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -100,7 +74,7 @@ model RefreshToken {
   // is dead: `consumed_refresh_tokens` replaced it as the memory of which
   // tokens have been spent, because one column can only remember one
   // generation and cannot remember when. Both come out together in a later
-  // release, with expand and contract, which is why neither is dropped now.
+  // release, with expand and contract.
   @@index([userId])
   @@index([familyId])
   @@index([previousTokenHash])
@@ -108,26 +82,14 @@ model RefreshToken {
 }
 
 /**
- * Every refresh token this server has already spent.
- *
- * Rotation used to remember one generation, in `refresh_tokens.previous_token_hash`,
- * and that column had to answer two questions it cannot answer at once: which
- * token is still acceptable during the grace window, and which tokens have been
- * used and must raise an alarm. Holding both in one slot is what made an honest
- * second tab look like a thief.
- *
- * A row here is written when a token is spent and is never updated. `consumed_at`
- * is what the grace window is measured against, so the window belongs to the
- * token rather than to the row it came from, and no amount of racing extends it.
- *
- * `user_id` is stored rather than resolved through the family, because the reuse
- * response deletes every row for the user and the family's rows may already be
- * gone by the time that runs.
- *
- * **It grows with traffic and nothing prunes it yet.** One row per rotation per
- * device. A sweep of rows older than the absolute session cap is safe by
- * construction, since a token past that cap cannot rotate anything, and it is
- * the first thing to add when this ships anywhere real.
+ * Every refresh token this server has already spent. One column on the token
+ * row could not say both which token the grace window still accepts and which
+ * tokens must raise the alarm, so a spent token is a row here, written once.
+ * `consumed_at` is what the grace window is measured against. `user_id` is
+ * stored because the reuse response deletes every row for the user, and the
+ * family's rows may be gone by then. Nothing prunes it yet: a sweep of rows
+ * older than the absolute session cap is safe, and is the first thing to add.
+ * See ADR 3.
  */
 model ConsumedRefreshToken {
   tokenHash  String   @id @map("token_hash")
@@ -182,11 +144,10 @@ model ProductVariant {
   // Minor units, so 1999 means 19.99. Not numeric(10,2), which is what the ERD
   // says: an integer needs no conversion inbound, outbound, or at Stripe, and
   // Prisma hands a numeric back as a Decimal instance that serialises to a
-  // string. This is a deliberate departure from the ERD, recorded in
-  // DECISIONS.md.
+  // string. ADR 13 records the departure from the ERD.
   priceCents Int @map("price_cents")
 
-  // No default on purpose. Prisma makes a defaulted field optional in the
+  // No default: Prisma makes a defaulted field optional in the
   // create input, and the contract makes stock required on createVariant, so
   // the absence of a default is what turns a forgotten value into a type error.
   stock Int
@@ -255,12 +216,9 @@ enum OrderStatus {
   @@map("order_status")
 }
 
-/// The Stripe flow that paid an order.
-///
-/// The contract declares exactly these two and no third, because feature 7 asks
-/// for both flows: a payment link buys one product, a payment intent buys a
-/// cart. It is absent until a payment succeeds, which is why the column on
-/// `Order` is nullable rather than defaulted.
+/// The Stripe flow that paid an order: a payment link buys one product, a
+/// payment intent buys a cart. Absent until a payment succeeds, so the column
+/// on `Order` is nullable.
 enum PaymentMethod {
   payment_link
   payment_intent
@@ -297,29 +255,22 @@ model Order {
   id     Int @id @default(autoincrement())
   userId Int @map("user_id")
 
-  // A stored column rather than the last history row. Status is a filter on
-  // both list operations, and deriving it would make the commonest filter a
+  // A stored column, not derived from the last history row: status is a filter
+  // on both list operations, and deriving it would make the commonest filter a
   // correlated subquery on every page. No default, so createOrder has to say
-  // `pending` out loud.
+  // `pending`.
   status OrderStatus
 
-  // Minor units, for the reason recorded against price_cents. Both columns are
-  // real rather than one aliasing the other: the history filters on the total,
-  // so they diverge the day a discount exists.
+  // Minor units, for the reason recorded against price_cents. Two real columns:
+  // the history filters on the total, and the two diverge once a discount exists.
   subtotalCents Int @map("subtotal_cents")
   totalCents    Int @map("total_cents")
 
   // Nullable because the contract says so: absent until a payment succeeds. The
-  // webhook is the only writer, at the same moment it moves the status to
-  // `paid`, so a row with a method and a status of `pending` is a bug rather
-  // than a state.
-  //
-  // This is where the ERD's `order_payments` table would have gone. The contract
-  // exposes one field of it and nothing else, so a seven column table whose
-  // other six nothing reads would be a table built for a shape no operation
-  // asks for. The Stripe reference that table also carried lives on
-  // `StripeEvent`, where idempotency actually needs it. Same class of departure
-  // as the cart, recorded for the same reason.
+  // webhook is the only writer, at the moment it moves the status to `paid`.
+  // The ERD's `order_payments` table is not here: the contract exposes one field
+  // of it, and the Stripe reference it carried lives on `StripeEvent`, where
+  // idempotency needs it. See ADR 24.
   paymentMethod PaymentMethod? @map("payment_method")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -388,11 +339,10 @@ model OrderStatusChange {
   @@map("order_status_history")
 }
 
-/// A user's like on one variant. See `contract/openapi.yaml:756`.
+/// A user's like on one variant. See the contract's `likeVariant`.
 ///
-/// Keyed on the variant and not the product, which was the mentor's single
-/// explicit schema correction in the week 2 review: a like says "tell me when
-/// this size in this colour runs low", and a product-level like cannot answer it.
+/// Keyed on the variant and not the product: a like says "tell me when this
+/// size in this colour runs low", and a product-level like cannot answer it.
 ///
 /// No surrogate id and no timestamp. The pair is the whole fact, the contract
 /// exposes neither, and `PUT` and `DELETE` on the like are idempotent because
@@ -413,7 +363,7 @@ model ProductLike {
   @@map("product_likes")
 }
 
-/// One image of a product. See `contract/openapi.yaml:885`.
+/// One image of a product. See the contract's `ProductImage`.
 ///
 /// `url` holds the public address, not the object key. The API returns it
 /// verbatim and never signs it, because the contract's example is a plain CDN
@@ -432,16 +382,11 @@ model ProductImage {
   @@map("product_images")
 }
 
-/// One Stripe event this server has already applied.
-///
-/// Stripe retries a non-2xx for up to three days, so the handler will see the
-/// same event more than once and must apply it once. The unique constraint is
-/// what makes that true: the row is inserted inside the same transaction that
-/// moves the order to `paid`, so a retry becomes a unique violation the handler
-/// answers 200 to rather than a second stock decrement.
-///
-/// The id is Stripe's own event id and not a surrogate, because the thing being
-/// made unique is Stripe's identity for the event, not ours.
+/// One Stripe event this server has already applied. Stripe retries a non-2xx
+/// for up to three days, so the row is inserted inside the transaction that
+/// moves the order to `paid`, and a retry is a unique violation the handler
+/// answers 200 to. The id is Stripe's own event id: that is the identity being
+/// made unique. See ADR 24.
 model StripeEvent {
   id          String   @id
   type        String
@@ -450,17 +395,10 @@ model StripeEvent {
   @@map("stripe_events")
 }
 
-/// One low-stock mail already sent, so it is not sent twice.
-///
-/// Stock oscillating around the threshold, three to four to three, would mail
-/// the same person on every crossing. This row is written before the mail, so
-/// the database is the arbiter of that race rather than the worker.
-///
-/// The open question `ARCHITECTURE.md` records is the primary key: this shape
-/// tells a user once ever, and never again when the variant is restocked months
-/// later. The alternative carries a restock episode in the key. That decision is
-/// deliberately not made here, because it belongs to the review rather than to a
-/// migration.
+/// One low-stock mail already sent. Stock oscillating around the threshold
+/// would mail the same person on every crossing, so the row is written before
+/// the mail and the database arbitrates the race. The key means one mail per
+/// user and variant, ever: a restock months later sends nothing. See ADR 28.
 model StockNotification {
   userId    Int      @map("user_id")
   variantId Int      @map("product_variant_id")

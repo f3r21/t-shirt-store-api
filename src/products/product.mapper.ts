@@ -1,12 +1,12 @@
-import { Prisma } from '../generated/prisma/client';
+import type { Prisma } from '../generated/prisma/client';
 import type {
   Product as ProductRow,
   ProductVariant as ProductVariantRow,
   ProductImage as ProductImageRow,
   Category as CategoryRow,
 } from '../generated/prisma/client';
-import { ProductDto, ProductImageDto } from './dto/product.dto';
-import { ProductSummaryDto } from './dto/product-summary.dto';
+import type { ProductDto, ProductImageDto } from './dto/product.dto';
+import type { ProductSummaryDto } from './dto/product-summary.dto';
 import { toProductVariantDto } from '../variants/variant.mapper';
 import { toCategoryDto } from '../categories/category.mapper';
 
@@ -18,17 +18,9 @@ export type ProductWithRelations = ProductRow & {
 };
 
 /**
- * Map a product row to one entry of the list.
- *
- * `priceFrom` is the cheapest variant, and it is **absent** when the product has
- * none. Absent and not zero: zero would read as free. The caller supplies it,
- * because computing it per row would be one query per product.
- * `primaryImageUrl` follows the same rule for the same reason: absent when the
- * product has no primary image, and supplied by the caller from one query per
- * page.
- *
- * The function names every field it copies and never spreads the row, so
- * `deletedAt` has no path to a response.
+ * One entry of the list. `priceFrom` and `primaryImageUrl` are absent when the
+ * product has none, and the caller supplies them from one query per page.
+ * Every field is named, so `deletedAt` never reaches a response.
  */
 export function toProductSummaryDto(
   row: ProductRow,

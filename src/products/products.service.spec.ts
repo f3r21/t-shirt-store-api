@@ -1,10 +1,10 @@
 import { Test } from '@nestjs/testing';
 import { ProductsService } from './products.service';
 import { CategoriesService } from '../categories/categories.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import {
   anImage,
@@ -171,19 +171,8 @@ describe('ProductsService', () => {
     });
 
     /**
-     * The page reaches the database, and the envelope reports what was asked.
-     *
-     * Both halves were unasserted, and both survived a mutation run: deleting
-     * `take` and `skip` from `products.service.ts:72-73` left all 245 tests
-     * green, and so did deleting `limit` and `offset` from the `meta` at :84.
-     * `listSessions`, an operation the brief never mentions, was pinned at
-     * `auth.service.spec.ts:487-494` while this one, which the capstone names by
-     * name at line 45, was not.
-     *
-     * The two assertions answer different failures and neither substitutes for
-     * the other. `take` and `skip` say the database returned a page. `meta` says
-     * the caller was told which page, which is what a client needs to ask for
-     * the next one.
+     * The page reaches the database as `take` and `skip`, and the envelope
+     * reports the page asked for. The two assertions answer different failures.
      */
     it('passes limit and offset to findMany as take and skip', async () => {
       await service.listProducts(ANON, query({ limit: 5, offset: 40 }));

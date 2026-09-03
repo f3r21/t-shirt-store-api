@@ -1,39 +1,22 @@
-# The contract (paths, schemas, status codes, error shape) is written against
-# DECISIONS.md. Run both linters from the repository root before every commit:
+# The contract this service implements, authored as the Week 2 deliverable against
+# that repository's design ledger. README.md beside this file says where it came
+# from and why it lives here. Lint it from the repository root:
 #
-#   npx --yes @redocly/cli@latest lint 5-api-design/openapi.yaml
-#   npx --yes @stoplight/spectral-cli@6 lint 5-api-design/openapi.yaml \
-#     --ruleset 5-api-design/.spectral.yaml
+#   npx --yes @redocly/cli lint contract/openapi.yaml
 #
-# `--ruleset` is not optional. Spectral resolves the ruleset against the working
-# directory, not against the document, so it exits with "No ruleset has been found"
-# when you omit the flag. README.md says the same.
+# Measured 2026-09-03: 0 errors and 4 warnings, none silenced with placeholder data.
 #
-# Measured 2026-08-28, with all 37 operations authored: Redocly 0 errors and 4 warnings,
-# Spectral 0 errors and 1 warning. Re-measured, not carried over, and the same 4 come back
-# on the file as it stood before this round of edits, so this round added none. Nothing is
-# silenced with placeholder data. Re-measure before you quote either number.
+#   1 info-license           Coursework, not a published API.
+#   1 no-server-example.com  The server really is localhost.
+#   2 no-illogical-          A one-member `allOf` around a `$ref`, at the `MinTotal`
+#     composition-keywords   and `MaxTotal` parameters. 3.0 ignores a sibling of `$ref`,
+#                            so this is the only way to attach an example to a
+#                            referenced schema.
 #
-#   1 info-license           Redocly only. This is coursework, not a published API.
-#   1 info-contact           Spectral only. The two tools ask for different info fields.
-#   1 no-server-example.com  The server really is localhost. That rule guards public
-#                            descriptions.
-#   2 no-illogical-          A one-member `allOf` around a `$ref`, at the two Money
-#     composition-keywords   examples. 3.0 ignores a sibling of `$ref`, so this is the
-#                            only way to attach an example to a referenced schema.
-#
-# The unused-component warnings are gone, and that is the number worth watching. It stood
-# at 8 when only the auth block existed, and each one named a component waiting for an
-# operation nobody had written. At 0, every component in this file is referenced, so no
-# feature was left behind.
-#
-# 3.0.3, not 3.1: @nestjs/swagger emits 3.0.0, so Week 3's generated document stays
-# diffable against this one. The concrete tell is nullability: 3.0 spells it
-# `nullable: true`, 3.1 spells it `type: [string, "null"]`.
-#
-# No field in this document declares nullability. An optional value is ABSENT from the
-# body, never present and null. DECISIONS.md item 11 argues it and states its cost.
-# Re-derive: `grep -cE '^ +nullable:' openapi.yaml` returns 0.
+# 3.0.3, not 3.1: @nestjs/swagger emits 3.0.0, so the generated document stays
+# diffable against this one. No field declares nullability: an optional value is
+# absent from the body, never present and null.
+# Re-derive: `rg -n '^ +nullable:' openapi.yaml` prints nothing.
 openapi: 3.0.3
 
 info:
@@ -87,7 +70,7 @@ security:
 
 paths:
   # Path keys carry NO version prefix. The /v1 lives in servers.url, so writing
-  # `/v1/products` here produces the URL /v1/v1/products. DECISIONS.md item 1.
+  # `/v1/products` here produces the URL /v1/v1/products.
   /auth/sessions:
     post:
       tags: [auth]
@@ -1774,7 +1757,7 @@ components:
           description: When the refresh token expires. Every rotation moves this value.
           example: '2026-08-28T09:14:00Z'
 
-    # ---- Errors, DECISIONS.md item 2 ----------------------------------------
+    # ---- Errors -------------------------------------------------------------
     # RFC 9457, which obsoletes RFC 7807. Served as application/problem+json, never
     # application/json.
 
@@ -1844,7 +1827,7 @@ components:
                 type: string
                 example: must be a valid email address
 
-    # ---- Sessions, DECISIONS.md items 8 and 10 ------------------------------
+    # ---- Sessions -----------------------------------------------------------
     # Returned by POST /auth/sessions and by POST /auth/refresh. The two return the same
     # shape because refresh replaces both tokens, so a client stores them the same way.
     SessionTokens:
@@ -1871,7 +1854,7 @@ components:
             value. Discard the old value.
           example: 8f14e45fceea167a5a36dedd4bea2543f8b3c9e1d0a7b264
 
-    # ---- Pagination, DECISIONS.md item 3 ------------------------------------
+    # ---- Pagination ---------------------------------------------------------
     # Every collection returns this envelope. No endpoint returns a bare array.
     PageMeta:
       type: object
@@ -2294,7 +2277,7 @@ components:
       enum: [payment_link, payment_intent]
       example: payment_intent
 
-    # ---- Money, DECISIONS.md item 6 -----------------------------------------
+    # ---- Money --------------------------------------------------------------
     Money:
       type: integer
       minimum: 0
@@ -2324,7 +2307,7 @@ components:
       type: string
       enum: [manager, client, delivery_person]
 
-  # ---- Query parameters, DECISIONS.md item 3 ------------------------------
+  # ---- Query parameters ---------------------------------------------------
   # Every collection takes this pair. The bounds repeat PageMeta, so a caller reads the
   # same numbers on the request side and on the response side. A collection that does
   # not reference both returns an unbounded array.
@@ -2391,8 +2374,7 @@ components:
       example: 501
 
     # ---- Order history filters, Feature 9 -----------------------------------
-    # These five settle the "filter and sort parameter naming" entry in DECISIONS.md,
-    # which was deferred to the first operation that needed it. Names are camelCase per
+    # Names are camelCase per
     # item 4. The date pair follows item 5: RFC 3339 with Z, `from` inclusive and `to`
     # exclusive, so one day is `createdFrom` that day and `createdTo` the next.
     UserId:
@@ -2453,7 +2435,7 @@ components:
 
   responses:
 
-    # Every non-2xx response $refs one of these. DECISIONS.md item 7.
+    # Every non-2xx response $refs one of these.
     BadRequest:
       description: >-
         The server cannot read the request. Either a body field failed validation, and
@@ -2485,7 +2467,7 @@ components:
             $ref: '#/components/schemas/Problem'
           # One named example per `ProblemType` member this status can carry. A client
           # that cannot separate these three loops between refreshing and sending the
-          # user back to the login screen. DECISIONS.md item 2.
+          # user back to the login screen.
           examples:
             expired:
               summary: The access token expired
@@ -2527,8 +2509,7 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
-          # Two causes, one status code, and the split is deliberate. DECISIONS.md
-          # item 7: 403 protects an action, 404 protects a fact.
+          # Two causes, one status code: 403 protects an action, 404 protects a fact.
           examples:
             absent:
               summary: The resource does not exist
@@ -2550,7 +2531,7 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
           # The three 409 members. A client that cannot separate them shows the wrong
-          # message. DECISIONS.md item 2.
+          # message.
           examples:
             emailTaken:
               summary: Sign-up against an existing account

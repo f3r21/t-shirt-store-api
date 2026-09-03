@@ -1,4 +1,5 @@
-import { MAILER, Mailer } from './mailer';
+import type { Mailer } from './mailer';
+import { MAILER } from './mailer';
 
 /**
  * The two methods the auth and users services call.

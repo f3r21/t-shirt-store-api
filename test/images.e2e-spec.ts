@@ -1,12 +1,11 @@
 import request from 'supertest';
+import type { CatalogFixture, TestApp } from './app-factory';
 import {
-  CatalogFixture,
   createTestApp,
   ensureRoles,
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 
 /** A real 1 by 1 PNG, 67 bytes, so the sniff sees a signature and not a name. */

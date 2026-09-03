@@ -16,20 +16,20 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:9-alpine
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
-  
+
   mailpit:
-    image: axllent/mailpit
+    image: axllent/mailpit:v1.31.0
     ports:
-      - 1025:1025
-      - 8025:8025   
+      - "1025:1025"
+      - "8025:8025"
 
 volumes:
   postgres-data:

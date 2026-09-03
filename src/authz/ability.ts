@@ -11,17 +11,8 @@ import type { AppSubjects, PrismaQuery } from './casl-prisma';
  * brief's verbs for the two things a client does to an order that are not an
  * update, which is the manager's advance through the status flow.
  */
-export const ACTIONS = [
-  'manage',
-  'create',
-  'read',
-  'update',
-  'delete',
-  'cancel',
-  'pay',
-] as const;
-
-export type Action = (typeof ACTIONS)[number];
+export type Action =
+  'manage' | 'create' | 'read' | 'update' | 'delete' | 'cancel' | 'pay';
 
 /** An ability whose conditions are Prisma where clauses on our own models. */
 export type AppAbility = PureAbility<[Action, AppSubjects], PrismaQuery>;

@@ -1,9 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { CategoriesService } from './categories.service';
+import type { PrismaMock } from '../prisma/prisma.service.mock';
 import {
   createPrismaMock,
   prismaMockProvider,
-  PrismaMock,
 } from '../prisma/prisma.service.mock';
 import { aCategory } from '../products/products.fixtures';
 import { nthArg } from '../common/mock-args';

@@ -1,33 +1,25 @@
 import request from 'supertest';
 import { Queue } from 'bullmq';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { MAILER } from '../src/mail/mailer';
 import { WorkerModule } from '../src/stock-notifications/worker.module';
+import type { CatalogFixture, TestApp } from './app-factory';
 import {
-  CatalogFixture,
   createTestApp,
   ensureRoles,
   seedOrderLineFor,
   seedProductWithVariant,
   signInAs,
   truncateAll,
-  TestApp,
 } from './app-factory';
 import { STOCK_QUEUE_NAME } from '../src/stock-notifications/stock-queue';
 
 /**
- * The low-stock producer, end to end, through the real queue on the Redis
- * `setup-e2e.ts` names.
- *
- * What it covers that the unit spec cannot: the audience query against real
- * rows (a like, a paid order line, a notification row), both stock writers
- * reaching the producer after their commit, and BullMQ's own answer to a job
- * id that already exists. The suite owns a second `Queue` on the same name to
- * read and to empty the jobs; the application's queue is the one under test.
- *
- * The webhook handler awaits the enqueue before it answers, so a job is
- * readable right after the response. No worker runs here: the jobs stay
- * waiting, which is what makes them countable.
+ * The low-stock producer through the real queue: the audience query against
+ * real rows, both stock writers reaching the producer after their commit, and
+ * BullMQ's answer to a duplicate job id. No worker runs, so the jobs stay
+ * countable.
  */
 describe('Stock notifications, the producer (e2e)', () => {
   let ctx: TestApp;

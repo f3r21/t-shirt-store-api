@@ -1,4 +1,5 @@
-import { MoveVerdict, nextStatus } from './order-status';
+import type { MoveVerdict } from './order-status';
+import { nextStatus } from './order-status';
 
 /**
  * The whole table, written out. Six origins, three targets, and the verdict

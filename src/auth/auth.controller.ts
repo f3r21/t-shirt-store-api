@@ -32,6 +32,7 @@ import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 import { ParseIdPipe } from '../common/parse-id.pipe';
 
 @ApiTags('auth')
+@ApiResponse({ status: 500, description: 'The server failed.' })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -60,7 +61,6 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The credentials are wrong.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('sessions')
   @HttpCode(HttpStatus.CREATED)
   async createSession(
@@ -83,7 +83,6 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   /**
    * The sign-in tier, and this route was the only credential route without one.
    *
@@ -106,7 +105,6 @@ export class AuthController {
   @ApiPageResponse(SessionDto, 'The server sent the list.')
   @ApiResponse({ status: 400, description: 'The query is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Get('sessions')
   listSessions(
     @CurrentUser() user: AccessTokenPayload,
@@ -126,7 +124,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Sign out this device' })
   @ApiResponse({ status: 204, description: 'The device is signed out.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete('sessions/current')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteCurrentSession(@CurrentUser() user: AccessTokenPayload): Promise<void> {
@@ -138,7 +135,6 @@ export class AuthController {
   @ApiResponse({ status: 204, description: 'The device is signed out.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
   @ApiResponse({ status: 404, description: 'The session does not exist.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteSession(
@@ -161,7 +157,6 @@ export class AuthController {
   @ApiResponse({ status: 202, description: 'The request is accepted.' })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
   requestPasswordReset(@Body() dto: RequestPasswordResetDto): Promise<void> {
@@ -175,7 +170,6 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 422, description: 'The reset token is not valid.' })
   @ApiResponse({ status: 429, description: 'Too many requests.' })
-  @ApiResponse({ status: 500, description: 'The server failed.' })
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {
