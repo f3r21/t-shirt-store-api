@@ -26,7 +26,7 @@ import { ProductSummaryDto } from '../products/dto/product-summary.dto';
  * that exists, because a like placed before the product was disabled must
  * still be removable. The list reads under the caller's own visibility, so a
  * liked product that was disabled after the like is kept and hidden until it
- * returns. DECISIONS 26.
+ * returns. ADR 26.
  */
 @Injectable()
 export class LikesService {

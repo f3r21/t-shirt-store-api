@@ -2,7 +2,7 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   t-shirt-store-api, the trust that lets a GitHub Actions run release the tshirt stack with no
   stored key: GitHub's OIDC provider, the role the job assumes, and the role CloudFormation
-  assumes to update the stack. Deployed once, by a person. DECISIONS 30.
+  assumes to update the stack. Deployed once, by a person. ADR 30.
 
 Parameters:
   Repository:

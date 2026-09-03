@@ -142,7 +142,7 @@ evidence that the generated Prisma client matches the schema**: every file under
 
 One environment, one template. `infra/stack.yml` describes ECS on one arm64 instance behind
 CloudFront for HTTPS, an RDS Postgres 16 database, an ElastiCache Valkey 9 node, an ECR repository
-and the images bucket. The AWS profile is `tshirt` in `us-east-2`. DECISIONS 29 says why this
+and the images bucket. The AWS profile is `tshirt` in `us-east-2`. ADR 29 says why this
 shape. Nothing under `infra/` holds a secret.
 
 Write the five secrets the tasks read once, before the first deploy. Each command has the same
@@ -162,7 +162,7 @@ proves the running task carries the tag of that commit. No key is stored in GitH
 token assumes `tshirt-deploy`, a role `infra/ci.yml` creates, and the stack is changed through
 `tshirt-cloudformation`, a role only CloudFormation can assume. The one-time setup is that
 template as the stack `tshirt-ci`, and its two outputs as the repository variables
-`AWS_DEPLOY_ROLE_ARN` and `AWS_STACK_ROLE_ARN`. DECISIONS 30 says why this shape.
+`AWS_DEPLOY_ROLE_ARN` and `AWS_STACK_ROLE_ARN`. ADR 30 says why this shape.
 
 The first deploy, and a rescue when the job cannot run, is the same release by hand. From a
 clean checkout, with `<sha>` as the short commit id:
@@ -219,8 +219,8 @@ makes one account the manager. Tear everything down with
 `aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name tshirt`, and
 the trust with the same command on `tshirt-ci`.
 
-It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing lines DECISIONS
-29 records, and the account's credits carry that for the review.
+It costs about 33 USD a month at the prices of 2026-09-02, from the four pricing lines ADR 29
+records, and the account's credits carry that for the review.
 
 ## What is implemented
 
@@ -299,21 +299,25 @@ speaks and it is what a JSON float cannot represent exactly.
 
 - `ARCHITECTURE.md`, in this repository, is the production shape: the diagram, why the
   notification is queue-backed, the deploy shape, and what would be monitored.
-- `DECISIONS.md`, in this repository, records the implementation choices: why the token
-  hash is not argon2, why a device is a family of tokens with a grace window over rotation,
-  why sign-in carries a tighter rate limit than browsing and a looser one than a password
-  change, and what each of those cost.
+- `docs/decisions/`, in this repository, holds one record per implementation choice: the
+  context, the options, the decision, and what it gives up. `docs/decisions/README.md` is
+  the index.
 - `contract/README.md` says where the contract came from and why it lives here.
 - `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
 - `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.
 
 ## Known gaps
 
-Stated here rather than discovered later. The longer list, with the reasoning, is in
-`DECISIONS.md`.
+Stated here rather than discovered later.
 
 - `POST /auth/forgot-password` answers identically for a known and an unknown address, but
-  the two paths do not take the same time. The endpoint is rate limited instead.
+  the two paths do not take the same time. The endpoint is rate limited instead. Sign-in
+  closed the same gap by running one argon2 verify on the unknown-address path.
+- A failed mail send does not fail the request. Both mailing operations change the password
+  first and mail afterwards, so an error would make the caller retry with a password that
+  no longer works. The failure is logged.
+- The argon2 parameters are the library defaults, which exceed the current OWASP row. They
+  are not stated at the call sites.
 - Inside the grace window a stolen previous-generation token is accepted without raising the
   alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
   and 0 turns it off.

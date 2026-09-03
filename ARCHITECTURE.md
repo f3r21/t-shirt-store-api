@@ -91,7 +91,7 @@ transaction failing rather than two systems drifting. The Stripe event id is the
 `pending` to `paid`, then the history row, then each line's stock, and every answer but a bad
 signature is 200 because Stripe retries anything else. When the units are gone by the time the
 payment lands, the stock floors at zero and a warning names the shortfall, because the money is
-already taken. DECISIONS 24 records the rest.
+already taken. ADR 24 records the rest.
 
 ## Where the security risks are
 
@@ -103,7 +103,7 @@ the only thing standing there. It is CASL now: an ability per caller, a policy o
 deny by default, and the ownership conditions turned into the where clauses the services read
 with, so another client's order is a 404 by construction and not by a branch somebody remembers. **A07 second**: `argon2.hash` takes no options, so
 its cost is inherited rather than chosen, and reuse detection accepts a spent token for ten seconds
-after rotation without raising the alarm, the hole DECISIONS 2 prices. **API4 third**, three tiers
+after rotation without raising the alarm, the hole ADR 2 prices. **API4 third**, three tiers
 by route, and the last paragraph below is why it does not hold in production.
 
 ## How I know it still works, and what I would watch

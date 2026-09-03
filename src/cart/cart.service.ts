@@ -19,7 +19,7 @@ import { CART_LINE_INCLUDE, toCartDto } from './cart.mapper';
  * viewer. A line for a product since disabled or deleted leaves the view, and
  * `clearCart` removes the row. The add and set paths resolve the variant through
  * the same predicate, so the 404 for a withdrawn product and the vanished line
- * are one rule. DECISIONS 22.
+ * are one rule. ADR 22.
  *
  * **The stock check is a courtesy, not the guarantee.** Both writes compare
  * the resulting quantity with the units on hand before they write, so a 409

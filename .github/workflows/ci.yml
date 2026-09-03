@@ -161,7 +161,7 @@ jobs:
 
       - uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
         with:
-          files: README.md,ARCHITECTURE.md
+          files: README.md,ARCHITECTURE.md,docs/decisions
           separator: ','
           reporter: github-check
           filter_mode: nofilter

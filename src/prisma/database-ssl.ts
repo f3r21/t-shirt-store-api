@@ -13,7 +13,7 @@ export type DatabaseSsl = { ca: string; rejectUnauthorized: true } | undefined;
  * refused with `P1010`. With a path, the connection is encrypted and the
  * server's certificate is verified against that bundle, hostname included.
  * Without one, as on a laptop against the compose container, it is plain,
- * because that container speaks no TLS. DECISIONS 29.
+ * because that container speaks no TLS. ADR 29.
  */
 export function databaseSsl(caPath: string | undefined): DatabaseSsl {
   if (caPath === undefined || caPath === '') {

@@ -15,7 +15,7 @@ import type { LowStockJob } from './stock-queue';
  * the error is rethrown, so the job's next attempt sends again; without the
  * delete, the retry would find the row and count the person as told. A crash
  * between the row and the mail loses that mail, the same class of gap the
- * page accepts between the commit and the enqueue. DECISIONS 28.
+ * page accepts between the commit and the enqueue. ADR 28.
  */
 @Injectable()
 export class LowStockProcessor {

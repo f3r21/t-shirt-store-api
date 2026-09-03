@@ -8,9 +8,9 @@
  * the threshold to the threshold or below. Rising stock never fires: a restock
  * from one to three is not low stock. Stock oscillating at the threshold fires
  * on every downward crossing, and `stock_notifications` is what keeps that
- * from mailing a person twice. DECISIONS 27.
+ * from mailing a person twice. ADR 27.
  *
- * Per variant, because the like is per variant (DECISIONS 26, and the ERD
+ * Per variant, because the like is per variant (ADR 26, and the ERD
  * ledger's decision 15): a customer waiting on one size hears about that size.
  */
 export const LOW_STOCK_THRESHOLD = 3;

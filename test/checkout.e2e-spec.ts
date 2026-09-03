@@ -566,7 +566,7 @@ describe('Checkout (e2e)', () => {
     // Written by hand against the ability, 2026-09-02. The contract says an
     // order that belongs to another client returns 404, and says nothing about
     // a manager; the manager's ability says `manage Order`, and this case
-    // decides that it stays so. DECISIONS 25.
+    // decides that it stays so. ADR 25.
     it("lets a manager create an intent for a client's order, on purpose", async () => {
       const id = await placeOrder(token);
       const manager = await signInAs(ctx, 'manager@example.com', 'manager');

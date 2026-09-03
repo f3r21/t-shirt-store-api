@@ -67,7 +67,7 @@ export function configureApp(app: INestApplication): INestApplication {
   // Listed rather than derived from the contract on purpose: this is the set the
   // server actually sends, and `openapi-contract.e2e-spec.ts` is what keeps the
   // two honest. `X-Request-Id` is the one the contract does not declare, on
-  // purpose: it is operational, not part of any operation, and DECISIONS 21
+  // purpose: it is operational, not part of any operation, and ADR 21
   // says why a browser client still has to be able to read it.
   app.enableCors({
     origin: origins,

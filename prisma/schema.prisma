@@ -177,8 +177,7 @@ model ProductVariant {
   // Minor units, so 1999 means 19.99. Not numeric(10,2), which is what the ERD
   // says: an integer needs no conversion inbound, outbound, or at Stripe, and
   // Prisma hands a numeric back as a Decimal instance that serialises to a
-  // string. This is a deliberate departure from the ERD, recorded in
-  // DECISIONS.md.
+  // string. ADR 13 records the departure from the ERD.
   priceCents Int @map("price_cents")
 
   // No default on purpose. Prisma makes a defaulted field optional in the

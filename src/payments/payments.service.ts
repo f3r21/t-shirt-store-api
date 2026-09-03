@@ -229,7 +229,7 @@ export class PaymentsService {
    * a delayed payment method; the money arrives later, on
    * `checkout.session.async_payment_succeeded`, or never, and this service
    * does not handle that event. A succeeded intent is paid by definition.
-   * Found by a hand-written test, 2026-09-02; DECISIONS 24.
+   * Found by a hand-written test, 2026-09-02; ADR 24.
    */
   private paymentOf(
     event: Stripe.Event,

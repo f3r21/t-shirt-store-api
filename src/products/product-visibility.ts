@@ -27,7 +27,7 @@ export const NOT_DELETED = { deletedAt: null } as const;
  * ability's condition is exactly what this function answers for a shopper.
  * The cart and the checkout still call it for "on sale", because they have no
  * viewer to build an ability for: a product is bought under the shopper's
- * view whoever holds the cart. DECISIONS 25.
+ * view whoever holds the cart. ADR 25.
  *
  * The writes do not call this. `updateProduct` and `deleteProduct` are manager
  * only and resolve through `assertProductExists`, which filters on

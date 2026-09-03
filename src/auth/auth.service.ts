@@ -462,8 +462,8 @@ export class AuthService {
     // fixed window, so all ten can land inside the grace window: one spent
     // token buys at most ten rows before it ages out. Those rows expire on
     // their own and the whole family dies at the absolute cap, so they are
-    // bounded and self-clearing rather than merely rare. `DECISIONS.md`
-    // entry 2 records the same bound under "Given up".
+    // bounded and self-clearing rather than merely rare. ADR 2 records the
+    // same bound under "Gives up".
     return this.prisma.refreshToken.create({
       data: {
         userId: founder.userId,

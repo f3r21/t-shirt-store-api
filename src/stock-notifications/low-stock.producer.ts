@@ -31,7 +31,7 @@ import type { StockQueue } from './stock-queue';
  * completed job is removed and its id freed, and the row the worker wrote is
  * what stops a second mail then. A job that failed its attempts keeps its id
  * in the failed set until somebody clears it, which is the alert the page
- * names. DECISIONS 27.
+ * names. ADR 27.
  */
 @Injectable()
 export class LowStockProducer implements OnApplicationShutdown {

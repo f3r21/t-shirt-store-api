@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
   t-shirt-store-api, one environment: ECS on one EC2 instance behind CloudFront, a managed
-  Postgres, a managed Valkey cache, an image registry and an object bucket. DECISIONS 29.
+  Postgres, a managed Valkey cache, an image registry and an object bucket. ADR 29.
 
 # Deployed and torn down with one command each, see README.md, "Deploy". Every value that is
 # a secret arrives through a NoEcho parameter or an SSM SecureString the operator wrote

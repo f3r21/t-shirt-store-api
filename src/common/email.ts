@@ -13,7 +13,7 @@
  * no mail provider a customer of this store is likely to use treats `Ana@` and
  * `ana@` as two people, and two accounts for one person is the worse failure. The
  * contract does not define email equivalence, so the choice is ours to make and
- * to record. DECISIONS 10 says why a column type and not an index carries it.
+ * to record. ADR 10 says why a column type and not an index carries it.
  */
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

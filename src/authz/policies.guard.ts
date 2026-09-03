@@ -37,7 +37,7 @@ import type { Policy } from './check-policies.decorator';
  *
  * **Bound globally, after `AccessTokenGuard`**, in the same providers array,
  * so `request.user` is populated before this reads it. The 403 is a bare
- * `ForbiddenException` on purpose, for the reason DECISIONS 18 gives: the
+ * `ForbiddenException` on purpose, for the reason ADR 18 gives: the
  * problem mapper's table holds the contract's own wording.
  */
 @Injectable()

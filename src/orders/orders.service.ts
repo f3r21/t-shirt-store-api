@@ -107,7 +107,7 @@ export class OrdersService {
    *
    * The order of the statements is the point. The lines are read through the
    * cart's own predicate, so a withdrawn product's line is not ordered
-   * (DECISIONS 22). Then the lines are **deleted before the order is created**,
+   * (ADR 22). Then the lines are **deleted before the order is created**,
    * and the delete has to remove exactly the lines that were read: two
    * checkouts of one cart both read the lines, the second blocks on the
    * first's delete, finds nothing left, and rolls back instead of placing a

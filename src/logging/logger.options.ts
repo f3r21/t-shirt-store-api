@@ -83,7 +83,7 @@ export function skipCompletionLine(req: IncomingMessage): boolean {
 }
 
 /**
- * pino, and how every line is shaped. The reasons are in DECISIONS 21.
+ * pino, and how every line is shaped. The reasons are in ADR 21.
  *
  * `quietReqLogger` binds only the request id to lines written inside the
  * request, so a service's line is the event, the id and the context, and not

@@ -36,7 +36,7 @@ export interface UploadedImage {
  * product with none, which is what the contract says.
  *
  * **The type is read from the bytes**, in `image-type.ts`, never from the
- * header the client declared. DECISIONS 31.
+ * header the client declared. ADR 31.
  */
 @Injectable()
 export class ImagesService {
