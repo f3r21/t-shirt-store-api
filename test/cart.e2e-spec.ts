@@ -134,6 +134,21 @@ describe('Cart (e2e)', () => {
       expect(await rowQuantity(fixture.variantId)).toBe(5);
     });
 
+    // Written by hand against the service, 2026-09-03. Two adds in the same
+    // moment both count: the write is an increment on the row, never a total
+    // computed from a read that the other request may have overtaken.
+    it('counts both of two adds that land in the same moment', async () => {
+      await add(fixture.variantId, 1).expect(200);
+
+      const [first, second] = await Promise.all([
+        add(fixture.variantId, 3),
+        add(fixture.variantId, 3),
+      ]);
+
+      expect([first.status, second.status]).toEqual([200, 200]);
+      expect(await rowQuantity(fixture.variantId)).toBe(7);
+    });
+
     it('answers 409 insufficient-stock above the units on hand, and the cart does not change', async () => {
       await add(fixture.variantId, 5).expect(200);
 

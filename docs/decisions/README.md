@@ -43,6 +43,10 @@ contract's and the data model's records live in the Week 2 repository.
 - [23. Checkout empties the cart first, and a status move is a conditional write](0023-checkout-empties-the-cart-first.md)
 - [24. The webhook is the only writer of `paid`, and a retry is a unique violation](0024-the-webhook-is-the-only-writer-of-paid.md)
 
+## Concurrent writes
+
+- [34. A write that depends on a value it read carries that value, or adds to it](0034-a-write-carries-the-value-it-assumed.md)
+
 ## Likes and stock mail
 
 - [26. A like needs a product on sale, an unlike needs only a variant, and the list is the product page](0026-a-like-needs-a-product-on-sale.md)

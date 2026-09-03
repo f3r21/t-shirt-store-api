@@ -1,6 +1,6 @@
 # 22. The cart shows what can be bought, and checks stock as a courtesy
 
-Status: accepted
+Status: accepted, revised 2026-09-03
 Date: 2026-09-01
 
 ## Context
@@ -28,3 +28,7 @@ number has to be right, and an unpaid order reserves nothing.
 
 **Gives up:** a cart can briefly hold more than the shelf, reported through `stock`. No promo
 code, tax or delivery charge, so `subtotal` is the sum of the lines.
+
+**Revised 2026-09-03, from a test written by hand:** the add read the line and wrote the sum,
+so two adds in the same moment kept one. The write is now an atomic increment on the row, and
+the read feeds the stock check only. ADR 34.
