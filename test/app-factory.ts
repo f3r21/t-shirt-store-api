@@ -13,6 +13,10 @@ import type { StripeClient } from '../src/payments/stripe.client';
 import { STRIPE_CLIENT } from '../src/payments/stripe.client';
 import type { ObjectStore } from '../src/images/object-store';
 import { OBJECT_STORE } from '../src/images/object-store';
+import {
+  STOCK_QUEUE,
+  stockQueueProvider,
+} from '../src/stock-notifications/stock-queue';
 
 /**
  * Every message the application tried to send during a test.
@@ -163,9 +167,15 @@ class NeverBlocks implements ThrottlerStorage {
  * Boot the real application through `configureApp`, so the suite gets the
  * prefix and the pipe the server runs. The counter is replaced unless
  * `{ throttle: true }`.
+ *
+ * `redisUrl` points the stock queue somewhere else. The address the
+ * application reads is fixed when `ConfigModule.forRoot` runs, which is at
+ * import time, so a spec cannot reach it through `process.env`. The production
+ * factory is called here with the address the spec asks for, so the queue is
+ * the real one and only its address differs.
  */
 export async function createTestApp(
-  options: { throttle?: boolean } = {},
+  options: { throttle?: boolean; redisUrl?: string } = {},
 ): Promise<TestApp> {
   const mail = new MailerSpy();
   const stripe = new StripeStub();
@@ -185,6 +195,13 @@ export async function createTestApp(
     builder = builder
       .overrideProvider(ThrottlerStorage)
       .useValue(new NeverBlocks());
+  }
+
+  if (options.redisUrl !== undefined) {
+    const url = options.redisUrl;
+    builder = builder
+      .overrideProvider(STOCK_QUEUE)
+      .useValue(stockQueueProvider.useFactory({ getOrThrow: () => url }));
   }
 
   const moduleRef = await builder.compile();

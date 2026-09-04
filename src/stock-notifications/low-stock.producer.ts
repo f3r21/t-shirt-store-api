@@ -10,6 +10,14 @@ import { LOW_STOCK_JOB, STOCK_QUEUE } from './stock-queue';
 import type { StockQueue } from './stock-queue';
 
 /**
+ * The longest a call on the queue may hold its caller, whether that caller is
+ * a writer whose transaction has committed or the exit. The connection rejects
+ * at once while it is down, so this covers the other shape: a command that
+ * reached Redis and never came back.
+ */
+const QUEUE_TIMEOUT_MS = 2000;
+
+/**
  * The producer: who to tell, decided after the commit, one job per person.
  * Nothing here throws. The audience is three clauses: liked the variant, no
  * `stock_notifications` row, no line in a paid order. The job id
@@ -54,7 +62,9 @@ export class LowStockProducer implements OnApplicationShutdown {
       const jobIds: string[] = [];
       for (const { id: userId } of recipients) {
         const jobId = `${LOW_STOCK_JOB}:${variantId}:${userId}`;
-        await this.queue.add(LOW_STOCK_JOB, { variantId, userId }, { jobId });
+        await this.bounded(
+          this.queue.add(LOW_STOCK_JOB, { variantId, userId }, { jobId }),
+        );
         jobIds.push(jobId);
       }
 
@@ -79,7 +89,44 @@ export class LowStockProducer implements OnApplicationShutdown {
     }
   }
 
-  onApplicationShutdown(): Promise<void> {
-    return this.queue.close();
+  /** The queue's answer, or a rejection once the bound has passed. */
+  private bounded<T>(work: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const expiry = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              `the queue did not answer in ${QUEUE_TIMEOUT_MS} milliseconds`,
+            ),
+          ),
+        QUEUE_TIMEOUT_MS,
+      );
+    });
+
+    return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * Release the connection at the exit, without holding the exit up.
+   *
+   * A close sends `QUIT`, which a connection that cannot write refuses, and
+   * that leaves the socket behind. `disconnect` drops the socket, but it waits
+   * for an `end` that one between reconnects never sends, so it takes the same
+   * bound the enqueue takes.
+   */
+  async onApplicationShutdown(): Promise<void> {
+    try {
+      await this.queue.close();
+    } catch (err) {
+      this.logger.error({
+        msg: 'the stock queue did not close cleanly',
+        event: 'stock.queue-close-failed',
+        err,
+      });
+      // The socket is dropped by the call itself, so a bound that passes has
+      // nothing left to release and nothing to report.
+      await this.bounded(this.queue.disconnect()).catch(() => undefined);
+    }
   }
 }

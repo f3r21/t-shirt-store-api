@@ -231,6 +231,53 @@ describe('Stock notifications, the producer (e2e)', () => {
   });
 
   /**
+   * Redis down, on a port nothing listens on.
+   *
+   * The app is booted here with its own `REDIS_URL` instead of in the outer
+   * `beforeAll`, because the case is about a queue that can never connect. The
+   * write still commits, so what is measured is the answer the writer gets.
+   */
+  describe('with Redis unreachable', () => {
+    let offline: TestApp;
+
+    beforeAll(async () => {
+      offline = await createTestApp({ redisUrl: 'redis://127.0.0.1:6399/5' });
+    });
+
+    afterAll(async () => {
+      await offline.app.close();
+    });
+
+    it('answers the stock count within five seconds when Redis is unreachable', async () => {
+      const variant = await seedProductWithVariant(offline.prisma, {
+        stock: 10,
+      });
+      const ana = await signInAs(offline, 'ana@example.com');
+      const manager = await signInAs(offline, 'boss@example.com', 'manager');
+      await request(offline.app.getHttpServer())
+        .put(`/v1/variants/${variant.variantId}/like`)
+        .set('Authorization', bearer(ana))
+        .expect(204);
+
+      // The client gives up at nine seconds and drops the socket, so a request
+      // that never comes back fails this case instead of hanging the suite.
+      const started = Date.now();
+      await request(offline.app.getHttpServer())
+        .patch(`/v1/variants/${variant.variantId}/stock`)
+        .set('Authorization', bearer(manager))
+        .send({ stock: 3 })
+        .timeout(9000)
+        .expect(200);
+
+      expect(Date.now() - started).toBeLessThan(5000);
+      const row = await offline.prisma.productVariant.findUniqueOrThrow({
+        where: { id: variant.variantId },
+      });
+      expect(row.stock).toBe(3);
+    }, 10000);
+  });
+
+  /**
    * The consumer, booted beside the API in this process from `WorkerModule`
    * with the same mail spy, so a job enqueued by the API above is processed
    * here and its mail is readable. The spy is the only double: the queue, the
