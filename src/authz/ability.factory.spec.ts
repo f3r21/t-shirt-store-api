@@ -6,11 +6,10 @@ import type {
   User,
 } from '../generated/prisma/client';
 import { AbilityFactory } from './ability.factory';
+import { AS_DELIVERY } from './authz.fixtures';
 import { AS_CLIENT, AS_MANAGER, aProduct } from '../products/products.fixtures';
 import { anOrder } from '../orders/orders.fixtures';
 import { aCartRow } from '../cart/cart.fixtures';
-
-const AS_DELIVERY = { sub: 77, sid: 3, role: 'delivery_person' };
 
 /** A session row, as the ability sees it: only `userId` matters to the rules. */
 const aSession = (userId: number): RefreshToken => ({
@@ -163,16 +162,79 @@ describe('AbilityFactory', () => {
   });
 
   describe('a delivery person', () => {
-    it('has exactly what a client has, until the delivery feature exists', () => {
-      const ability = factory.for(AS_DELIVERY);
+    const ability = factory.for(AS_DELIVERY);
 
-      expect(ability.can('manage', 'CartItem')).toBe(true);
-      expect(
-        ability.can('read', subject('Order', anOrder({ userId: 77 }))),
-      ).toBe(true);
+    // Someone else's orders, in the four statuses the two delivery rules
+    // divide: the queue, one this person delivered, one another delivery
+    // person delivered, and one that has not shipped.
+    const shipped = subject('Order', anOrder({ userId: 7, status: 'shipped' }));
+    const deliveredByMe = subject(
+      'Order',
+      anOrder({ userId: 7, status: 'delivered', deliveredById: 77 }),
+    );
+    const deliveredByAnother = subject(
+      'Order',
+      anOrder({ userId: 7, status: 'delivered', deliveredById: 91 }),
+    );
+    const pending = subject('Order', anOrder({ userId: 7, status: 'pending' }));
+
+    it('may deliver a shipped order and nothing else a client cannot', () => {
+      expect(ability.can('deliver', shipped)).toBe(true);
+      expect(ability.can('read', shipped)).toBe(true);
+
+      // The rest of the order verbs stay where a client leaves them. A
+      // delivery person advances nothing, cancels nothing that is not theirs,
+      // and reads no order that is neither theirs nor on the round.
       expect(ability.can('update', 'Order')).toBe(false);
       expect(ability.can('manage', 'Order')).toBe(false);
+      expect(ability.can('cancel', shipped)).toBe(false);
+      expect(ability.can('pay', shipped)).toBe(false);
+      expect(ability.can('read', pending)).toBe(false);
       expect(ability.can('create', 'Product')).toBe(false);
+    });
+
+    // `deliver` is the round, past and present, because it is what the
+    // delivery list scopes on: a delivered order stays in reach of the person
+    // who delivered it and of nobody else. Sending `delivered` on it a second
+    // time is the transition table's 409, not a 403.
+    it('holds deliver over its own round, and over no other order', () => {
+      expect(ability.can('deliver', shipped)).toBe(true);
+      expect(ability.can('deliver', deliveredByMe)).toBe(true);
+      expect(ability.can('deliver', deliveredByAnother)).toBe(false);
+      expect(ability.can('deliver', pending)).toBe(false);
+    });
+
+    it('reads a delivered order only when it delivered it', () => {
+      expect(ability.can('read', deliveredByMe)).toBe(true);
+      expect(ability.can('read', deliveredByAnother)).toBe(false);
+    });
+
+    it('is still a user, with a cart and orders of its own', () => {
+      expect(ability.can('manage', 'CartItem')).toBe(true);
+      expect(ability.can('create', 'Order')).toBe(true);
+      expect(
+        ability.can('cancel', subject('Order', anOrder({ userId: 77 }))),
+      ).toBe(true);
+    });
+
+    // The branches come back in reverse declaration order, which is CASL's own
+    // and is what the manager's `Product` case above already pins: the rule
+    // written last is the first branch. Asserted as written and not sorted,
+    // because a silent reordering would mean the rules moved.
+    it('turns the three read rules into the where the two lists share', () => {
+      expect(accessibleBy(ability, 'read').Order).toEqual({
+        OR: [
+          { status: 'delivered', deliveredById: 77 },
+          { status: 'shipped' },
+          { userId: 77 },
+        ],
+      });
+      // The delivery list scopes on this one and not on the read above. The
+      // read set carries the caller's own purchases, so an order this person
+      // bought and a colleague delivered would land in their own history.
+      expect(accessibleBy(ability, 'deliver').Order).toEqual({
+        OR: [{ status: 'delivered', deliveredById: 77 }, { status: 'shipped' }],
+      });
     });
   });
 

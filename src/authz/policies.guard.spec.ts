@@ -13,6 +13,7 @@ import {
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
 import { IS_OPTIONAL_AUTH_KEY } from '../auth/decorators/optional-auth.decorator';
 import { AS_CLIENT, AS_MANAGER } from '../products/products.fixtures';
+import { AS_DELIVERY } from './authz.fixtures';
 
 /**
  * The branches no end to end test can reach, and the ones they can, once.
@@ -157,12 +158,27 @@ describe('PoliciesGuard', () => {
       expect(unflagged.guard.canActivate(unflagged.context)).toBe(true);
     });
 
-    it('updateOrCancelOrder: a client may reach the route to cancel, a manager to advance', () => {
+    it('updateOrCancelOrder: a client reaches the route to cancel, a manager to advance, a delivery person to deliver', () => {
       const client = contextFor(policies(updateOrCancelOrder), AS_CLIENT);
       const manager = contextFor(policies(updateOrCancelOrder), AS_MANAGER);
+      const delivery = contextFor(policies(updateOrCancelOrder), AS_DELIVERY);
 
       expect(client.guard.canActivate(client.context)).toBe(true);
       expect(manager.guard.canActivate(manager.context)).toBe(true);
+      expect(delivery.guard.canActivate(delivery.context)).toBe(true);
+    });
+
+    /**
+     * The third verb earns its place. A delivery person also holds `cancel` on
+     * their own orders, so the route would open for them without it, and this
+     * case would pass either way. Asked of the ability directly, so what is
+     * pinned is the verb the role actually brings.
+     */
+    it('updateOrCancelOrder: the delivery person is admitted by deliver, not by update', () => {
+      const ability = new AbilityFactory().for(AS_DELIVERY);
+
+      expect(ability.can('deliver', 'Order')).toBe(true);
+      expect(ability.can('update', 'Order')).toBe(false);
     });
   });
 });

@@ -42,6 +42,7 @@ contract's and the data model's records live in the Week 2 repository.
 - [22. The cart shows what can be bought, and checks stock as a courtesy](0022-the-cart-checks-stock-as-a-courtesy.md)
 - [23. Checkout empties the cart first, and a status move is a conditional write](0023-checkout-empties-the-cart-first.md)
 - [24. The webhook is the only writer of `paid`, and a retry is a unique violation](0024-the-webhook-is-the-only-writer-of-paid.md)
+- [36. The delivery person reads shipped orders and writes delivered, and one column records who](0036-the-delivery-person-reads-shipped-and-writes-delivered.md)
 
 ## Concurrent writes
 

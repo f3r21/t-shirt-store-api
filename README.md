@@ -33,11 +33,12 @@ The seed is a hard prerequisite. `users.role_id` is not null and the service rea
 from the `roles` table, so sign-up fails with "The roles table holds no client role. Run the
 seed." until `db:seed` has run.
 
-The seed also creates two demo accounts, so a reviewer can sign in as a manager without
-editing the database. Both use the password `Password123!`:
+The seed also creates three demo accounts, so a reviewer can sign in as a manager without
+editing the database. All three use the password `Password123!`:
 
     manager@tshirt.store   creates and edits products and variants
     client@tshirt.store    everything a customer can reach
+    delivery@tshirt.store  reads the shipped orders and marks them delivered
 
 They are development fixtures with a published password. `prisma/seed.ts` refuses to create
 them when `NODE_ENV` is `production`, and seeds only the roles and categories there.
@@ -236,10 +237,11 @@ records, and the account's credits carry that for the review.
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, a cancel after payment giving the units back, and the history with its five filters |
+| Delivery person, Optional Features 11 and 12 | Done, one operation and one status: `GET /deliveries` lists the shipped orders to deliver, and the same list under `status=delivered` is the caller's own delivery history. The role sends `delivered` on a shipped order and nothing else, and the server records who delivered it. A client reads the full status history of its own order, as before |
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock. The deployed endpoint receives Stripe's own test-mode events through the distribution |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
-| End-to-end tests | Done, in thirteen suites against a real database and a real Valkey: liveness and the kernel's headers, authentication, the cart, catalog authorization, catalog reads, checkout through a signed Stripe event to the stock decrement and the status flow, product images with the store in memory, likes, the served OpenAPI document against the contract, order history for two clients and a manager, rate limits, roles, and the low-stock notifications through the real queue and worker to the mail |
+| End-to-end tests | Done, in fourteen suites against a real database and a real Valkey: liveness and the kernel's headers, authentication, the cart, catalog authorization, catalog reads, checkout through a signed Stripe event to the stock decrement and the status flow, deliveries for two delivery people, a client and a manager, product images with the store in memory, likes, the served OpenAPI document against the contract, order history for two clients and a manager, rate limits, roles, and the low-stock notifications through the real queue and worker to the mail |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
 | Deploy | Done. One CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache; every push to `main` releases through a job that assumes a role by OIDC, with no key stored |

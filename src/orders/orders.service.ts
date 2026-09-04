@@ -21,6 +21,7 @@ import { OrderDto } from './dto/order.dto';
 import { OrderSummaryDto } from './dto/order-summary.dto';
 import { OrderHistoryQueryDto } from './dto/order-history-query.dto';
 import { ListAllOrdersQueryDto } from './dto/list-all-orders-query.dto';
+import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
 import { SetOrderStatusDto } from './dto/set-order-status.dto';
 import { nextStatus } from './order-status';
 import {
@@ -89,6 +90,18 @@ export class OrdersService {
   /** The rows the ability lets this caller read, as a where clause. */
   private readable(ability: AppAbility): Prisma.OrderWhereInput {
     return { AND: [accessibleBy(ability, 'read').Order] };
+  }
+
+  /**
+   * The rows on this caller's delivery round, as a where clause.
+   *
+   * Narrower than `readable` and not a subset of it by accident: the read set
+   * carries the caller's own purchases, and a courier who shops here must not
+   * find their own parcel in their delivery history because a colleague
+   * delivered it. ADR 36.
+   */
+  private deliverable(ability: AppAbility): Prisma.OrderWhereInput {
+    return { AND: [accessibleBy(ability, 'deliver').Order] };
   }
 
   /**
@@ -193,6 +206,24 @@ export class OrdersService {
   }
 
   /**
+   * The orders on this caller's round: the shipped queue, or their history.
+   *
+   * The scope is the `deliver` ability and not the `read` one, so the two
+   * rules that grant the verb do the narrowing: a delivery person sees every
+   * shipped order and only the delivered ones they delivered themselves, and a
+   * manager, whose `manage` is unconditional, sees both sets whole. The status
+   * filter comes off the query the same way it does on the other two lists.
+   * ADR 36.
+   */
+  listDeliveries(
+    viewer: AccessTokenPayload,
+    ability: AppAbility,
+    query: ListDeliveriesQueryDto,
+  ): Promise<{ data: OrderSummaryDto[]; meta: PageMetaDto }> {
+    return this.listOrders(this.deliverable(ability), query, viewer);
+  }
+
+  /**
    * One page of orders under a scope, with the five filters applied.
    *
    * Newest first by `createdAt` then `id`, the order the two indexes on
@@ -265,11 +296,16 @@ export class OrdersService {
       throw new NotFoundException();
     }
 
-    const allowed =
+    // Three verbs, one per kind of move: a client cancels, a delivery person
+    // delivers, a manager advances. Asked against the row, so the conditions
+    // on the rules (own, shipped) decide, and not the subject type. ADR 36.
+    const verb =
       dto.status === 'cancelled'
-        ? ability.can('cancel', subject('Order', order))
-        : ability.can('update', subject('Order', order));
-    if (!allowed) {
+        ? 'cancel'
+        : dto.status === 'delivered'
+          ? 'deliver'
+          : 'update';
+    if (!ability.can(verb, subject('Order', order))) {
       throw new ForbiddenException();
     }
 
@@ -281,10 +317,19 @@ export class OrdersService {
       throw this.illegalMove(order.status, dto.status);
     }
 
+    // Who delivered it, written with the status and not after it, so the row
+    // never holds `delivered` with no deliverer. Only on this move: the column
+    // says "delivered by", not "last touched by". The unchecked input, because
+    // the checked one takes the relation and this writes the foreign key.
+    const data: Prisma.OrderUncheckedUpdateManyInput =
+      dto.status === 'delivered'
+        ? { status: dto.status, deliveredById: viewer.sub }
+        : { status: dto.status };
+
     const row = await this.prisma.$transaction(async (tx) => {
       const moved = await tx.order.updateMany({
         where: { id, status: order.status },
-        data: { status: dto.status },
+        data,
       });
       if (moved.count === 0) {
         throw this.orderChanged();

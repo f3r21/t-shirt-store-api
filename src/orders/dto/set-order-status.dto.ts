@@ -5,12 +5,13 @@ import type { RequestableStatus } from '../order-status';
 
 /**
  * Request body of `setOrderStatus`. Narrower than `OrderStatus`: `pending` is
- * the start, the webhook sets `paid`, and `delivered` is out of scope.
+ * the start and the webhook sets `paid`. The four here are what some caller
+ * may send; the ability decides which caller, and answers 403 otherwise.
  */
 export class SetOrderStatusDto {
   @ApiProperty({ enum: REQUESTABLE_STATUSES })
   @IsIn(REQUESTABLE_STATUSES, {
-    message: 'must be one of processing, shipped, cancelled',
+    message: 'must be one of processing, shipped, delivered, cancelled',
   })
   status!: RequestableStatus;
 }

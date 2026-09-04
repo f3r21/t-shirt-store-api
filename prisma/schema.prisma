@@ -36,6 +36,11 @@ model User {
   orders        Order[]
   cartItems     CartItem[]
 
+  // The orders this user delivered, which is the delivery person's own history.
+  // Named, because `orders` above already relates the two models and Prisma
+  // cannot tell two relations between one pair apart without a name.
+  deliveries    Order[]             @relation("OrderDeliveredBy")
+
   @@map("users")
 }
 
@@ -210,9 +215,9 @@ enum OrderStatus {
   cancelled
 
   // The six members the ERD declares, in the lower case the contract uses.
-  // `paid` and `delivered` ship although no operation in scope writes either:
-  // the payment webhook sets `paid`, and `delivered` belongs to the delivery
-  // feature. The enum is the domain, not the list of legal moves.
+  // `paid` is the payment webhook's alone, and a delivery person or a manager
+  // writes `delivered` through `setOrderStatus`. The enum is the domain, not
+  // the list of legal moves: `order-status.ts` holds those.
   @@map("order_status")
 }
 
@@ -273,6 +278,12 @@ model Order {
   // idempotency needs it. See ADR 24.
   paymentMethod PaymentMethod? @map("payment_method")
 
+  // Who moved this order to `delivered`. Null until that happens, so the
+  // migration is additive and no order needs a backfill. One column rather than
+  // an assignment table, because an order is delivered once and nothing in the
+  // brief dispatches an order before it ships. See ADR 36.
+  deliveredById Int? @map("delivered_by_user_id")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // No updatedAt, unlike products. The status history records every mutation
@@ -282,14 +293,24 @@ model Order {
   items         OrderItem[]
   statusHistory OrderStatusChange[]
 
+  // SET NULL and not RESTRICT, unlike `user` above: the order is the record and
+  // the delivery person is an attribution on it, so removing an account must not
+  // hold an order hostage. The row keeps its `delivered` status either way.
+  deliveredBy   User?               @relation("OrderDeliveredBy", fields: [deliveredById], references: [id], onDelete: SetNull)
+
   // The client's own history, and a manager filtering by one client. The
   // equality that is always present leads, then the range that is also the sort
   // key, then the tiebreak. A btree scans backwards for free, so this ascending
   // index serves a newest-first page with no sort step.
   @@index([userId, createdAt, id])
   // A manager's unfiltered page. No leading equality, so the composite above
-  // cannot serve it.
+  // cannot serve it. It also serves the delivery queue, which filters on
+  // `status` and names no user.
   @@index([createdAt, id])
+  // One delivery person's history, in the shape of the first index: the column
+  // the filter always names leads, then the sort key, then the tiebreak. It is
+  // also the lookup `ON DELETE SET NULL` runs when an account is deleted.
+  @@index([deliveredById, createdAt, id])
   @@map("orders")
 }
 

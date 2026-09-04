@@ -78,6 +78,10 @@ describe('OpenAPI document against the contract (e2e)', () => {
       'GET /users/me/orders q.minTotal.maximum=2147483647',
       'GET /users/me/orders q.minTotal.minimum=0',
       'GET /users/me/orders q.offset.maximum=2147483647',
+      // The delivery list pages through the same `PageQueryDto`, so it carries
+      // the same `offset` ceiling and nothing else: its `status` is an enum of
+      // two and its other two parameters are the shared page pair.
+      'GET /deliveries q.offset.maximum=2147483647',
       // The payment link's body, the cart's decision again: two `int4`
       // columns and an id below one. The contract states `quantity.minimum=1`.
       'POST /payment-links body.quantity.maximum=2147483647',
@@ -229,7 +233,7 @@ describe('OpenAPI document against the contract (e2e)', () => {
     // Every declared operation is served. The counts stay pinned, so an
     // operation added to the contract without a handler, or a handler deleted
     // by accident, shows up here as a number that moved.
-    expect(implemented).toHaveLength(37);
+    expect(implemented).toHaveLength(38);
     expect(missing).toHaveLength(0);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,

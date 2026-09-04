@@ -19,12 +19,21 @@ export const can =
     ability.can(action, subject);
 
 /**
- * `setOrderStatus` serves two callers with two verbs: a client cancels, a
- * manager advances. Either ability opens the route; the service asks the
- * exact question once it has the row and the requested status.
+ * `setOrderStatus` serves three callers with three verbs: a client cancels, a
+ * manager advances, a delivery person delivers. Any of the three opens the
+ * route; the service asks the exact question once it has the row and the
+ * requested status.
+ *
+ * `deliver` is named even though it admits nobody new: a delivery person is a
+ * signed-in user, so `cancel` on their own orders already opened the route for
+ * them. Resting the role's access on a rule about a different order is an
+ * accident, and it would fail closed the day the role stops holding `cancel`.
+ * ADR 36.
  */
 export const updateOrCancelOrder: Policy = (ability) =>
-  ability.can('update', 'Order') || ability.can('cancel', 'Order');
+  ability.can('update', 'Order') ||
+  ability.can('cancel', 'Order') ||
+  ability.can('deliver', 'Order');
 
 /**
  * The disabled products are a manager's to see, and the contract answers the

@@ -6,6 +6,7 @@ import {
   prismaMockProvider,
 } from '../prisma/prisma.service.mock';
 import { AS_CLIENT, AS_MANAGER } from '../products/products.fixtures';
+import { AS_DELIVERY } from '../authz/authz.fixtures';
 import { AbilityFactory } from '../authz/ability.factory';
 import { aCartLine } from '../cart/cart.fixtures';
 import {
@@ -26,6 +27,7 @@ const caught = (run: () => Promise<unknown>) =>
 const abilities = new AbilityFactory();
 const CLIENT_ABILITY = abilities.for(AS_CLIENT);
 const MANAGER_ABILITY = abilities.for(AS_MANAGER);
+const DELIVERY_ABILITY = abilities.for(AS_DELIVERY);
 
 describe('OrdersService', () => {
   let service: OrdersService;
@@ -444,6 +446,189 @@ describe('OrdersService', () => {
       expect(call.where).toEqual({ id: 501, AND: [{}] });
       expect(order.status).toBe('processing');
       expect(order.customer).toBeDefined();
+    });
+
+    /**
+     * The delivery branch. `delivered` asks `deliver` and not `update`, so a
+     * client is 403 on it and a delivery person is 403 on everything else,
+     * and the write records who delivered the order in the same conditional
+     * `updateMany` as the status. Optional Features 11 and 12, ADR 36.
+     */
+    describe('delivered', () => {
+      beforeEach(() => {
+        prisma.order.findFirst.mockResolvedValue(
+          anOrder({ status: 'shipped' }),
+        );
+        prisma.order.findUniqueOrThrow.mockResolvedValue(
+          anOrderWithDetail({
+            ...anOrder({ status: 'delivered', deliveredById: 77 }),
+          }),
+        );
+      });
+
+      it('writes the status and the delivery person in one conditional update', async () => {
+        const order = await service.setOrderStatus(
+          AS_DELIVERY,
+          DELIVERY_ABILITY,
+          501,
+          { status: 'delivered' },
+        );
+
+        expect(nthArg(prisma.order.updateMany)).toEqual({
+          where: { id: 501, status: 'shipped' },
+          data: { status: 'delivered', deliveredById: 77 },
+        });
+        expect(nthArg(prisma.orderStatusChange.create)).toEqual({
+          data: { orderId: 501, status: 'delivered' },
+        });
+        expect(order.status).toBe('delivered');
+      });
+
+      it('reads the order through the delivery read rules, not the owner one', async () => {
+        await service.setOrderStatus(AS_DELIVERY, DELIVERY_ABILITY, 501, {
+          status: 'delivered',
+        });
+
+        const call = nthArg(prisma.order.findFirst) as { where: unknown };
+        expect(call.where).toEqual({
+          id: 501,
+          AND: [
+            {
+              OR: [
+                { status: 'delivered', deliveredById: 77 },
+                { status: 'shipped' },
+                { userId: 77 },
+              ],
+            },
+          ],
+        });
+      });
+
+      it('answers 403 to a delivery person sending any other status', async () => {
+        await expect(
+          service.setOrderStatus(AS_DELIVERY, DELIVERY_ABILITY, 501, {
+            status: 'cancelled',
+          }),
+        ).rejects.toMatchObject({ status: 403 });
+        await expect(
+          service.setOrderStatus(AS_DELIVERY, DELIVERY_ABILITY, 501, {
+            status: 'processing',
+          }),
+        ).rejects.toMatchObject({ status: 403 });
+        expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('answers 403 to a client sending delivered on their own order', async () => {
+        prisma.order.findFirst.mockResolvedValue(
+          anOrder({ userId: 128, status: 'shipped' }),
+        );
+
+        await expect(
+          service.setOrderStatus(AS_CLIENT, CLIENT_ABILITY, 501, {
+            status: 'delivered',
+          }),
+        ).rejects.toMatchObject({ status: 403 });
+        expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('lets a manager deliver, and records the manager as the deliverer', async () => {
+        await service.setOrderStatus(AS_MANAGER, MANAGER_ABILITY, 501, {
+          status: 'delivered',
+        });
+
+        expect(nthArg(prisma.order.updateMany)).toEqual({
+          where: { id: 501, status: 'shipped' },
+          data: { status: 'delivered', deliveredById: 1 },
+        });
+      });
+
+      // The control: every other move writes the status alone, so the column
+      // says "delivered by", not "last touched by".
+      it('writes no deliverer on a move that is not a delivery', async () => {
+        prisma.order.findFirst.mockResolvedValue(anOrder({ status: 'paid' }));
+
+        await service.setOrderStatus(AS_MANAGER, MANAGER_ABILITY, 501, {
+          status: 'processing',
+        });
+
+        expect(nthArg(prisma.order.updateMany)).toEqual({
+          where: { id: 501, status: 'paid' },
+          data: { status: 'processing' },
+        });
+      });
+    });
+  });
+
+  /**
+   * The delivery list. One scope, two statuses, and the ability decides which
+   * delivered rows a caller sees, so the service adds the status filter and
+   * nothing else. Optional Feature 11.
+   */
+  describe('listDeliveries', () => {
+    const page = { limit: 20, offset: 0 };
+
+    beforeEach(() => {
+      prisma.order.findMany.mockResolvedValue([anOrderWithSummary()]);
+      prisma.order.count.mockResolvedValue(1);
+    });
+
+    /**
+     * The scope is the `deliver` rules and not the `read` ones. The read set
+     * carries the caller's own purchases, so under `?status=delivered` an
+     * order this courier bought and a colleague delivered would appear in
+     * their own delivery history. `{ userId: 77 }` must not be here.
+     */
+    it('scopes on the deliver rules, not the read rules', async () => {
+      await service.listDeliveries(AS_DELIVERY, DELIVERY_ABILITY, {
+        ...page,
+        status: 'shipped',
+      });
+
+      const call = nthArg(prisma.order.findMany) as { where: unknown };
+      expect(call.where).toEqual({
+        status: 'shipped',
+        AND: [
+          {
+            OR: [
+              { status: 'delivered', deliveredById: 77 },
+              { status: 'shipped' },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('reads the history under the same where, with the other status', async () => {
+      await service.listDeliveries(AS_DELIVERY, DELIVERY_ABILITY, {
+        ...page,
+        status: 'delivered',
+      });
+
+      const call = nthArg(prisma.order.findMany) as {
+        where: { AND: { OR: unknown[] }[] };
+      };
+      expect(call.where).toMatchObject({ status: 'delivered' });
+      expect(call.where.AND[0].OR).not.toContainEqual({ userId: 77 });
+      expect(nthArg(prisma.order.count)).toEqual({ where: call.where });
+    });
+
+    it('pages newest first, and gives a delivery person no customer', async () => {
+      const result = await service.listDeliveries(
+        AS_DELIVERY,
+        DELIVERY_ABILITY,
+        { limit: 5, offset: 10, status: 'shipped' },
+      );
+
+      const call = nthArg(prisma.order.findMany) as {
+        orderBy: unknown;
+        take: number;
+        skip: number;
+      };
+      expect(call.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+      expect(call.take).toBe(5);
+      expect(call.skip).toBe(10);
+      expect(result.meta).toEqual({ total: 1, limit: 5, offset: 10 });
+      expect(result.data[0]).not.toHaveProperty('customer');
     });
   });
 });

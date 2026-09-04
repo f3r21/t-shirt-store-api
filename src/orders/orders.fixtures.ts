@@ -23,6 +23,7 @@ export function anOrder(overrides: Partial<OrderRow> = {}): OrderRow {
     subtotalCents: 3998,
     totalCents: 3998,
     paymentMethod: null,
+    deliveredById: null,
     createdAt: new Date('2026-08-15T18:22:00.000Z'),
     ...overrides,
   };

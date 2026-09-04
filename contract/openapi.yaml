@@ -60,7 +60,7 @@ tags:
       `shopping_carts.user_id` is unique.
   - name: orders
     description: Checkout, order history and the status flow. A client sees only its own
-      orders. A manager sees every order.
+      orders. A manager sees every order. A delivery person sees the orders to deliver.
   - name: payments
     description: The two Stripe flows and the webhook that applies their result. A
       payment link buys one product. A payment intent buys a cart.
@@ -1523,14 +1523,16 @@ paths:
         status decide which moves are legal.
 
         A client may send `cancelled`, and only while the order is `pending`, `paid` or
-        `processing`. A manager may send `processing`, `shipped` or `cancelled`. Cancelling a
-        `paid` or `processing` order returns its units to stock.
+        `processing`. A manager may send `processing`, `shipped`, `delivered` or
+        `cancelled`. Cancelling a `paid` or `processing` order returns its units to stock.
+
+        A delivery person may send `delivered`, and nothing else. The order must be
+        `shipped`. The server records which delivery person delivered the order, and
+        `listDeliveries` reads that record back. Any other status from a delivery person
+        returns 403.
 
         No caller may send `paid`. The payment webhook sets that status, because Stripe
         confirms the payment and a request does not.
-
-        No caller may send `delivered`. That status belongs to the optional delivery
-        feature, which this contract does not cover.
 
         A move that the current status does not allow returns 409. A cancel after the
         order ships returns 409 with the `order-not-cancellable` problem type.
@@ -1547,10 +1549,10 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [processing, shipped, cancelled]
+                  enum: [processing, shipped, delivered, cancelled]
                   description: The status to move to. The set is narrower than
-                    `OrderStatus`, because `pending` is the start, the webhook sets
-                    `paid`, and `delivered` is out of scope.
+                    `OrderStatus`, because `pending` is the start and the webhook sets
+                    `paid`. Who may send each value is above.
                   example: processing
       responses:
         '200':
@@ -1569,6 +1571,56 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /deliveries:
+    get:
+      tags: [orders]
+      summary: List the orders this caller delivers
+      description: |
+        Only a delivery person or a manager may use this operation. A client reads its
+        own orders at `/users/me/orders`.
+
+        The server returns one page of orders in one delivery status. The default is
+        `shipped`, which is the work still to do. Set `status` to `delivered` to read
+        the delivery history.
+
+        A delivery person reads every shipped order. Under `delivered` that person
+        reads the orders they delivered themselves, and no others. An order the same
+        person bought is not in this list, even after another person delivers it. The
+        buyer reads that order at `/users/me/orders`. A manager reads every order in
+        both statuses.
+
+        The entries carry the same fields as the other order lists. `customer` is
+        present for a manager only, because a delivery person needs no client address
+        that this API stores.
+      operationId: listDeliveries
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/DeliveryStatusFilter'
+      responses:
+        '200':
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrderSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2297,9 +2349,9 @@ components:
       example: 1999
 
     # ---- Enums --------------------------------------------------------------
-    # `delivered` and `delivery_person` belong to the Optional Features. The
-    # operations that use them are out of scope for this contract. The values stay
-    # so the contract and the Week 1 ERD describe the same domain.
+    # `delivered` and `delivery_person` come from Optional Features 11 and 12, and both
+    # are in scope now: `setOrderStatus` accepts `delivered` and `listDeliveries` serves
+    # the role. The six statuses are the ERD's `order_status`, unchanged.
     OrderStatus:
       type: string
       enum: [pending, paid, processing, shipped, delivered, cancelled]
@@ -2403,6 +2455,20 @@ components:
       description: Return only the orders in this status.
       schema:
         $ref: '#/components/schemas/OrderStatus'
+    # `listDeliveries` takes two of the six statuses and not the whole enum, because the
+    # other four name no work a delivery person can do. The default is the queue rather
+    # than the history, which is the screen that opens on a shift.
+    DeliveryStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return the orders waiting for delivery, or the ones already
+        delivered.
+      schema:
+        type: string
+        enum: [shipped, delivered]
+        default: shipped
+      example: shipped
     CreatedFrom:
       name: createdFrom
       in: query
