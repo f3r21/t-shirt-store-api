@@ -86,6 +86,7 @@ describe('AbilityFactory', () => {
       expect(ability.can('create', 'Order')).toBe(false);
       expect(ability.can('read', 'Order')).toBe(false);
       expect(ability.can('read', 'PromoCode')).toBe(false);
+      expect(ability.can('apply', 'PromoCode')).toBe(false);
       expect(() => accessibleBy(ability).Order).toThrow();
     });
   });
@@ -151,11 +152,13 @@ describe('AbilityFactory', () => {
     });
 
     /**
-     * The three promo code operations are a manager's. A client meets a code
-     * at checkout and never through this subject, which is why `read` is false
-     * here and not a rule with a condition.
+     * A client holds one verb on a promo code and only one: `apply`, which is
+     * the brief's own word for sending a code at checkout. The three manager
+     * operations stay closed, so `read` is false and not a rule with a
+     * condition: a client never opens a code, it names one. ADR 37.
      */
-    it('neither reads nor writes the promo codes', () => {
+    it('applies a promo code, and neither reads nor writes one', () => {
+      expect(ability.can('apply', 'PromoCode')).toBe(true);
       expect(ability.can('read', 'PromoCode')).toBe(false);
       expect(ability.can('create', 'PromoCode')).toBe(false);
       expect(ability.can('update', 'PromoCode')).toBe(false);
@@ -266,6 +269,9 @@ describe('AbilityFactory', () => {
       expect(ability.can('create', 'PromoCode')).toBe(true);
       expect(ability.can('read', 'PromoCode')).toBe(true);
       expect(ability.can('update', 'PromoCode')).toBe(true);
+      // `manage` is CASL's alias for every action, so the manager reaches
+      // checkout's verb through the one rule and needs none of its own.
+      expect(ability.can('apply', 'PromoCode')).toBe(true);
     });
 
     it('reads a disabled product, and still not a deleted one', () => {

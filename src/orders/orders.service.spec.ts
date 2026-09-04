@@ -9,6 +9,8 @@ import { AS_CLIENT, AS_MANAGER } from '../products/products.fixtures';
 import { AS_DELIVERY } from '../authz/authz.fixtures';
 import { AbilityFactory } from '../authz/ability.factory';
 import { aCartLine } from '../cart/cart.fixtures';
+import { aPromoCode } from '../promo-codes/promo-codes.fixtures';
+import type { PromoCode as PromoCodeRow } from '../generated/prisma/client';
 import {
   anOrder,
   anOrderWithDetail,
@@ -59,7 +61,7 @@ describe('OrdersService', () => {
     });
 
     it('reads only this user, and only lines whose product is on sale', async () => {
-      await service.createOrder(AS_CLIENT);
+      await service.createOrder(AS_CLIENT, {});
 
       const call = nthArg(prisma.cartItem.findMany) as {
         where: {
@@ -77,7 +79,7 @@ describe('OrdersService', () => {
     it('answers 409 for an empty cart, and writes nothing', async () => {
       prisma.cartItem.findMany.mockResolvedValue([]);
 
-      const err = await caught(() => service.createOrder(AS_CLIENT));
+      const err = await caught(() => service.createOrder(AS_CLIENT, {}));
 
       expect(err?.getStatus()).toBe(409);
       expect(err?.getResponse()).toMatchObject({
@@ -92,7 +94,7 @@ describe('OrdersService', () => {
         aCartLine({ row: { quantity: 8 }, variant: { stock: 7 } }),
       ]);
 
-      const err = await caught(() => service.createOrder(AS_CLIENT));
+      const err = await caught(() => service.createOrder(AS_CLIENT, {}));
 
       expect(err?.type).toBe(ProblemType.InsufficientStock);
       expect(err?.detail).toBe(
@@ -103,7 +105,7 @@ describe('OrdersService', () => {
     });
 
     it('deletes exactly the lines it read, then whatever the read did not show', async () => {
-      await service.createOrder(AS_CLIENT);
+      await service.createOrder(AS_CLIENT, {});
 
       const first = nthArg(prisma.cartItem.deleteMany, 0, 0) as {
         where: { userId: number; variantId: { in: number[] } };
@@ -121,7 +123,7 @@ describe('OrdersService', () => {
       prisma.cartItem.deleteMany.mockReset();
       prisma.cartItem.deleteMany.mockResolvedValue({ count: 0 });
 
-      const err = await caught(() => service.createOrder(AS_CLIENT));
+      const err = await caught(() => service.createOrder(AS_CLIENT, {}));
 
       expect(err?.getStatus()).toBe(409);
       expect(err?.getResponse()).toMatchObject({
@@ -131,7 +133,7 @@ describe('OrdersService', () => {
     });
 
     it('writes the order pending, with the snapshots, the totals and the first history row', async () => {
-      await service.createOrder(AS_CLIENT);
+      await service.createOrder(AS_CLIENT, {});
 
       const call = nthArg(prisma.order.create) as {
         data: {
@@ -171,17 +173,235 @@ describe('OrdersService', () => {
     });
 
     it('never writes the stock: an unpaid order reserves nothing', async () => {
-      await service.createOrder(AS_CLIENT);
+      await service.createOrder(AS_CLIENT, {});
 
       expect(prisma.productVariant.update).not.toHaveBeenCalled();
     });
 
     it('answers the order mapped for the caller', async () => {
-      const order = await service.createOrder(AS_CLIENT);
+      const order = await service.createOrder(AS_CLIENT, {});
 
       expect(order.id).toBe(501);
       expect(order.status).toBe('pending');
       expect(order).not.toHaveProperty('customer');
+    });
+
+    /**
+     * Optional Feature 13, the client's half. Every case fixes the subtotal
+     * with one line at a stated price, so the arithmetic under test is two
+     * literals and not a sum the reader has to do. ADR 37.
+     */
+    describe('with a promo code', () => {
+      /** One line at this price, quantity one, so the subtotal is `cents`. */
+      const cartWorth = (cents: number) => {
+        prisma.cartItem.findMany.mockResolvedValue([
+          aCartLine({
+            row: { quantity: 1 },
+            variant: { id: 21, priceCents: cents, stock: 7 },
+          }),
+        ]);
+        prisma.cartItem.deleteMany.mockReset();
+        prisma.cartItem.deleteMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 });
+      };
+
+      const codeOnFile = (overrides: Partial<PromoCodeRow> = {}) =>
+        prisma.promoCode.findUnique.mockResolvedValue(aPromoCode(overrides));
+
+      /** What the checkout asked Prisma to write on `orders`. */
+      const written = () =>
+        (nthArg(prisma.order.create) as { data: Record<string, unknown> }).data;
+
+      /** The client sends the code in another case than the manager typed. */
+      const checkout = () =>
+        service.createOrder(AS_CLIENT, { promoCode: 'save10' });
+
+      beforeEach(() => {
+        cartWorth(1999);
+        codeOnFile();
+      });
+
+      it('looks the code up by the value the client sent', async () => {
+        await checkout();
+
+        expect(nthArg(prisma.promoCode.findUnique)).toEqual({
+          where: { code: 'save10' },
+        });
+      });
+
+      it('takes the percentage off the subtotal and rounds down', async () => {
+        // 10 percent of 1999 is 199.9, and a discount is a whole minor unit.
+        codeOnFile({ discountType: 'percentage', discountValue: 10 });
+
+        await checkout();
+
+        expect(written().subtotalCents).toBe(1999);
+        expect(written().discountCents).toBe(199);
+        expect(written().totalCents).toBe(1800);
+      });
+
+      it('takes the whole subtotal at 100 percent, and the total is 0', async () => {
+        codeOnFile({ discountType: 'percentage', discountValue: 100 });
+
+        await checkout();
+
+        expect(written().discountCents).toBe(1999);
+        expect(written().totalCents).toBe(0);
+      });
+
+      it('rounds a discount below one minor unit down to nothing', async () => {
+        // Half of 1 is 0.5. Rounding up would give the store 0 for a code that
+        // says half price, so the floor is the direction that cannot lose.
+        cartWorth(1);
+        codeOnFile({ discountType: 'percentage', discountValue: 50 });
+
+        await checkout();
+
+        expect(written().discountCents).toBe(0);
+        expect(written().totalCents).toBe(1);
+      });
+
+      it('never takes more than the subtotal off for a fixed amount', async () => {
+        codeOnFile({ discountType: 'fixed', discountValue: 5000 });
+
+        await checkout();
+
+        expect(written().discountCents).toBe(1999);
+        expect(written().totalCents).toBe(0);
+      });
+
+      it('takes a fixed amount below the subtotal in full', async () => {
+        codeOnFile({ discountType: 'fixed', discountValue: 500 });
+
+        await checkout();
+
+        expect(written().discountCents).toBe(500);
+        expect(written().totalCents).toBe(1499);
+      });
+
+      it('snapshots the code as the manager typed it, beside the row it points at', async () => {
+        codeOnFile({ id: 4, code: 'SAVE10' });
+
+        await checkout();
+
+        expect(written().promoCodeId).toBe(4);
+        expect(written().promoCode).toBe('SAVE10');
+      });
+
+      it('reads no code and writes no discount when the body names none', async () => {
+        await service.createOrder(AS_CLIENT, {});
+
+        expect(prisma.promoCode.findUnique).not.toHaveBeenCalled();
+        expect(prisma.promoCode.updateMany).not.toHaveBeenCalled();
+        expect(written().discountCents).toBe(0);
+        expect(written().totalCents).toBe(1999);
+        expect(written()).not.toHaveProperty('promoCode');
+        expect(written()).not.toHaveProperty('promoCodeId');
+      });
+
+      it('answers 422 promo-code-unknown for a code no row holds, and writes nothing', async () => {
+        prisma.promoCode.findUnique.mockResolvedValue(null);
+
+        const err = await caught(checkout);
+
+        expect(err?.getStatus()).toBe(422);
+        expect(err?.type).toBe(ProblemType.PromoCodeUnknown);
+        expect(err?.detail).toBe(
+          'This promo code does not exist, or it is disabled.',
+        );
+        expect(prisma.order.create).not.toHaveBeenCalled();
+        expect(prisma.promoCode.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('answers the same promo-code-unknown for a code a manager disabled', async () => {
+        codeOnFile({ isActive: false });
+
+        const err = await caught(checkout);
+
+        expect(err?.getStatus()).toBe(422);
+        expect(err?.type).toBe(ProblemType.PromoCodeUnknown);
+        expect(prisma.order.create).not.toHaveBeenCalled();
+      });
+
+      it('answers 422 promo-code-expired past the expiry date, and writes nothing', async () => {
+        codeOnFile({ expiresAt: new Date('2026-08-31T23:59:59.000Z') });
+
+        const err = await caught(checkout);
+
+        expect(err?.getStatus()).toBe(422);
+        expect(err?.type).toBe(ProblemType.PromoCodeExpired);
+        expect(err?.detail).toBe(
+          'This promo code expired on 2026-08-31T23:59:59.000Z.',
+        );
+        expect(prisma.order.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts a code whose expiry date has not arrived, which is the control', async () => {
+        codeOnFile({ expiresAt: new Date('2099-01-01T00:00:00.000Z') });
+
+        await checkout();
+
+        expect(prisma.order.create).toHaveBeenCalled();
+      });
+
+      it('answers 422 promo-code-minimum below the minimum purchase, and writes nothing', async () => {
+        codeOnFile({ minPurchaseCents: 2000 });
+
+        const err = await caught(checkout);
+
+        expect(err?.getStatus()).toBe(422);
+        expect(err?.type).toBe(ProblemType.PromoCodeMinimum);
+        expect(err?.detail).toBe(
+          'This promo code applies to a subtotal of 2000 or more, and this order is 1999.',
+        );
+        expect(prisma.order.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts a subtotal equal to the minimum, which is the control', async () => {
+        cartWorth(2000);
+        codeOnFile({ minPurchaseCents: 2000 });
+
+        await checkout();
+
+        expect(prisma.order.create).toHaveBeenCalled();
+      });
+
+      it('counts the use with the limit it read in the where', async () => {
+        codeOnFile({ id: 4, usageLimit: 5, usedCount: 2 });
+
+        await checkout();
+
+        expect(prisma.promoCode.updateMany).toHaveBeenCalledWith({
+          where: { id: 4, usedCount: { lt: 5 } },
+          data: { usedCount: { increment: 1 } },
+        });
+      });
+
+      it('increments with nothing to guard when the code has no limit', async () => {
+        codeOnFile({ id: 4, usageLimit: null });
+
+        await checkout();
+
+        expect(prisma.promoCode.updateMany).toHaveBeenCalledWith({
+          where: { id: 4 },
+          data: { usedCount: { increment: 1 } },
+        });
+      });
+
+      it('answers 422 promo-code-exhausted when the guarded increment moved no row', async () => {
+        // The loser of two checkouts racing for the last use: it read a code
+        // with room, blocked on the winner's update, then matched nothing.
+        codeOnFile({ usageLimit: 1 });
+        prisma.promoCode.updateMany.mockResolvedValue({ count: 0 });
+
+        const err = await caught(checkout);
+
+        expect(err?.getStatus()).toBe(422);
+        expect(err?.type).toBe(ProblemType.PromoCodeExhausted);
+        expect(err?.detail).toBe('This promo code reached its usage limit.');
+        expect(prisma.order.create).not.toHaveBeenCalled();
+      });
     });
   });
 

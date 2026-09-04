@@ -28,6 +28,11 @@ export class AbilityFactory {
     can(['read', 'cancel', 'pay'], 'Order', { userId });
     can('manage', 'RefreshToken', { userId });
     can('update', 'User', { id: userId });
+    // The brief's "Client can apply promo codes to own orders". No condition:
+    // the subject is the code and not the order, and the order this reaches is
+    // the caller's own by `create Order` above. It grants nothing else, so a
+    // client still cannot read, create or change a code. ADR 37.
+    can('apply', 'PromoCode');
 
     // After the signed-in block, because a delivery person is also a user with
     // a cart and orders of their own. That is why the two verbs differ: `read`

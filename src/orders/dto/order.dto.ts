@@ -58,8 +58,9 @@ export class OrderCustomerDto {
 }
 
 /**
- * The contract's `Order`. `subtotal` equals `total` until a promo code
- * exists, and `paymentMethod` is absent until the webhook writes it.
+ * The contract's `Order`. `subtotal` less `discount` is `total`, and the two
+ * amounts are equal on an order that used no code. `paymentMethod` is absent
+ * until the webhook writes it.
  */
 @ApiSchema({ name: 'Order' })
 export class OrderDto {
@@ -71,8 +72,18 @@ export class OrderDto {
   /** The sum of the lines, before any discount, in minor units. */
   subtotal!: number;
 
-  /** The amount the store charges, in minor units. */
+  /** What the promo code took off the subtotal. 0 when there was no code. */
+  discount!: number;
+
+  /** The amount the store charges, in minor units. The subtotal less the discount. */
   total!: number;
+
+  /**
+   * The promo code this order used, in the case the manager typed. Absent when
+   * the order used no code. A copy taken at checkout, so a later change to the
+   * code does not reach this order.
+   */
+  promoCode?: string;
 
   /** The explicit lazy `type` is the workaround `ProductDto` records. */
   @ApiProperty({ type: () => OrderItemDto, isArray: true })

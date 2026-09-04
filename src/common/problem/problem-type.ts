@@ -7,6 +7,10 @@ export const ProblemType = {
   EmailTaken: `${PROBLEM_BASE}/email-taken`,
   OrderNotCancellable: `${PROBLEM_BASE}/order-not-cancellable`,
   InsufficientStock: `${PROBLEM_BASE}/insufficient-stock`,
+  PromoCodeUnknown: `${PROBLEM_BASE}/promo-code-unknown`,
+  PromoCodeExpired: `${PROBLEM_BASE}/promo-code-expired`,
+  PromoCodeExhausted: `${PROBLEM_BASE}/promo-code-exhausted`,
+  PromoCodeMinimum: `${PROBLEM_BASE}/promo-code-minimum`,
 } as const;
 
 export type ProblemType = (typeof ProblemType)[keyof typeof ProblemType];

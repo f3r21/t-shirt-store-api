@@ -14,6 +14,19 @@ import type { StripeClient } from './stripe.client';
 const CURRENCY = 'usd';
 
 /**
+ * The smallest amount Stripe will collect in this currency, in minor units.
+ *
+ * A rule of the currency and not of an order, which is why it lives beside
+ * `CURRENCY`: the reference for `POST /v1/payment_intents` gives `amount` as a
+ * positive integer and states "The minimum amount is $0.50 US or equivalent in
+ * charge currency". Read by `PaymentsService`, which refuses a smaller total
+ * rather than sending an amount the API answers with an error nothing maps.
+ * The day the store sells in a second currency this becomes a lookup by
+ * currency. ADR 37.
+ */
+export const STRIPE_MINIMUM_CENTS = 50;
+
+/**
  * Stripe's shapes in, this service's shapes out, so nothing else sees a
  * Stripe object and the e2e stub answers three methods. A payment link takes
  * inline `price_data`, and its `metadata` is copied to every Checkout Session

@@ -15,6 +15,11 @@ import type { AppSubjects, PrismaQuery } from './casl-prisma';
  * for the same reason `cancel` is: the role may move an order to `delivered`
  * and to nothing else, which `update` cannot say. A manager's `manage Order`
  * covers it without a rule of its own. ADR 36.
+ *
+ * `apply` is the brief's own verb for what a client does with a promo code at
+ * checkout, and it is not `read`: a client never opens the code, and `read`
+ * would grant the manager's list. A manager's `manage PromoCode` covers it.
+ * ADR 37.
  */
 export type Action =
   | 'manage'
@@ -24,7 +29,8 @@ export type Action =
   | 'delete'
   | 'cancel'
   | 'pay'
-  | 'deliver';
+  | 'deliver'
+  | 'apply';
 
 /** An ability whose conditions are Prisma where clauses on our own models. */
 export type AppAbility = PureAbility<[Action, AppSubjects], PrismaQuery>;

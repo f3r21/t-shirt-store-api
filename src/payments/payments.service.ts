@@ -13,7 +13,7 @@ import { accessibleBy } from '@casl/prisma';
 import type { AppAbility } from '../authz/ability';
 import { visibleProductWhere } from '../products/product-visibility';
 import { insufficientStock } from '../common/problem/insufficient-stock';
-import { StripeGateway } from './stripe.gateway';
+import { STRIPE_MINIMUM_CENTS, StripeGateway } from './stripe.gateway';
 import { LowStockProducer } from '../stock-notifications/low-stock.producer';
 import type { StockChange } from '../stock-notifications/low-stock';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
@@ -171,6 +171,18 @@ export class PaymentsService {
       throw new ConflictException({
         title: 'Conflict',
         detail: `An order in status ${order.status} cannot be paid.`,
+      });
+    }
+    // A promo code can take a total below what the provider will collect, and
+    // 0 is only the extreme of it. The bound is the currency's, so it comes
+    // from the gateway, and the order is refused here rather than handed to
+    // Stripe, which answers a smaller amount with an error nothing maps.
+    // ADR 37.
+    if (order.totalCents < STRIPE_MINIMUM_CENTS) {
+      throw new ConflictException({
+        title: 'Conflict',
+        detail:
+          'The total of this order is below the smallest amount the payment provider accepts.',
       });
     }
 

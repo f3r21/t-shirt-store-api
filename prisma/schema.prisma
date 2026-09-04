@@ -271,6 +271,23 @@ model Order {
   subtotalCents Int @map("subtotal_cents")
   totalCents    Int @map("total_cents")
 
+  // The promo code this order used. Three columns for one fact, and each carries
+  // a different part of it. See ADR 37.
+  //
+  // The foreign key points at the row `used_count` counts, so the count and the
+  // orders behind it cannot drift apart. Null when the order used no code.
+  promoCodeId Int? @map("promo_code_id")
+
+  // The code as the manager typed it, copied at checkout the way
+  // `unit_price_cents` copies a price. An order is a fixed record, so renaming a
+  // code later must not rewrite the history of the orders that used the old name.
+  promoCode String? @map("promo_code")
+
+  // What the code took off the subtotal, in minor units. Zero and not null when
+  // there is no code, because the contract makes `discount` a required member and
+  // every order has an answer for it: nothing came off.
+  discountCents Int @default(0) @map("discount_cents")
+
   // Nullable because the contract says so: absent until a payment succeeds. The
   // webhook is the only writer, at the moment it moves the status to `paid`.
   // The ERD's `order_payments` table is not here: the contract exposes one field
@@ -297,6 +314,17 @@ model Order {
   // the delivery person is an attribution on it, so removing an account must not
   // hold an order hostage. The row keeps its `delivered` status either way.
   deliveredBy   User?               @relation("OrderDeliveredBy", fields: [deliveredById], references: [id], onDelete: SetNull)
+
+  // RESTRICT and not SET NULL, the opposite of `deliveredBy` above: `used_count`
+  // counts the orders that point here, so a deleted code would leave that number
+  // describing rows nothing references. No operation deletes a code, because a
+  // manager disables one instead, and the constraint is what makes that hold for
+  // a hand-written statement too. `promoCodeRow` and not `promoCode`, which is
+  // the snapshot column above.
+  //
+  // No index on the foreign key. Nothing reads an order by its code, and the only
+  // lookup RESTRICT runs is on a delete this API never performs.
+  promoCodeRow  PromoCode?          @relation(fields: [promoCodeId], references: [id], onDelete: Restrict)
 
   // The client's own history, and a manager filtering by one client. The
   // equality that is always present leads, then the range that is also the sort
@@ -485,6 +513,10 @@ model PromoCode {
   isActive Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// The orders that used this code. `ON DELETE RESTRICT` on the other side, so
+  /// a code that any order used cannot be deleted while `used_count` counts it.
+  orders Order[]
 
   /// No `updatedAt`, and no index beyond the unique on `code`. That index is
   /// what the 409 rests on and what checkout looks a code up by. The list sorts

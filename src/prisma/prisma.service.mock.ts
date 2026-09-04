@@ -125,13 +125,16 @@ export interface PrismaMock {
     deleteMany: jest.Mock;
   };
   // The manager's three promo code operations. `findUnique` is the id the
-  // update resolves before it writes, so an unknown one is a 404.
+  // update resolves before it writes, so an unknown one is a 404, and the code
+  // checkout looks up. `updateMany` is checkout's guarded increment of
+  // `used_count`, with the limit it read in the where. ADR 34, ADR 37.
   promoCode: {
     findUnique: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
+    updateMany: jest.Mock;
   };
   $transaction: jest.Mock;
 }
@@ -266,6 +269,10 @@ export function createPrismaMock(): PrismaMock {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn(),
       update: jest.fn(),
+      // One row by default, the way `productVariant.updateMany` defaults: the
+      // guarded increment succeeded. A spec about the race says it returned
+      // none.
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     $transaction: jest.fn(),
   };

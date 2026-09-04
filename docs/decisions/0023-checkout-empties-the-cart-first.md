@@ -1,6 +1,6 @@
 # 23. Checkout empties the cart first, and a status move is a conditional write
 
-Status: accepted, revised 2026-09-03
+Status: accepted, revised 2026-09-04
 Date: 2026-09-01
 
 ## Context
@@ -27,7 +27,16 @@ same transaction.
 
 ## Consequences
 
-**Gives up:** `subtotal` equals `total`, since no promo code exists.
+**Gives up:** `subtotal` equals `total`, since no promo code exists. **Revised 2026-09-04:** a
+promo code exists. `createOrder` takes an optional code, and the two amounts now differ by the
+discount on any order that used one. They are still equal on every order that did not, and on
+every order a payment link created. ADR 37.
+
+**Revised 2026-09-04, when Optional Feature 13 landed:** the checkout transaction gained one
+more step. After the subtotal and before the order row, a named code is read, checked against
+its four rules, and counted with a guarded increment. A refusal throws, so the transaction
+rolls back and the cart the delete emptied comes back with it. The statement order this record
+decided is unchanged. ADR 37.
 
 **Revised 2026-09-03, from a test written by hand:** a cancel of a `paid` or `processing`
 order gave nothing back, and the webhook is the only writer that lowers stock. The cancel now

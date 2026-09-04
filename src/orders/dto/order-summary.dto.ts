@@ -16,8 +16,18 @@ export class OrderSummaryDto {
   /** The sum of the lines, before any discount, in minor units. */
   subtotal!: number;
 
-  /** The amount the store charges, in minor units. */
+  /** What the promo code took off the subtotal. 0 when there was no code. */
+  discount!: number;
+
+  /** The amount the store charges, in minor units. The subtotal less the discount. */
   total!: number;
+
+  /**
+   * The promo code this order used, in the case the manager typed. Absent when
+   * the order used no code. One column of the row, so a list entry carries it
+   * without a join, the same way `paymentMethod` travels.
+   */
+  promoCode?: string;
 
   /** Present only when the caller is a manager. */
   @ApiPropertyOptional({ type: () => OrderCustomerDto })

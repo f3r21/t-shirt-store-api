@@ -103,6 +103,7 @@ describe('Order history (e2e)', () => {
         id: anaPaid,
         status: 'paid',
         subtotal: 3998,
+        discount: 0,
         total: 3998,
         itemCount: 2,
         paymentMethod: 'payment_intent',

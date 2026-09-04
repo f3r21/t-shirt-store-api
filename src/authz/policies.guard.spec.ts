@@ -1,6 +1,10 @@
 import type { ExecutionContext } from '@nestjs/common';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import type { Reflector } from '@nestjs/core';
+import { AbilityBuilder } from '@casl/ability';
+import type { Request } from 'express';
+import { createPrismaAbility } from './casl-prisma';
+import type { AppAbility } from './ability';
 import { PoliciesGuard } from './policies.guard';
 import { AbilityFactory } from './ability.factory';
 import { CHECK_POLICIES_KEY } from './check-policies.decorator';
@@ -8,6 +12,7 @@ import type { Policy } from './check-policies.decorator';
 import {
   can,
   inactiveProductsNeedManager,
+  placeOrder,
   updateOrCancelOrder,
 } from './policies';
 import { IS_PUBLIC_KEY } from '../auth/decorators/public.decorator';
@@ -29,13 +34,20 @@ describe('PoliciesGuard', () => {
     metadata: Record<string, unknown>,
     user?: { sub: number; sid: number; role: string },
     query: Record<string, unknown> = {},
+    body: Record<string, unknown> = {},
   ) {
     const reflector = {
       getAllAndOverride: (key: string) => metadata[key],
     } as unknown as Reflector;
-    const request: { user?: unknown; query: unknown; ability?: unknown } = {
+    const request: {
+      user?: unknown;
+      query: unknown;
+      body: unknown;
+      ability?: unknown;
+    } = {
       user,
       query,
+      body,
     };
     const context = {
       getHandler: () => undefined,
@@ -179,6 +191,46 @@ describe('PoliciesGuard', () => {
 
       expect(ability.can('deliver', 'Order')).toBe(true);
       expect(ability.can('update', 'Order')).toBe(false);
+    });
+
+    it('placeOrder: a client reaches the route with a code and without one', () => {
+      const plain = contextFor(policies(placeOrder), AS_CLIENT);
+      const coded = contextFor(
+        policies(placeOrder),
+        AS_CLIENT,
+        {},
+        { promoCode: 'SAVE10' },
+      );
+
+      expect(plain.guard.canActivate(plain.context)).toBe(true);
+      expect(coded.guard.canActivate(coded.context)).toBe(true);
+    });
+
+    /**
+     * The false branch the 403 on `createOrder` rests on.
+     *
+     * Every role the factory builds holds `apply PromoCode`, so no context the
+     * guard can be given reaches this branch, and the ability is built by hand
+     * the way the delivery person's verbs are asked directly above. What is
+     * pinned is that the second half of the policy is load bearing: an ability
+     * that may place an order and may not apply a code is refused exactly when
+     * the body names one, and the body is read raw, as the guard sees it.
+     * ADR 37.
+     */
+    it('placeOrder: the apply verb is what a body naming a code needs', () => {
+      const builder = new AbilityBuilder<AppAbility>(createPrismaAbility);
+      builder.can('create', 'Order');
+      const withoutApply = builder.build();
+      const withApply = new AbilityFactory().for(AS_CLIENT);
+
+      const bodyOf = (body: Record<string, unknown>) =>
+        ({ body }) as unknown as Request;
+
+      expect(placeOrder(withoutApply, bodyOf({}))).toBe(true);
+      expect(placeOrder(withoutApply, bodyOf({ promoCode: 'SAVE10' }))).toBe(
+        false,
+      );
+      expect(placeOrder(withApply, bodyOf({ promoCode: 'SAVE10' }))).toBe(true);
     });
   });
 });

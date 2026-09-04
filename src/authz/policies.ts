@@ -36,6 +36,26 @@ export const updateOrCancelOrder: Policy = (ability) =>
   ability.can('deliver', 'Order');
 
 /**
+ * `createOrder` always needs `create Order`, and needs `apply PromoCode` as
+ * well when the body names a code.
+ *
+ * The body is read raw, for the reason `inactiveProductsNeedManager` reads the
+ * query raw: the guard runs before the pipe, so this sees whatever the caller
+ * sent, and the pipe answers 400 after it for anything a code cannot be. Every
+ * signed-in caller holds `apply` today, so nothing is refused here yet. The
+ * check is what makes the grant enforced rather than a line in the ability that
+ * nothing reads, and it fails closed for a role added without the verb.
+ * ADR 25, ADR 37.
+ */
+export const placeOrder: Policy = (ability, request) => {
+  if (!ability.can('create', 'Order')) {
+    return false;
+  }
+  const body = request.body as { promoCode?: unknown } | undefined;
+  return body?.promoCode === undefined || ability.can('apply', 'PromoCode');
+};
+
+/**
  * The disabled products are a manager's to see, and the contract answers the
  * request for them with 401 or 403 depending on who asked. The guard runs
  * before the pipe, so the flag is read raw: the pipe accepts `true` and

@@ -10,7 +10,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { OrdersService } from './orders.service';
 import { OrderDto } from './dto/order.dto';
@@ -19,8 +19,9 @@ import { OrderHistoryQueryDto } from './dto/order-history-query.dto';
 import { ListAllOrdersQueryDto } from './dto/list-all-orders-query.dto';
 import { ListDeliveriesQueryDto } from './dto/list-deliveries-query.dto';
 import { SetOrderStatusDto } from './dto/set-order-status.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
 import { CheckPolicies } from '../authz/check-policies.decorator';
-import { can, updateOrCancelOrder } from '../authz/policies';
+import { can, placeOrder, updateOrCancelOrder } from '../authz/policies';
 import { CurrentAbility } from '../authz/current-ability.decorator';
 import type { AppAbility } from '../authz/ability';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -40,8 +41,9 @@ import { ApiPageResponse } from '../common/dto/api-page-response';
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
-  @CheckPolicies(can('create', 'Order'))
+  @CheckPolicies(placeOrder)
   @ApiOperation({ summary: 'Create an order from the cart' })
+  @ApiBody({ type: CreateOrderDto, required: false })
   @ApiResponse({
     status: 201,
     description: 'The server created the order.',
@@ -53,17 +55,27 @@ export class OrdersController {
       },
     },
   })
+  @ApiResponse({ status: 400, description: 'The request body is invalid.' })
+  @ApiResponse({
+    status: 403,
+    description: 'The caller may not apply a promo code.',
+  })
   @ApiResponse({
     status: 409,
     description: 'The cart is empty, or a line is above the units on hand.',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'The server refused the promo code.',
   })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createOrder(
     @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: CreateOrderDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<OrderDto> {
-    const order = await this.orders.createOrder(user);
+    const order = await this.orders.createOrder(user, dto);
     res.setHeader('Location', `/v1/orders/${order.id}`);
     return order;
   }

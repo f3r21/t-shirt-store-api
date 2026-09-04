@@ -1373,9 +1373,43 @@ paths:
         record and a cart is a live view, so a later price change does not reach an
         order.
 
+        The request body is optional. Send `promoCode` to apply a promo code, and omit
+        the body to place the order at full price. The server compares the code without
+        case, takes the discount off the subtotal and counts the use. The order keeps
+        the code and the discount amount, so a later change to the code does not change
+        this order.
+
+        A percentage code takes that share of the subtotal and the server rounds the
+        amount down. A fixed code takes its own amount, and never more than the
+        subtotal, so the total stops at 0.
+
+        The server refuses a code with 422 and one problem type for each rule.
+        `promo-code-unknown` means the code does not exist or a manager disabled it.
+        `promo-code-expired` means the code passed its expiry date.
+        `promo-code-exhausted` means the code reached its usage limit.
+        `promo-code-minimum` means the subtotal is below the minimum purchase amount of
+        the code. The server creates no order in any of the four cases.
+
+        A caller whose role may not apply a promo code returns 403.
+
         An empty cart returns 409. A line above the stock on hand returns 409 with the
         `insufficient-stock` problem type.
       operationId: createOrder
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Omit this body to place the order with no promo code.
+              properties:
+                promoCode:
+                  type: string
+                  description: The promo code to apply to this order. The server
+                    compares it without case.
+                  minLength: 1
+                  maxLength: 40
+                  example: SAVE10
       responses:
         '201':
           description: The server created the order.
@@ -1389,10 +1423,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -1702,6 +1742,10 @@ paths:
 
         An order that is not `pending` returns 409. An order that belongs to another
         client returns 404.
+
+        An order whose total is below 50 returns 409. A promo code can take the whole
+        subtotal off, and the payment provider collects 50 minor units at least, so an
+        amount under that is one the server cannot send.
 
         The response carries no `Location` header. This operation creates a payment
         attempt, no operation in this contract reads one back, and the order it pays for
@@ -2044,6 +2088,13 @@ components:
         - https://tshirt.store/problems/email-taken
         - https://tshirt.store/problems/order-not-cancellable
         - https://tshirt.store/problems/insufficient-stock
+        # 422 on `createOrder`, one per promo code rule. The status says the server
+        # refused the code and a client needs the member to say which rule refused it:
+        # a client retypes an unknown code and removes an expired one.
+        - https://tshirt.store/problems/promo-code-unknown
+        - https://tshirt.store/problems/promo-code-expired
+        - https://tshirt.store/problems/promo-code-exhausted
+        - https://tshirt.store/problems/promo-code-minimum
 
     Problem:
       type: object
@@ -2376,14 +2427,14 @@ components:
           type: string
           example: Ramirez
 
-    # `subtotal` and `total` are equal in this contract, because promo codes are
-    # Optional Feature 13 and out of scope. Both fields ship anyway. The ERD already
-    # carries `subtotal_amount` and `total_amount`. The week's own table lists an added
-    # optional field as the one genuinely safe change, so shipping the pair now makes
-    # promo support additive later, not a break.
+    # `subtotal` is the sum of the lines and `total` is what the store charges. The two
+    # differ by `discount`, which is what the promo code of Optional Feature 13 took off,
+    # and they are equal on an order that used no code. The ERD already carried
+    # `subtotal_amount` and `total_amount`, so both fields shipped before the feature was
+    # written and the discount joined an existing pair rather than breaking it.
     OrderSummary:
       type: object
-      required: [id, status, subtotal, total, itemCount, createdAt]
+      required: [id, status, subtotal, discount, total, itemCount, createdAt]
       properties:
         id:
           type: integer
@@ -2394,10 +2445,22 @@ components:
           allOf:
             - $ref: '#/components/schemas/Money'
           description: The sum of the lines, before any discount.
+        discount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: What the promo code took off the subtotal. It is 0 when the order
+            used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges.
+          description: The amount the store charges. It is the subtotal less the
+            discount.
+        promoCode:
+          type: string
+          description: The promo code this order used, in the case the manager typed. It
+            is absent when the order used no code. The server copies the value at
+            checkout, so a later change to the code does not change this order.
+          example: SAVE10
         customer:
           allOf:
             - $ref: '#/components/schemas/OrderCustomer'
@@ -2418,7 +2481,7 @@ components:
 
     Order:
       type: object
-      required: [id, status, subtotal, total, items, createdAt, statusHistory]
+      required: [id, status, subtotal, discount, total, items, createdAt, statusHistory]
       properties:
         id:
           type: integer
@@ -2429,10 +2492,22 @@ components:
           allOf:
             - $ref: '#/components/schemas/Money'
           description: The sum of the lines, before any discount.
+        discount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: What the promo code took off the subtotal. It is 0 when the order
+            used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges.
+          description: The amount the store charges. It is the subtotal less the
+            discount.
+        promoCode:
+          type: string
+          description: The promo code this order used, in the case the manager typed. It
+            is absent when the order used no code. The server copies the value at
+            checkout, so a later change to the code does not change this order.
+          example: SAVE10
         items:
           type: array
           items:
@@ -2604,8 +2679,9 @@ components:
       type: integer
       minimum: 0
       description: An amount in minor units. 1999 means 19.99. The store is
-        single-currency and prices are in USD. No amount in this contract is negative,
-        because it carries no refund and no discount.
+        single-currency and prices are in USD. No amount in this contract is negative. A
+        discount is a positive amount that the server takes off the subtotal, and the
+        contract carries no refund.
       example: 1999
 
     # ---- Enums --------------------------------------------------------------
@@ -2927,6 +3003,37 @@ components:
                 title: Unprocessable content
                 status: 422
                 detail: The request names a category that does not exist.
+            # The four promo code rules of `createOrder`. A client shows a different
+            # message for each, so each carries its own `type`.
+            promoUnknown:
+              summary: The promo code does not exist, or a manager disabled it
+              value:
+                type: https://tshirt.store/problems/promo-code-unknown
+                title: Promo code unknown
+                status: 422
+                detail: This promo code does not exist, or it is disabled.
+            promoExpired:
+              summary: The promo code passed its expiry date
+              value:
+                type: https://tshirt.store/problems/promo-code-expired
+                title: Promo code expired
+                status: 422
+                detail: This promo code expired on 2026-08-31T23:59:59Z.
+            promoExhausted:
+              summary: The promo code reached its usage limit
+              value:
+                type: https://tshirt.store/problems/promo-code-exhausted
+                title: Promo code exhausted
+                status: 422
+                detail: This promo code reached its usage limit.
+            promoMinimum:
+              summary: The subtotal is below the minimum purchase amount
+              value:
+                type: https://tshirt.store/problems/promo-code-minimum
+                title: Order below the promo code minimum
+                status: 422
+                detail: This promo code applies to a subtotal of 5000 or more, and
+                  this order is 3998.
     # RFC 9110 15.5.14 names this code Content Too Large. The assigned HTTP Status Codes
     # reading prints the RFC 2616 name, Request Entity Too Large. RFC 2616 is obsolete
     # twice over, so the current name is the one used here.

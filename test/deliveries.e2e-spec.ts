@@ -108,6 +108,7 @@ describe('Deliveries (e2e)', () => {
         id: shippedOrder,
         status: 'shipped',
         subtotal: 1999,
+        discount: 0,
         total: 1999,
         itemCount: 1,
         createdAt: expect.any(String) as string,
