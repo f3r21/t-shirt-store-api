@@ -83,6 +83,9 @@ describe('Checkout (e2e)', () => {
         id: expect.any(Number) as number,
         status: 'pending',
         subtotal: 3998,
+        // No code was sent, so the two amounts are equal and no `promoCode`
+        // member travels. The promo suite proves the other half.
+        discount: 0,
         total: 3998,
         items: [
           {

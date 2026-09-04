@@ -1,13 +1,14 @@
 import type { OrderStatus } from '../generated/prisma/enums';
 
 /**
- * The statuses `setOrderStatus` accepts. `pending` is where an order starts,
- * `paid` is the webhook's alone, and `delivered` belongs to the optional
- * delivery feature.
+ * The statuses `setOrderStatus` accepts. `pending` is where an order starts
+ * and `paid` is the webhook's alone, so neither is here. Who may send which of
+ * the four is the ability's business, not this list's.
  */
 export const REQUESTABLE_STATUSES = [
   'processing',
   'shipped',
+  'delivered',
   'cancelled',
 ] as const;
 
@@ -24,6 +25,7 @@ export type MoveVerdict = 'ok' | 'not-cancellable' | 'illegal';
 const ADVANCES: Partial<Record<OrderStatus, RequestableStatus>> = {
   paid: 'processing',
   processing: 'shipped',
+  shipped: 'delivered',
 };
 
 /** Where a cancel is still possible: before the order ships. */
@@ -40,9 +42,9 @@ const SHIPPED_OR_LATER: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
 ]);
 
 /**
- * The status flow as one pure function: `pending, paid, processing,
- * shipped`, with `cancelled` reachable before `shipped`. An advance goes from
- * `paid`, because the webhook is the only writer of it. `cancelled` and
+ * The status flow as one pure function: `pending, paid, processing, shipped,
+ * delivered`, with `cancelled` reachable before `shipped`. An advance goes
+ * from `paid`, because the webhook is the only writer of it. `cancelled` and
  * `delivered` are terminal.
  */
 export function nextStatus(

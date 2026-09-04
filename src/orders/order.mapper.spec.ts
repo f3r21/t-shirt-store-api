@@ -55,10 +55,46 @@ describe('toOrderSummaryDto', () => {
       id: 501,
       status: 'pending',
       subtotal: 3998,
+      discount: 0,
       total: 3998,
       itemCount: 2,
       createdAt: '2026-08-15T18:22:00.000Z',
     });
+  });
+
+  it('carries the code and the discount of an order that used one', () => {
+    const dto = toOrderSummaryDto(
+      anOrderWithSummary({
+        promoCodeId: 4,
+        promoCode: 'SAVE10',
+        discountCents: 399,
+        totalCents: 3599,
+      }),
+      AS_CLIENT,
+    );
+
+    expect(dto).toMatchObject({
+      subtotal: 3998,
+      discount: 399,
+      total: 3599,
+      promoCode: 'SAVE10',
+    });
+  });
+
+  it('carries no promoCode member and a discount of 0 when no code was used', () => {
+    const dto = toOrderSummaryDto(anOrderWithSummary(), AS_CLIENT);
+
+    expect(dto).not.toHaveProperty('promoCode');
+    expect(dto.discount).toBe(0);
+  });
+
+  it('never carries the promo code id column, only the code itself', () => {
+    const dto = toOrderSummaryDto(
+      anOrderWithSummary({ promoCodeId: 4, promoCode: 'SAVE10' }),
+      AS_CLIENT,
+    );
+
+    expect(dto).not.toHaveProperty('promoCodeId');
   });
 
   it('adds the customer for a manager, four fields and no more', () => {
@@ -97,6 +133,7 @@ describe('toOrderDto', () => {
         'id',
         'status',
         'subtotal',
+        'discount',
         'total',
         'items',
         'createdAt',
@@ -107,6 +144,26 @@ describe('toOrderDto', () => {
     expect(dto.statusHistory).toEqual([
       { status: 'pending', changedAt: '2026-08-15T18:22:00.000Z' },
     ]);
+  });
+
+  it('carries the code and the discount of an order that used one', () => {
+    const dto = toOrderDto(
+      anOrderWithDetail({
+        promoCodeId: 4,
+        promoCode: 'SAVE10',
+        discountCents: 399,
+        totalCents: 3599,
+      }),
+      AS_CLIENT,
+    );
+
+    expect(dto).toMatchObject({
+      subtotal: 3998,
+      discount: 399,
+      total: 3599,
+      promoCode: 'SAVE10',
+    });
+    expect(dto).not.toHaveProperty('promoCodeId');
   });
 
   it('adds the customer for a manager', () => {

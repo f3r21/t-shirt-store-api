@@ -88,6 +88,18 @@ async function main() {
       role: { connect: { name: 'client' } },
     },
   });
+
+  await prisma.user.upsert({
+    where: { email: 'delivery@tshirt.store' },
+    update: {},
+    create: {
+      email: 'delivery@tshirt.store',
+      passwordHash,
+      firstName: 'Deli',
+      lastName: 'Very',
+      role: { connect: { name: 'delivery_person' } },
+    },
+  });
 }
 
 main()

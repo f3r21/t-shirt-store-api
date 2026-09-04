@@ -22,7 +22,11 @@ export function anOrder(overrides: Partial<OrderRow> = {}): OrderRow {
     status: 'pending',
     subtotalCents: 3998,
     totalCents: 3998,
+    promoCodeId: null,
+    promoCode: null,
+    discountCents: 0,
     paymentMethod: null,
+    deliveredById: null,
     createdAt: new Date('2026-08-15T18:22:00.000Z'),
     ...overrides,
   };

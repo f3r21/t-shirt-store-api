@@ -107,6 +107,8 @@ function toOrderCustomerDto(row: CustomerRow): OrderCustomerDto {
  * `customer` is present only for a manager. The function names every field
  * it copies and never spreads the row, so `userId` has no path to a client's
  * response and the four customer columns are the only ones a manager sees.
+ * `promo_code_id` stays behind for the same reason: the order carries the code
+ * a buyer typed, not the row it points at.
  */
 export function toOrderSummaryDto(
   row: OrderWithSummary,
@@ -116,6 +118,7 @@ export function toOrderSummaryDto(
     id: row.id,
     status: row.status,
     subtotal: row.subtotalCents,
+    discount: row.discountCents,
     total: row.totalCents,
     itemCount: row.items.reduce((sum, item) => sum + item.quantity, 0),
     createdAt: row.createdAt.toISOString(),
@@ -123,6 +126,12 @@ export function toOrderSummaryDto(
 
   if (isManager(viewer)) {
     dto.customer = toOrderCustomerDto(row.user);
+  }
+  if (row.paymentMethod !== null) {
+    dto.paymentMethod = row.paymentMethod;
+  }
+  if (row.promoCode !== null) {
+    dto.promoCode = row.promoCode;
   }
 
   return dto;
@@ -137,6 +146,7 @@ export function toOrderDto(
     id: row.id,
     status: row.status,
     subtotal: row.subtotalCents,
+    discount: row.discountCents,
     total: row.totalCents,
     items: row.items.map(toOrderItemDto),
     createdAt: row.createdAt.toISOString(),
@@ -148,6 +158,9 @@ export function toOrderDto(
   }
   if (row.paymentMethod !== null) {
     dto.paymentMethod = row.paymentMethod;
+  }
+  if (row.promoCode !== null) {
+    dto.promoCode = row.promoCode;
   }
 
   return dto;

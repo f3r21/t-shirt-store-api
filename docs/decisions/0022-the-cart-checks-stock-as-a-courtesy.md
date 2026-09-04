@@ -1,6 +1,6 @@
 # 22. The cart shows what can be bought, and checks stock as a courtesy
 
-Status: accepted, revised 2026-09-03
+Status: accepted, revised 2026-09-04
 Date: 2026-09-01
 
 ## Context
@@ -32,3 +32,8 @@ code, tax or delivery charge, so `subtotal` is the sum of the lines.
 **Revised 2026-09-03, from a test written by hand:** the add read the line and wrote the sum,
 so two adds in the same moment kept one. The write is now an atomic increment on the row, and
 the read feeds the stock check only. ADR 34.
+
+**Revised 2026-09-04, when Optional Feature 13 landed:** the "no promo code" above described
+the cart, and it still does. A code is named at checkout and never held on a cart line, so the
+cart's `subtotal` is still the sum of its lines and this record's decision is unchanged. What
+changed is the order: `subtotal` and `total` now differ by the discount. ADR 37.

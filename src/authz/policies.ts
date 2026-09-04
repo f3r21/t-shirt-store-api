@@ -19,12 +19,41 @@ export const can =
     ability.can(action, subject);
 
 /**
- * `setOrderStatus` serves two callers with two verbs: a client cancels, a
- * manager advances. Either ability opens the route; the service asks the
- * exact question once it has the row and the requested status.
+ * `setOrderStatus` serves three callers with three verbs: a client cancels, a
+ * manager advances, a delivery person delivers. Any of the three opens the
+ * route; the service asks the exact question once it has the row and the
+ * requested status.
+ *
+ * `deliver` is named even though it admits nobody new: a delivery person is a
+ * signed-in user, so `cancel` on their own orders already opened the route for
+ * them. Resting the role's access on a rule about a different order is an
+ * accident, and it would fail closed the day the role stops holding `cancel`.
+ * ADR 36.
  */
 export const updateOrCancelOrder: Policy = (ability) =>
-  ability.can('update', 'Order') || ability.can('cancel', 'Order');
+  ability.can('update', 'Order') ||
+  ability.can('cancel', 'Order') ||
+  ability.can('deliver', 'Order');
+
+/**
+ * `createOrder` always needs `create Order`, and needs `apply PromoCode` as
+ * well when the body names a code.
+ *
+ * The body is read raw, for the reason `inactiveProductsNeedManager` reads the
+ * query raw: the guard runs before the pipe, so this sees whatever the caller
+ * sent, and the pipe answers 400 after it for anything a code cannot be. Every
+ * signed-in caller holds `apply` today, so nothing is refused here yet. The
+ * check is what makes the grant enforced rather than a line in the ability that
+ * nothing reads, and it fails closed for a role added without the verb.
+ * ADR 25, ADR 37.
+ */
+export const placeOrder: Policy = (ability, request) => {
+  if (!ability.can('create', 'Order')) {
+    return false;
+  }
+  const body = request.body as { promoCode?: unknown } | undefined;
+  return body?.promoCode === undefined || ability.can('apply', 'PromoCode');
+};
 
 /**
  * The disabled products are a manager's to see, and the contract answers the

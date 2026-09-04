@@ -60,10 +60,13 @@ tags:
       `shopping_carts.user_id` is unique.
   - name: orders
     description: Checkout, order history and the status flow. A client sees only its own
-      orders. A manager sees every order.
+      orders. A manager sees every order. A delivery person sees the orders to deliver.
   - name: payments
     description: The two Stripe flows and the webhook that applies their result. A
       payment link buys one product. A payment intent buys a cart.
+  - name: promo-codes
+    description: The discount codes of Optional Feature 13. A manager creates a code,
+      reads the codes and disables a code. Only a manager may use these operations.
 
 security:
   - bearerAuth: []
@@ -1370,9 +1373,43 @@ paths:
         record and a cart is a live view, so a later price change does not reach an
         order.
 
+        The request body is optional. Send `promoCode` to apply a promo code, and omit
+        the body to place the order at full price. The server compares the code without
+        case, takes the discount off the subtotal and counts the use. The order keeps
+        the code and the discount amount, so a later change to the code does not change
+        this order.
+
+        A percentage code takes that share of the subtotal and the server rounds the
+        amount down. A fixed code takes its own amount, and never more than the
+        subtotal, so the total stops at 0.
+
+        The server refuses a code with 422 and one problem type for each rule.
+        `promo-code-unknown` means the code does not exist or a manager disabled it.
+        `promo-code-expired` means the code passed its expiry date.
+        `promo-code-exhausted` means the code reached its usage limit.
+        `promo-code-minimum` means the subtotal is below the minimum purchase amount of
+        the code. The server creates no order in any of the four cases.
+
+        A caller whose role may not apply a promo code returns 403.
+
         An empty cart returns 409. A line above the stock on hand returns 409 with the
         `insufficient-stock` problem type.
       operationId: createOrder
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Omit this body to place the order with no promo code.
+              properties:
+                promoCode:
+                  type: string
+                  description: The promo code to apply to this order. The server
+                    compares it without case.
+                  minLength: 1
+                  maxLength: 40
+                  example: SAVE10
       responses:
         '201':
           description: The server created the order.
@@ -1386,10 +1423,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -1444,6 +1487,10 @@ paths:
       summary: List the orders of this user
       description: |
         The server returns one page of the orders of the signed-in user.
+
+        Every entry carries the status, the total, the payment method and the number of
+        units. `getOrder` returns the lines, so one page costs a fixed number of queries
+        however many lines an order has.
 
         Every filter is optional and the server applies the ones it receives. To select
         one day, set `createdFrom` to that day and `createdTo` to the next day.
@@ -1519,14 +1566,16 @@ paths:
         status decide which moves are legal.
 
         A client may send `cancelled`, and only while the order is `pending`, `paid` or
-        `processing`. A manager may send `processing`, `shipped` or `cancelled`. Cancelling a
-        `paid` or `processing` order returns its units to stock.
+        `processing`. A manager may send `processing`, `shipped`, `delivered` or
+        `cancelled`. Cancelling a `paid` or `processing` order returns its units to stock.
+
+        A delivery person may send `delivered`, and nothing else. The order must be
+        `shipped`. The server records which delivery person delivered the order, and
+        `listDeliveries` reads that record back. Any other status from a delivery person
+        returns 403.
 
         No caller may send `paid`. The payment webhook sets that status, because Stripe
         confirms the payment and a request does not.
-
-        No caller may send `delivered`. That status belongs to the optional delivery
-        feature, which this contract does not cover.
 
         A move that the current status does not allow returns 409. A cancel after the
         order ships returns 409 with the `order-not-cancellable` problem type.
@@ -1543,10 +1592,10 @@ paths:
               properties:
                 status:
                   type: string
-                  enum: [processing, shipped, cancelled]
+                  enum: [processing, shipped, delivered, cancelled]
                   description: The status to move to. The set is narrower than
-                    `OrderStatus`, because `pending` is the start, the webhook sets
-                    `paid`, and `delivered` is out of scope.
+                    `OrderStatus`, because `pending` is the start and the webhook sets
+                    `paid`. Who may send each value is above.
                   example: processing
       responses:
         '200':
@@ -1565,6 +1614,56 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /deliveries:
+    get:
+      tags: [orders]
+      summary: List the orders this caller delivers
+      description: |
+        Only a delivery person or a manager may use this operation. A client reads its
+        own orders at `/users/me/orders`.
+
+        The server returns one page of orders in one delivery status. The default is
+        `shipped`, which is the work still to do. Set `status` to `delivered` to read
+        the delivery history.
+
+        A delivery person reads every shipped order. Under `delivered` that person
+        reads the orders they delivered themselves, and no others. An order the same
+        person bought is not in this list, even after another person delivers it. The
+        buyer reads that order at `/users/me/orders`. A manager reads every order in
+        both statuses.
+
+        The entries carry the same fields as the other order lists. `customer` is
+        present for a manager only, because a delivery person needs no client address
+        that this API stores.
+      operationId: listDeliveries
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - $ref: '#/components/parameters/DeliveryStatusFilter'
+      responses:
+        '200':
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrderSummary'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1643,6 +1742,10 @@ paths:
 
         An order that is not `pending` returns 409. An order that belongs to another
         client returns 404.
+
+        An order whose total is below 50 returns 409. A promo code can take the whole
+        subtotal off, and the payment provider collects 50 minor units at least, so an
+        amount under that is one the server cannot send.
 
         The response carries no `Location` header. This operation creates a payment
         attempt, no operation in this contract reads one back, and the order it pays for
@@ -1724,6 +1827,209 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  # ---- Promo codes, Optional Feature 13 -----------------------------------
+  # The manager's half of the feature: the codes themselves, and the switch that
+  # disables one. The client applies a code at checkout, which `createOrder` carries.
+  # No 429 on these three, which is the convention every operation outside the six
+  # throttled auth ones follows: the server can answer 429 anywhere and the document
+  # declares it only where a client must handle it.
+  /promo-codes:
+    post:
+      tags: [promo-codes]
+      summary: Create a promo code
+      description: |
+        Only a manager may use this operation.
+
+        Send the code, the discount type and the discount value. The server creates the
+        code and enables it.
+
+        The code is unique and the server ignores case. `SAVE10` and `save10` are one
+        code. A code that another row already holds returns 409.
+
+        `discountValue` is a percentage from 1 to 100 when `discountType` is
+        `percentage`. It is an amount in minor units when `discountType` is `fixed`. A
+        percentage above 100 returns 400.
+
+        Three fields are optional. Omit `expiresAt` for a code with no expiry date. Omit
+        `usageLimit` for a code with no limit. Omit `minPurchase` for a code that applies
+        to any subtotal.
+      operationId: createPromoCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, discountType, discountValue]
+              properties:
+                code:
+                  type: string
+                  description: The value a client sends at checkout. The server compares
+                    it without case.
+                  minLength: 1
+                  maxLength: 40
+                  example: SAVE10
+                discountType:
+                  $ref: '#/components/schemas/PromoDiscountType'
+                discountValue:
+                  type: integer
+                  description: A percentage from 1 to 100, or an amount in minor units.
+                    `discountType` decides which one.
+                  minimum: 1
+                  example: 10
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: The instant the server stops accepting this code.
+                  example: '2026-12-31T23:59:59Z'
+                usageLimit:
+                  type: integer
+                  description: The number of orders that may use this code in total.
+                  minimum: 1
+                  example: 100
+                minPurchase:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The smallest order subtotal this code applies to, in minor
+                    units.
+      responses:
+        '201':
+          description: The server created the promo code.
+          headers:
+            Location:
+              description: The URL of the new promo code.
+              schema:
+                type: string
+              example: /v1/promo-codes/4
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [promo-codes]
+      summary: List the promo codes
+      description: |
+        Only a manager may use this operation.
+
+        The server returns one page of promo codes, newest first. The page carries the
+        disabled codes and the expired codes too, because a manager reads this list to
+        find them.
+
+        Each entry carries `usedCount`, which is the number of orders that used the
+        code.
+      operationId: listPromoCodes
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: One page of promo codes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PromoCode'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /promo-codes/{id}:
+    patch:
+      tags: [promo-codes]
+      summary: Update a promo code
+      description: |
+        Only a manager may use this operation.
+
+        Send only the fields to change. Set `isActive` to false to disable the code. Set
+        `isActive` to true to enable it again. A disabled code returns an error at
+        checkout.
+
+        Send `discountType` and `discountValue` together. One column carries a
+        percentage under one type and an amount under the other, so the server refuses
+        one field without the other with 400.
+
+        The server does not change `usedCount`. Checkout is the only writer of that
+        value.
+
+        A `code` that another row already holds returns 409. The server compares the
+        value without case, as it does on create.
+      operationId: updatePromoCode
+      parameters:
+        - $ref: '#/components/parameters/PromoCodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: Send at least one field.
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                discountType:
+                  $ref: '#/components/schemas/PromoDiscountType'
+                discountValue:
+                  type: integer
+                  description: A percentage from 1 to 100, or an amount in minor units.
+                  minimum: 1
+                expiresAt:
+                  type: string
+                  format: date-time
+                usageLimit:
+                  type: integer
+                  minimum: 1
+                minPurchase:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The smallest order subtotal this code applies to.
+                isActive:
+                  type: boolean
+                  description: Set this field to false to disable the code.
+      responses:
+        '200':
+          description: The updated promo code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
 
   securitySchemes:
@@ -1782,6 +2088,13 @@ components:
         - https://tshirt.store/problems/email-taken
         - https://tshirt.store/problems/order-not-cancellable
         - https://tshirt.store/problems/insufficient-stock
+        # 422 on `createOrder`, one per promo code rule. The status says the server
+        # refused the code and a client needs the member to say which rule refused it:
+        # a client retypes an unknown code and removes an expired one.
+        - https://tshirt.store/problems/promo-code-unknown
+        - https://tshirt.store/problems/promo-code-expired
+        - https://tshirt.store/problems/promo-code-exhausted
+        - https://tshirt.store/problems/promo-code-minimum
 
     Problem:
       type: object
@@ -2114,14 +2427,14 @@ components:
           type: string
           example: Ramirez
 
-    # `subtotal` and `total` are equal in this contract, because promo codes are
-    # Optional Feature 13 and out of scope. Both fields ship anyway. The ERD already
-    # carries `subtotal_amount` and `total_amount`. The week's own table lists an added
-    # optional field as the one genuinely safe change, so shipping the pair now makes
-    # promo support additive later, not a break.
+    # `subtotal` is the sum of the lines and `total` is what the store charges. The two
+    # differ by `discount`, which is what the promo code of Optional Feature 13 took off,
+    # and they are equal on an order that used no code. The ERD already carried
+    # `subtotal_amount` and `total_amount`, so both fields shipped before the feature was
+    # written and the discount joined an existing pair rather than breaking it.
     OrderSummary:
       type: object
-      required: [id, status, subtotal, total, itemCount, createdAt]
+      required: [id, status, subtotal, discount, total, itemCount, createdAt]
       properties:
         id:
           type: integer
@@ -2132,10 +2445,22 @@ components:
           allOf:
             - $ref: '#/components/schemas/Money'
           description: The sum of the lines, before any discount.
+        discount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: What the promo code took off the subtotal. It is 0 when the order
+            used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges.
+          description: The amount the store charges. It is the subtotal less the
+            discount.
+        promoCode:
+          type: string
+          description: The promo code this order used, in the case the manager typed. It
+            is absent when the order used no code. The server copies the value at
+            checkout, so a later change to the code does not change this order.
+          example: SAVE10
         customer:
           allOf:
             - $ref: '#/components/schemas/OrderCustomer'
@@ -2144,6 +2469,11 @@ components:
           type: integer
           description: The number of units in the order, across every line.
           example: 3
+        paymentMethod:
+          allOf:
+            - $ref: '#/components/schemas/PaymentMethod'
+          description: The Stripe flow that paid this order. It is absent until a
+            payment succeeds.
         createdAt:
           type: string
           format: date-time
@@ -2151,7 +2481,7 @@ components:
 
     Order:
       type: object
-      required: [id, status, subtotal, total, items, createdAt, statusHistory]
+      required: [id, status, subtotal, discount, total, items, createdAt, statusHistory]
       properties:
         id:
           type: integer
@@ -2162,10 +2492,22 @@ components:
           allOf:
             - $ref: '#/components/schemas/Money'
           description: The sum of the lines, before any discount.
+        discount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: What the promo code took off the subtotal. It is 0 when the order
+            used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges.
+          description: The amount the store charges. It is the subtotal less the
+            discount.
+        promoCode:
+          type: string
+          description: The promo code this order used, in the case the manager typed. It
+            is absent when the order used no code. The server copies the value at
+            checkout, so a later change to the code does not change this order.
+          example: SAVE10
         items:
           type: array
           items:
@@ -2278,19 +2620,74 @@ components:
       enum: [payment_link, payment_intent]
       example: payment_intent
 
+    # ---- Promo codes --------------------------------------------------------
+    # `code` is stored as the manager typed it and compared without case, so a client
+    # may send any spelling and a manager still reads the one they wrote. The three
+    # optional members are the three rules a code may carry, and each is absent when
+    # the code carries no such rule. `usedCount` is the counter checkout increments.
+    PromoCode:
+      type: object
+      required: [id, code, discountType, discountValue, usedCount, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+          example: 4
+        code:
+          type: string
+          description: The value a client sends at checkout, in the case the manager
+            typed.
+          example: SAVE10
+        discountType:
+          $ref: '#/components/schemas/PromoDiscountType'
+        discountValue:
+          type: integer
+          description: A percentage from 1 to 100, or an amount in minor units.
+            `discountType` decides which one.
+          example: 10
+        expiresAt:
+          type: string
+          format: date-time
+          description: The instant the server stops accepting this code. It is absent
+            when the code does not expire.
+          example: '2026-12-31T23:59:59Z'
+        usageLimit:
+          type: integer
+          description: The number of orders that may use this code in total. It is
+            absent when the code has no limit.
+          example: 100
+        usedCount:
+          type: integer
+          description: The number of orders that have used this code.
+          example: 12
+        minPurchase:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The smallest order subtotal this code applies to. It is absent
+            when the code applies to any subtotal.
+        isActive:
+          type: boolean
+          description: A disabled code returns an error at checkout. It stays in this
+            list.
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-04T10:15:00Z'
+
     # ---- Money --------------------------------------------------------------
     Money:
       type: integer
       minimum: 0
       description: An amount in minor units. 1999 means 19.99. The store is
-        single-currency and prices are in USD. No amount in this contract is negative,
-        because it carries no refund and no discount.
+        single-currency and prices are in USD. No amount in this contract is negative. A
+        discount is a positive amount that the server takes off the subtotal, and the
+        contract carries no refund.
       example: 1999
 
     # ---- Enums --------------------------------------------------------------
-    # `delivered` and `delivery_person` belong to the Optional Features. The
-    # operations that use them are out of scope for this contract. The values stay
-    # so the contract and the Week 1 ERD describe the same domain.
+    # `delivered` and `delivery_person` come from Optional Features 11 and 12, and both
+    # are in scope now: `setOrderStatus` accepts `delivered` and `listDeliveries` serves
+    # the role. The six statuses are the ERD's `order_status`, unchanged.
     OrderStatus:
       type: string
       enum: [pending, paid, processing, shipped, delivered, cancelled]
@@ -2307,6 +2704,14 @@ components:
     Role:
       type: string
       enum: [manager, client, delivery_person]
+    # Lower case, for the reason OrderStatus gives. The two members are the brief's
+    # two discount kinds, and the member decides how a client reads `discountValue`.
+    PromoDiscountType:
+      type: string
+      description: A percentage discount takes a share of the subtotal. A fixed discount
+        takes an amount in minor units.
+      enum: [percentage, fixed]
+      example: percentage
 
   # ---- Query parameters ---------------------------------------------------
   # Every collection takes this pair. The bounds repeat PageMeta, so a caller reads the
@@ -2374,6 +2779,15 @@ components:
         type: integer
       example: 501
 
+    PromoCodeId:
+      name: id
+      in: path
+      required: true
+      description: The id of the promo code. It is the id, and not the code itself.
+      schema:
+        type: integer
+      example: 4
+
     # ---- Order history filters, Feature 9 -----------------------------------
     # Names are camelCase per
     # item 4. The date pair follows item 5: RFC 3339 with Z, `from` inclusive and `to`
@@ -2394,6 +2808,20 @@ components:
       description: Return only the orders in this status.
       schema:
         $ref: '#/components/schemas/OrderStatus'
+    # `listDeliveries` takes two of the six statuses and not the whole enum, because the
+    # other four name no work a delivery person can do. The default is the queue rather
+    # than the history, which is the screen that opens on a shift.
+    DeliveryStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Return the orders waiting for delivery, or the ones already
+        delivered.
+      schema:
+        type: string
+        enum: [shipped, delivered]
+        default: shipped
+      example: shipped
     CreatedFrom:
       name: createdFrom
       in: query
@@ -2575,6 +3003,37 @@ components:
                 title: Unprocessable content
                 status: 422
                 detail: The request names a category that does not exist.
+            # The four promo code rules of `createOrder`. A client shows a different
+            # message for each, so each carries its own `type`.
+            promoUnknown:
+              summary: The promo code does not exist, or a manager disabled it
+              value:
+                type: https://tshirt.store/problems/promo-code-unknown
+                title: Promo code unknown
+                status: 422
+                detail: This promo code does not exist, or it is disabled.
+            promoExpired:
+              summary: The promo code passed its expiry date
+              value:
+                type: https://tshirt.store/problems/promo-code-expired
+                title: Promo code expired
+                status: 422
+                detail: This promo code expired on 2026-08-31T23:59:59Z.
+            promoExhausted:
+              summary: The promo code reached its usage limit
+              value:
+                type: https://tshirt.store/problems/promo-code-exhausted
+                title: Promo code exhausted
+                status: 422
+                detail: This promo code reached its usage limit.
+            promoMinimum:
+              summary: The subtotal is below the minimum purchase amount
+              value:
+                type: https://tshirt.store/problems/promo-code-minimum
+                title: Order below the promo code minimum
+                status: 422
+                detail: This promo code applies to a subtotal of 5000 or more, and
+                  this order is 3998.
     # RFC 9110 15.5.14 names this code Content Too Large. The assigned HTTP Status Codes
     # reading prints the RFC 2616 name, Request Entity Too Large. RFC 2616 is obsolete
     # twice over, so the current name is the one used here.

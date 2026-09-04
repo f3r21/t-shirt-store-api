@@ -11,7 +11,7 @@ Seven commands, in this order. Three of them carry a trap, noted below.
 
 ```bash
 npm install
-cp .env.example .env      # then fill in the six blank values, see below
+cp .env.example .env      # then fill in the four blank values, see below
 npm run docker:up         # Postgres, Valkey and Mailpit
 npm run db:migrate        # applies the migrations
 npm run db:seed           # NOT optional, see below
@@ -33,11 +33,12 @@ The seed is a hard prerequisite. `users.role_id` is not null and the service rea
 from the `roles` table, so sign-up fails with "The roles table holds no client role. Run the
 seed." until `db:seed` has run.
 
-The seed also creates two demo accounts, so a reviewer can sign in as a manager without
-editing the database. Both use the password `Password123!`:
+The seed also creates three demo accounts, so a reviewer can sign in as a manager without
+editing the database. All three use the password `Password123!`:
 
     manager@tshirt.store   creates and edits products and variants
     client@tshirt.store    everything a customer can reach
+    delivery@tshirt.store  reads the shipped orders and marks them delivered
 
 They are development fixtures with a published password. `prisma/seed.ts` refuses to create
 them when `NODE_ENV` is `production`, and seeds only the roles and categories there.
@@ -45,19 +46,22 @@ them when `NODE_ENV` is `production`, and seeds only the roles and categories th
 ### The environment file
 
 `.env.example` names every variable the schema declares, and `src/app.module.spec.ts` fails
-if one is missing. Ten variables are blank and six of them need a value:
+if one is missing. Eight variables are blank and four of them need a value:
 
 - `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, at least 32 characters each. The boot refuses
   without them. The pepper is a separate value so that rotating the signing key keeps every
   stored token hash valid. ADR 1.
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, from the Stripe section below.
-- `S3_BUCKET` and `IMAGES_BASE_URL`, the `ImagesBucket` and `ApiUrl` outputs of the deployed
-  stack. The AWS SDK reads its credentials from the shell, `AWS_PROFILE=tshirt npm run start:dev`,
-  never from a file.
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+`S3_BUCKET` and `IMAGES_BASE_URL` carry placeholders, so the API boots with no AWS account.
+Only the image upload needs the real values, the `ImagesBucket` and `ApiUrl` outputs of the
+deployed stack. An upload against a placeholder fails at S3 with a 500, and never at boot.
+To upload an image, set the two variables to those outputs. The AWS SDK reads its credentials
+from the shell, `AWS_PROFILE=tshirt npm run start:dev`, never from a file.
 
 The other four stay blank on a laptop. An empty `CORS_ORIGINS` means no browser on another
 origin may call the service. `SMTP_USER` and `SMTP_PASS` stay empty because Mailpit wants no
@@ -188,7 +192,7 @@ on its own, through the service's circuit breaker. A release that became healthy
 needs that command. Rehearsed on 2026-09-03: about three minutes each way, proven by the
 running tag. Leave `MigrateImageTag` where it is: a migration is never reversed, so
 the previous image must read the current schema, and so every migration is additive
-(`ARCHITECTURE.md` names the one that was not).
+(the known gaps below name the one that was not).
 
 Mail and Stripe, once, after the first release:
 
@@ -233,10 +237,12 @@ records, and the account's credits carry that for the review.
 | Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
 | Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
 | Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, a cancel after payment giving the units back, and the history with its five filters |
+| Delivery person, Optional Features 11 and 12 | Done, one operation and one status: `GET /deliveries` lists the shipped orders to deliver, and the same list under `status=delivered` is the caller's own delivery history. The role sends `delivered` on a shipped order and nothing else, and the server records who delivered it. A client reads the full status history of its own order, as before |
 | Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock. The deployed endpoint receives Stripe's own test-mode events through the distribution |
+| Promo codes, Optional Feature 13 | Done, both halves. A manager creates a code, reads one page of codes with the number of orders each has been used on, and disables or enables one. A client sends `promoCode` in the body of `POST /orders`. The server checks the four rules the brief lists and answers 422 with its own problem type for each one. A percentage rounds down and a fixed amount stops at the subtotal, so a total is never negative. The code column is `citext`, so `SAVE10` and `save10` are one code: the second create answers 409 and a buyer may type either. The use is counted inside the checkout transaction, guarded on the limit, so two checkouts racing for the last use place one order. The order keeps the code and the discount, and a later change to the code does not reach it. See ADR 37 |
 | Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
 | Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
-| End-to-end tests | Done, in thirteen suites against a real database and a real Valkey: liveness and the kernel's headers, authentication, the cart, catalog authorization, catalog reads, checkout through a signed Stripe event to the stock decrement and the status flow, product images with the store in memory, likes, the served OpenAPI document against the contract, order history for two clients and a manager, rate limits, roles, and the low-stock notifications through the real queue and worker to the mail |
+| End-to-end tests | Done, in sixteen suites against a real database and a real Valkey: liveness and the kernel's headers, authentication, the cart, catalog authorization, catalog reads, checkout through a signed Stripe event to the stock decrement and the status flow, deliveries for two delivery people, a client and a manager, product images with the store in memory, likes, the served OpenAPI document against the contract, order history for two clients and a manager, the promo codes a manager creates and disables, a code applied at checkout with its four refusals and a ten-trial race for the last use, rate limits, roles, and the low-stock notifications through the real queue and worker to the mail |
 | CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
 | Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
 | Deploy | Done. One CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache; every push to `main` releases through a job that assumes a role by OIDC, with no key stored |
@@ -291,6 +297,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
 
 - The liveness route reaches no database, so a task that boots against an incompatible
   schema passes the circuit breaker. The additive-migration rule is discipline, not a check.
+  Seven of the eight migrations are additive. The second drops `users.reset_token` in the same
+  statement that adds `reset_token_hash`, so a replica still on the previous image breaks
+  mid-rollout. That rename needed expand and contract.
 - Every link sale logs `payment.orphan` for its `payment_intent.succeeded` event, because the
   link's intent carries no order id (ADR 24). The warning is real only for an intent this
   service did not create.

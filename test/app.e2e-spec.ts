@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import request from 'supertest';
 import { parse as parseYaml } from 'yaml';
@@ -20,6 +22,30 @@ describe('AppController (e2e)', () => {
 
   it('serves the root route under the v1 prefix, without a token', async () => {
     await request(ctx.app.getHttpServer()).get('/v1').expect(200);
+  });
+
+  /**
+   * The two properties of the address `createTestApp` binds, because one case
+   * in the suite failed at random with `socket hang up` without them: the
+   * server listens, and it listens on 127.0.0.1 and not on every address. The
+   * comment on the `listen` call in `app-factory.ts` holds the reason.
+   *
+   * A test that only made a request would pass either way, because supertest
+   * binds a port itself for a server that carries no address. What it cannot
+   * do is keep that address, so the address is what this asserts.
+   */
+  it('listens on 127.0.0.1, and a request leaves that address alone', async () => {
+    const server = ctx.app.getHttpServer() as Server;
+    expect(server.listening).toBe(true);
+
+    const address = server.address() as AddressInfo;
+    expect(address.address).toBe('127.0.0.1');
+
+    await request(server).get('/v1').expect(200);
+
+    // supertest closes only a server it opened itself, so the address holds.
+    expect(server.listening).toBe(true);
+    expect((server.address() as AddressInfo).port).toBe(address.port);
   });
 
   /**

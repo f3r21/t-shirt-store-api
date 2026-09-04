@@ -280,6 +280,52 @@ describe('PaymentsService', () => {
       expect(gateway.createPaymentIntent).not.toHaveBeenCalled();
     });
 
+    /**
+     * A promo code can take a total below what the provider will collect, and
+     * 0 is only the extreme of that. Stripe's minimum for USD is 50 minor
+     * units, so the boundary is stated as the two literals either side of it.
+     * ADR 37.
+     */
+    it('answers 409 below the payment provider minimum, before Stripe is asked', async () => {
+      for (const totalCents of [49, 0]) {
+        gateway.createPaymentIntent.mockClear();
+        prisma.order.findFirst.mockResolvedValue({
+          ...pendingOrder(),
+          totalCents,
+        });
+
+        const err = await caught(() =>
+          service.createPaymentIntent(AS_CLIENT, CLIENT_ABILITY, 501),
+        );
+
+        expect(err?.getStatus()).toBe(409);
+        expect(err?.getResponse()).toMatchObject({
+          detail:
+            'The total of this order is below the smallest amount the payment provider accepts.',
+        });
+        expect(gateway.createPaymentIntent).not.toHaveBeenCalled();
+      }
+    });
+
+    it('accepts a total of exactly the minimum, which is the control', async () => {
+      prisma.order.findFirst.mockResolvedValue({
+        ...pendingOrder(),
+        totalCents: 50,
+      });
+
+      const intent = await service.createPaymentIntent(
+        AS_CLIENT,
+        CLIENT_ABILITY,
+        501,
+      );
+
+      expect(intent.amount).toBe(50);
+      expect(gateway.createPaymentIntent).toHaveBeenCalledWith({
+        orderId: 501,
+        amount: 50,
+      });
+    });
+
     it('answers 409 insufficient-stock when a line is above the units on hand, before Stripe is asked', async () => {
       prisma.productVariant.findMany.mockResolvedValue([
         { id: 21, stock: 7 },

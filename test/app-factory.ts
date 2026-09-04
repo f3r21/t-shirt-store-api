@@ -13,6 +13,10 @@ import type { StripeClient } from '../src/payments/stripe.client';
 import { STRIPE_CLIENT } from '../src/payments/stripe.client';
 import type { ObjectStore } from '../src/images/object-store';
 import { OBJECT_STORE } from '../src/images/object-store';
+import {
+  STOCK_QUEUE,
+  stockQueueProvider,
+} from '../src/stock-notifications/stock-queue';
 
 /**
  * Every message the application tried to send during a test.
@@ -163,9 +167,15 @@ class NeverBlocks implements ThrottlerStorage {
  * Boot the real application through `configureApp`, so the suite gets the
  * prefix and the pipe the server runs. The counter is replaced unless
  * `{ throttle: true }`.
+ *
+ * `redisUrl` points the stock queue somewhere else. The address the
+ * application reads is fixed when `ConfigModule.forRoot` runs, which is at
+ * import time, so a spec cannot reach it through `process.env`. The production
+ * factory is called here with the address the spec asks for, so the queue is
+ * the real one and only its address differs.
  */
 export async function createTestApp(
-  options: { throttle?: boolean } = {},
+  options: { throttle?: boolean; redisUrl?: string } = {},
 ): Promise<TestApp> {
   const mail = new MailerSpy();
   const stripe = new StripeStub();
@@ -187,6 +197,13 @@ export async function createTestApp(
       .useValue(new NeverBlocks());
   }
 
+  if (options.redisUrl !== undefined) {
+    const url = options.redisUrl;
+    builder = builder
+      .overrideProvider(STOCK_QUEUE)
+      .useValue(stockQueueProvider.useFactory({ getOrThrow: () => url }));
+  }
+
   const moduleRef = await builder.compile();
 
   // `bufferLogs` for the same reason `main.ts` passes it: the lines written
@@ -196,7 +213,25 @@ export async function createTestApp(
   const app = configureApp(
     moduleRef.createNestApplication({ bufferLogs: true, rawBody: true }),
   );
-  await app.init();
+
+  // `listen`, not `init`, and on 127.0.0.1 rather than every address.
+  //
+  // supertest binds a port itself when the server it is handed carries no
+  // address, and closes it again when the response arrives. With `init` alone
+  // the suite therefore bound and released one ephemeral port per request,
+  // 1642 of them in a measured run, and each of those binds could collide.
+  // `listen(0)` with no host binds the dual stack wildcard with address reuse
+  // on the socket, and the capture shows the outcome: the kernel handed out a
+  // port that another process already held on IPv4 only. Both listeners
+  // end up on the port, an IPv4 connection goes to the IPv4 socket, and the
+  // request never reaches this application: the other process answered nothing
+  // and half closed, and superagent reported `socket hang up`.
+  //
+  // One listen for the life of the application removes the per-request bind,
+  // and the address removes what is left, because a socket bound to the address
+  // supertest dials wins over any wildcard. `app.close()` in `afterAll` closes
+  // it.
+  await app.listen(0, '127.0.0.1');
 
   return { app, prisma: app.get(PrismaService), mail, stripe, objects };
 }
@@ -237,9 +272,13 @@ export function resetThrottleCounter(ctx: TestApp): void {
 export async function truncateAll(prisma: PrismaService): Promise<void> {
   // Named and not left to CASCADE: `consumed_refresh_tokens`, `product_likes`
   // and `stock_notifications` would be reached only as a side effect, and
-  // `stripe_events` has no foreign key at all.
+  // `stripe_events` and `promo_codes` are referenced by nothing that is named
+  // here. CASCADE follows references inwards, so it arrives at a table only
+  // from a table it already holds: `orders.promo_code_id` points at
+  // `promo_codes` and takes `orders` along, never the reverse. A promo code
+  // left behind is a unique violation in the next run, not a stale row.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events", "promo_codes" RESTART IDENTITY CASCADE',
   );
 }
 

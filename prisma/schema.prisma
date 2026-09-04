@@ -36,6 +36,11 @@ model User {
   orders        Order[]
   cartItems     CartItem[]
 
+  // The orders this user delivered, which is the delivery person's own history.
+  // Named, because `orders` above already relates the two models and Prisma
+  // cannot tell two relations between one pair apart without a name.
+  deliveries    Order[]             @relation("OrderDeliveredBy")
+
   @@map("users")
 }
 
@@ -210,9 +215,9 @@ enum OrderStatus {
   cancelled
 
   // The six members the ERD declares, in the lower case the contract uses.
-  // `paid` and `delivered` ship although no operation in scope writes either:
-  // the payment webhook sets `paid`, and `delivered` belongs to the delivery
-  // feature. The enum is the domain, not the list of legal moves.
+  // `paid` is the payment webhook's alone, and a delivery person or a manager
+  // writes `delivered` through `setOrderStatus`. The enum is the domain, not
+  // the list of legal moves: `order-status.ts` holds those.
   @@map("order_status")
 }
 
@@ -266,12 +271,35 @@ model Order {
   subtotalCents Int @map("subtotal_cents")
   totalCents    Int @map("total_cents")
 
+  // The promo code this order used. Three columns for one fact, and each carries
+  // a different part of it. See ADR 37.
+  //
+  // The foreign key points at the row `used_count` counts, so the count and the
+  // orders behind it cannot drift apart. Null when the order used no code.
+  promoCodeId Int? @map("promo_code_id")
+
+  // The code as the manager typed it, copied at checkout the way
+  // `unit_price_cents` copies a price. An order is a fixed record, so renaming a
+  // code later must not rewrite the history of the orders that used the old name.
+  promoCode String? @map("promo_code")
+
+  // What the code took off the subtotal, in minor units. Zero and not null when
+  // there is no code, because the contract makes `discount` a required member and
+  // every order has an answer for it: nothing came off.
+  discountCents Int @default(0) @map("discount_cents")
+
   // Nullable because the contract says so: absent until a payment succeeds. The
   // webhook is the only writer, at the moment it moves the status to `paid`.
   // The ERD's `order_payments` table is not here: the contract exposes one field
   // of it, and the Stripe reference it carried lives on `StripeEvent`, where
   // idempotency needs it. See ADR 24.
   paymentMethod PaymentMethod? @map("payment_method")
+
+  // Who moved this order to `delivered`. Null until that happens, so the
+  // migration is additive and no order needs a backfill. One column rather than
+  // an assignment table, because an order is delivered once and nothing in the
+  // brief dispatches an order before it ships. See ADR 36.
+  deliveredById Int? @map("delivered_by_user_id")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -282,14 +310,35 @@ model Order {
   items         OrderItem[]
   statusHistory OrderStatusChange[]
 
+  // SET NULL and not RESTRICT, unlike `user` above: the order is the record and
+  // the delivery person is an attribution on it, so removing an account must not
+  // hold an order hostage. The row keeps its `delivered` status either way.
+  deliveredBy   User?               @relation("OrderDeliveredBy", fields: [deliveredById], references: [id], onDelete: SetNull)
+
+  // RESTRICT and not SET NULL, the opposite of `deliveredBy` above: `used_count`
+  // counts the orders that point here, so a deleted code would leave that number
+  // describing rows nothing references. No operation deletes a code, because a
+  // manager disables one instead, and the constraint is what makes that hold for
+  // a hand-written statement too. `promoCodeRow` and not `promoCode`, which is
+  // the snapshot column above.
+  //
+  // No index on the foreign key. Nothing reads an order by its code, and the only
+  // lookup RESTRICT runs is on a delete this API never performs.
+  promoCodeRow  PromoCode?          @relation(fields: [promoCodeId], references: [id], onDelete: Restrict)
+
   // The client's own history, and a manager filtering by one client. The
   // equality that is always present leads, then the range that is also the sort
   // key, then the tiebreak. A btree scans backwards for free, so this ascending
   // index serves a newest-first page with no sort step.
   @@index([userId, createdAt, id])
   // A manager's unfiltered page. No leading equality, so the composite above
-  // cannot serve it.
+  // cannot serve it. It also serves the delivery queue, which filters on
+  // `status` and names no user.
   @@index([createdAt, id])
+  // One delivery person's history, in the shape of the first index: the column
+  // the filter always names leads, then the sort key, then the tiebreak. It is
+  // also the lookup `ON DELETE SET NULL` runs when an account is deleted.
+  @@index([deliveredById, createdAt, id])
   @@map("orders")
 }
 
@@ -409,4 +458,69 @@ model StockNotification {
 
   @@id([userId, variantId])
   @@map("stock_notifications")
+}
+
+/// How a promo code reduces a subtotal: a share of it, or a flat amount off it.
+/// The member decides how `discount_value` reads, so the two live in one row
+/// rather than in two nullable columns.
+enum PromoDiscountType {
+  percentage
+  fixed
+
+  @@map("promo_discount_type")
+}
+
+/// One discount code a manager created. Optional Feature 13.
+///
+/// The table is the whole feature on the manager's side: a code is created,
+/// listed and switched between active and inactive, and no row is ever deleted,
+/// because an order that used a code points at it.
+model PromoCode {
+  id Int @id @default(autoincrement())
+
+  /// Stored as the manager typed it and compared without case, which is what
+  /// `citext` gives. `SAVE10` and `save10` are one code, so the unique index
+  /// answers the 409 on both spellings and a client may send either. The same
+  /// column type the `users.email` column uses, for the same reason.
+  code String @unique @db.Citext
+
+  discountType PromoDiscountType @map("discount_type")
+
+  /// A percentage from 1 to 100, or an amount in minor units. `discount_type`
+  /// decides which, and the DTO bounds the percentage at 100. Minor units for
+  /// the reason `price_cents` records.
+  discountValue Int @map("discount_value")
+
+  /// When the server stops accepting the code. Null means the code does not
+  /// expire, which is the state a code is created in unless the manager names
+  /// a date.
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  /// How many orders may use the code in total. Null means no limit. The pair
+  /// with `used_count` is what checkout compares.
+  usageLimit Int? @map("usage_limit")
+
+  /// How many orders have used the code. Checkout is the only writer, and it
+  /// increments the value inside the transaction that creates the order.
+  usedCount Int @default(0) @map("used_count")
+
+  /// The smallest subtotal the code applies to, in minor units. Null means the
+  /// code applies to any subtotal.
+  minPurchaseCents Int? @map("min_purchase_cents")
+
+  /// The disable and enable switch the brief asks for. A disabled code stays in
+  /// the list and stays on the orders that already used it.
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// The orders that used this code. `ON DELETE RESTRICT` on the other side, so
+  /// a code that any order used cannot be deleted while `used_count` counts it.
+  orders Order[]
+
+  /// No `updatedAt`, and no index beyond the unique on `code`. That index is
+  /// what the 409 rests on and what checkout looks a code up by. The list sorts
+  /// on `created_at`, and a store holds a few dozen codes, so an index for the
+  /// sort would cost every insert and save one sequential scan of one page.
+  @@map("promo_codes")
 }

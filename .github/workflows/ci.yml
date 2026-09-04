@@ -164,6 +164,11 @@ jobs:
           filter_mode: nofilter
           fail_on_error: true
 
+      # One page is the constraint the week page states, and the count includes
+      # the diagram. Vale reads the prose and nothing measured its length.
+      - name: The architecture page is one page
+        run: test "$(wc -w < ARCHITECTURE.md)" -lt 650
+
   # The release, on every push to the two refs, once the checks above are green:
   # build on an arm runner (the instance is arm64), push both images, point the
   # migrate task at this commit, run the migrations as a one-off task, roll the
