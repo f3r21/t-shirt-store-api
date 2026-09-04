@@ -8,6 +8,7 @@ import type {
   Product,
   ProductLike,
   ProductVariant,
+  PromoCode,
   RefreshToken,
   User,
 } from '../generated/prisma/client';
@@ -31,6 +32,7 @@ export type AppSubjects = Subjects<{
   CartItem: CartItem;
   ProductLike: ProductLike;
   Order: Order;
+  PromoCode: PromoCode;
   RefreshToken: RefreshToken;
   User: User;
 }>;

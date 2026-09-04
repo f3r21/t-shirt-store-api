@@ -64,6 +64,9 @@ tags:
   - name: payments
     description: The two Stripe flows and the webhook that applies their result. A
       payment link buys one product. A payment intent buys a cart.
+  - name: promo-codes
+    description: The discount codes of Optional Feature 13. A manager creates a code,
+      reads the codes and disables a code. Only a manager may use these operations.
 
 security:
   - bearerAuth: []
@@ -1780,6 +1783,209 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  # ---- Promo codes, Optional Feature 13 -----------------------------------
+  # The manager's half of the feature: the codes themselves, and the switch that
+  # disables one. The client applies a code at checkout, which `createOrder` carries.
+  # No 429 on these three, which is the convention every operation outside the six
+  # throttled auth ones follows: the server can answer 429 anywhere and the document
+  # declares it only where a client must handle it.
+  /promo-codes:
+    post:
+      tags: [promo-codes]
+      summary: Create a promo code
+      description: |
+        Only a manager may use this operation.
+
+        Send the code, the discount type and the discount value. The server creates the
+        code and enables it.
+
+        The code is unique and the server ignores case. `SAVE10` and `save10` are one
+        code. A code that another row already holds returns 409.
+
+        `discountValue` is a percentage from 1 to 100 when `discountType` is
+        `percentage`. It is an amount in minor units when `discountType` is `fixed`. A
+        percentage above 100 returns 400.
+
+        Three fields are optional. Omit `expiresAt` for a code with no expiry date. Omit
+        `usageLimit` for a code with no limit. Omit `minPurchase` for a code that applies
+        to any subtotal.
+      operationId: createPromoCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, discountType, discountValue]
+              properties:
+                code:
+                  type: string
+                  description: The value a client sends at checkout. The server compares
+                    it without case.
+                  minLength: 1
+                  maxLength: 40
+                  example: SAVE10
+                discountType:
+                  $ref: '#/components/schemas/PromoDiscountType'
+                discountValue:
+                  type: integer
+                  description: A percentage from 1 to 100, or an amount in minor units.
+                    `discountType` decides which one.
+                  minimum: 1
+                  example: 10
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: The instant the server stops accepting this code.
+                  example: '2026-12-31T23:59:59Z'
+                usageLimit:
+                  type: integer
+                  description: The number of orders that may use this code in total.
+                  minimum: 1
+                  example: 100
+                minPurchase:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The smallest order subtotal this code applies to, in minor
+                    units.
+      responses:
+        '201':
+          description: The server created the promo code.
+          headers:
+            Location:
+              description: The URL of the new promo code.
+              schema:
+                type: string
+              example: /v1/promo-codes/4
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [promo-codes]
+      summary: List the promo codes
+      description: |
+        Only a manager may use this operation.
+
+        The server returns one page of promo codes, newest first. The page carries the
+        disabled codes and the expired codes too, because a manager reads this list to
+        find them.
+
+        Each entry carries `usedCount`, which is the number of orders that used the
+        code.
+      operationId: listPromoCodes
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: One page of promo codes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PromoCode'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /promo-codes/{id}:
+    patch:
+      tags: [promo-codes]
+      summary: Update a promo code
+      description: |
+        Only a manager may use this operation.
+
+        Send only the fields to change. Set `isActive` to false to disable the code. Set
+        `isActive` to true to enable it again. A disabled code returns an error at
+        checkout.
+
+        Send `discountType` and `discountValue` together. One column carries a
+        percentage under one type and an amount under the other, so the server refuses
+        one field without the other with 400.
+
+        The server does not change `usedCount`. Checkout is the only writer of that
+        value.
+
+        A `code` that another row already holds returns 409. The server compares the
+        value without case, as it does on create.
+      operationId: updatePromoCode
+      parameters:
+        - $ref: '#/components/parameters/PromoCodeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              description: Send at least one field.
+              properties:
+                code:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                discountType:
+                  $ref: '#/components/schemas/PromoDiscountType'
+                discountValue:
+                  type: integer
+                  description: A percentage from 1 to 100, or an amount in minor units.
+                  minimum: 1
+                expiresAt:
+                  type: string
+                  format: date-time
+                usageLimit:
+                  type: integer
+                  minimum: 1
+                minPurchase:
+                  allOf:
+                    - $ref: '#/components/schemas/Money'
+                  description: The smallest order subtotal this code applies to.
+                isActive:
+                  type: boolean
+                  description: Set this field to false to disable the code.
+      responses:
+        '200':
+          description: The updated promo code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromoCode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 components:
 
   securitySchemes:
@@ -2339,6 +2545,60 @@ components:
       enum: [payment_link, payment_intent]
       example: payment_intent
 
+    # ---- Promo codes --------------------------------------------------------
+    # `code` is stored as the manager typed it and compared without case, so a client
+    # may send any spelling and a manager still reads the one they wrote. The three
+    # optional members are the three rules a code may carry, and each is absent when
+    # the code carries no such rule. `usedCount` is the counter checkout increments.
+    PromoCode:
+      type: object
+      required: [id, code, discountType, discountValue, usedCount, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+          example: 4
+        code:
+          type: string
+          description: The value a client sends at checkout, in the case the manager
+            typed.
+          example: SAVE10
+        discountType:
+          $ref: '#/components/schemas/PromoDiscountType'
+        discountValue:
+          type: integer
+          description: A percentage from 1 to 100, or an amount in minor units.
+            `discountType` decides which one.
+          example: 10
+        expiresAt:
+          type: string
+          format: date-time
+          description: The instant the server stops accepting this code. It is absent
+            when the code does not expire.
+          example: '2026-12-31T23:59:59Z'
+        usageLimit:
+          type: integer
+          description: The number of orders that may use this code in total. It is
+            absent when the code has no limit.
+          example: 100
+        usedCount:
+          type: integer
+          description: The number of orders that have used this code.
+          example: 12
+        minPurchase:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: The smallest order subtotal this code applies to. It is absent
+            when the code applies to any subtotal.
+        isActive:
+          type: boolean
+          description: A disabled code returns an error at checkout. It stays in this
+            list.
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-09-04T10:15:00Z'
+
     # ---- Money --------------------------------------------------------------
     Money:
       type: integer
@@ -2368,6 +2628,14 @@ components:
     Role:
       type: string
       enum: [manager, client, delivery_person]
+    # Lower case, for the reason OrderStatus gives. The two members are the brief's
+    # two discount kinds, and the member decides how a client reads `discountValue`.
+    PromoDiscountType:
+      type: string
+      description: A percentage discount takes a share of the subtotal. A fixed discount
+        takes an amount in minor units.
+      enum: [percentage, fixed]
+      example: percentage
 
   # ---- Query parameters ---------------------------------------------------
   # Every collection takes this pair. The bounds repeat PageMeta, so a caller reads the
@@ -2434,6 +2702,15 @@ components:
       schema:
         type: integer
       example: 501
+
+    PromoCodeId:
+      name: id
+      in: path
+      required: true
+      description: The id of the promo code. It is the id, and not the code itself.
+      schema:
+        type: integer
+      example: 4
 
     # ---- Order history filters, Feature 9 -----------------------------------
     # Names are camelCase per

@@ -254,9 +254,10 @@ export function resetThrottleCounter(ctx: TestApp): void {
 export async function truncateAll(prisma: PrismaService): Promise<void> {
   // Named and not left to CASCADE: `consumed_refresh_tokens`, `product_likes`
   // and `stock_notifications` would be reached only as a side effect, and
-  // `stripe_events` has no foreign key at all.
+  // `stripe_events` and `promo_codes` have no foreign key at all. A promo code
+  // left behind is a unique violation in the next run, not a stale row.
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "refresh_tokens", "consumed_refresh_tokens", "users", "products", "product_likes", "stock_notifications", "stripe_events", "promo_codes" RESTART IDENTITY CASCADE',
   );
 }
 

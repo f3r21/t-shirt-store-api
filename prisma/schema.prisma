@@ -431,3 +431,64 @@ model StockNotification {
   @@id([userId, variantId])
   @@map("stock_notifications")
 }
+
+/// How a promo code reduces a subtotal: a share of it, or a flat amount off it.
+/// The member decides how `discount_value` reads, so the two live in one row
+/// rather than in two nullable columns.
+enum PromoDiscountType {
+  percentage
+  fixed
+
+  @@map("promo_discount_type")
+}
+
+/// One discount code a manager created. Optional Feature 13.
+///
+/// The table is the whole feature on the manager's side: a code is created,
+/// listed and switched between active and inactive, and no row is ever deleted,
+/// because an order that used a code points at it.
+model PromoCode {
+  id Int @id @default(autoincrement())
+
+  /// Stored as the manager typed it and compared without case, which is what
+  /// `citext` gives. `SAVE10` and `save10` are one code, so the unique index
+  /// answers the 409 on both spellings and a client may send either. The same
+  /// column type the `users.email` column uses, for the same reason.
+  code String @unique @db.Citext
+
+  discountType PromoDiscountType @map("discount_type")
+
+  /// A percentage from 1 to 100, or an amount in minor units. `discount_type`
+  /// decides which, and the DTO bounds the percentage at 100. Minor units for
+  /// the reason `price_cents` records.
+  discountValue Int @map("discount_value")
+
+  /// When the server stops accepting the code. Null means the code does not
+  /// expire, which is the state a code is created in unless the manager names
+  /// a date.
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  /// How many orders may use the code in total. Null means no limit. The pair
+  /// with `used_count` is what checkout compares.
+  usageLimit Int? @map("usage_limit")
+
+  /// How many orders have used the code. Checkout is the only writer, and it
+  /// increments the value inside the transaction that creates the order.
+  usedCount Int @default(0) @map("used_count")
+
+  /// The smallest subtotal the code applies to, in minor units. Null means the
+  /// code applies to any subtotal.
+  minPurchaseCents Int? @map("min_purchase_cents")
+
+  /// The disable and enable switch the brief asks for. A disabled code stays in
+  /// the list and stays on the orders that already used it.
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  /// No `updatedAt`, and no index beyond the unique on `code`. That index is
+  /// what the 409 rests on and what checkout looks a code up by. The list sorts
+  /// on `created_at`, and a store holds a few dozen codes, so an index for the
+  /// sort would cost every insert and save one sequential scan of one page.
+  @@map("promo_codes")
+}

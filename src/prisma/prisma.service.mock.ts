@@ -124,6 +124,15 @@ export interface PrismaMock {
     create: jest.Mock;
     deleteMany: jest.Mock;
   };
+  // The manager's three promo code operations. `findUnique` is the id the
+  // update resolves before it writes, so an unknown one is a 404.
+  promoCode: {
+    findUnique: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+    create: jest.Mock;
+    update: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -247,6 +256,16 @@ export function createPrismaMock(): PrismaMock {
     stockNotification: {
       create: jest.fn(),
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    // Empty by default, for the reason `order.findMany` is: a spec that is not
+    // about the list reads an empty page back, and one that is says what rows
+    // it holds.
+    promoCode: {
+      findUnique: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      create: jest.fn(),
+      update: jest.fn(),
     },
     $transaction: jest.fn(),
   };

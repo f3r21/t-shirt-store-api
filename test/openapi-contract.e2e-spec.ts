@@ -96,6 +96,23 @@ describe('OpenAPI document against the contract (e2e)', () => {
       'POST /products/{id}/variants body.price.maximum=2147483647',
       'POST /products/{id}/variants body.price.minimum=0',
       'POST /products/{id}/variants body.stock.maximum=2147483647',
+      // The promo codes, nine entries, the same three decisions. The `int4`
+      // ceilings on the two amounts and the limit, the `offset` ceiling the
+      // other lists carry, and `minPurchase.minimum=0`, which is what the
+      // contract's `Money` states through an `allOf` this check does not
+      // follow. `discountValue` has no ceiling here beyond `int4`: the
+      // percentage stops at 100 and the fixed amount does not, so the bound
+      // depends on `discountType` and lives in `PercentageAtMost100` rather
+      // than in a `@Max` the document could carry.
+      'GET /promo-codes q.offset.maximum=2147483647',
+      'PATCH /promo-codes/{id} body.discountValue.maximum=2147483647',
+      'PATCH /promo-codes/{id} body.minPurchase.maximum=2147483647',
+      'PATCH /promo-codes/{id} body.minPurchase.minimum=0',
+      'PATCH /promo-codes/{id} body.usageLimit.maximum=2147483647',
+      'POST /promo-codes body.discountValue.maximum=2147483647',
+      'POST /promo-codes body.minPurchase.maximum=2147483647',
+      'POST /promo-codes body.minPurchase.minimum=0',
+      'POST /promo-codes body.usageLimit.maximum=2147483647',
     ],
   };
 
@@ -233,7 +250,7 @@ describe('OpenAPI document against the contract (e2e)', () => {
     // Every declared operation is served. The counts stay pinned, so an
     // operation added to the contract without a handler, or a handler deleted
     // by accident, shows up here as a number that moved.
-    expect(implemented).toHaveLength(38);
+    expect(implemented).toHaveLength(41);
     expect(missing).toHaveLength(0);
     expect(implemented.length + missing.length).toBe(
       operationsOf(contract).length,

@@ -47,6 +47,10 @@ export class AbilityFactory {
       can(['create', 'update', 'delete'], 'Product');
       can('manage', 'ProductVariant');
       can('manage', 'Order');
+      // The whole of Optional Feature 13 on the manager's side, and no rule
+      // for anyone else: a client meets a code at checkout, by sending it, and
+      // never reads this subject.
+      can('manage', 'PromoCode');
     }
 
     return build();

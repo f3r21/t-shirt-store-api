@@ -85,6 +85,7 @@ describe('AbilityFactory', () => {
       expect(ability.can('manage', 'ProductLike')).toBe(false);
       expect(ability.can('create', 'Order')).toBe(false);
       expect(ability.can('read', 'Order')).toBe(false);
+      expect(ability.can('read', 'PromoCode')).toBe(false);
       expect(() => accessibleBy(ability).Order).toThrow();
     });
   });
@@ -147,6 +148,18 @@ describe('AbilityFactory', () => {
       expect(ability.can('update', 'Product')).toBe(false);
       expect(ability.can('delete', 'Product')).toBe(false);
       expect(ability.can('manage', 'ProductVariant')).toBe(false);
+    });
+
+    /**
+     * The three promo code operations are a manager's. A client meets a code
+     * at checkout and never through this subject, which is why `read` is false
+     * here and not a rule with a condition.
+     */
+    it('neither reads nor writes the promo codes', () => {
+      expect(ability.can('read', 'PromoCode')).toBe(false);
+      expect(ability.can('create', 'PromoCode')).toBe(false);
+      expect(ability.can('update', 'PromoCode')).toBe(false);
+      expect(ability.can('manage', 'PromoCode')).toBe(false);
     });
 
     it('manages their own sessions and updates their own account', () => {
@@ -246,6 +259,13 @@ describe('AbilityFactory', () => {
       expect(ability.can('update', 'Product')).toBe(true);
       expect(ability.can('delete', 'Product')).toBe(true);
       expect(ability.can('manage', 'ProductVariant')).toBe(true);
+    });
+
+    it('manages the promo codes: creates one, reads the list, disables one', () => {
+      expect(ability.can('manage', 'PromoCode')).toBe(true);
+      expect(ability.can('create', 'PromoCode')).toBe(true);
+      expect(ability.can('read', 'PromoCode')).toBe(true);
+      expect(ability.can('update', 'PromoCode')).toBe(true);
     });
 
     it('reads a disabled product, and still not a deleted one', () => {
