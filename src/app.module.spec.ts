@@ -170,6 +170,50 @@ describe('AppModule', () => {
   });
 
   /**
+   * The README's `cp .env.example .env` reaches a running API once the reader
+   * fills the four secrets, and needs no AWS account for anything else.
+   *
+   * `S3_BUCKET` and `IMAGES_BASE_URL` are the two that carried no value. They
+   * are required, so the boot refused before an upload was ever attempted, and
+   * the only documented source for them was the deployed stack. `validateEnv`
+   * wants a value and not a working bucket, so the file carries a placeholder
+   * for each and an upload is what fails.
+   */
+  it('boots from .env.example with only the secrets filled', () => {
+    const example = readFileSync(join(__dirname, '..', '.env.example'), 'utf8');
+    const parsed: Record<string, string> = {};
+    for (const line of example.split('\n')) {
+      const assignment = /^([A-Z0-9_]+)=(.*)$/.exec(line);
+      if (assignment !== null) {
+        parsed[assignment[1]] = assignment[2];
+      }
+    }
+
+    // Discovery found something, or filling the four below proves nothing.
+    expect(Object.keys(parsed).length).toBeGreaterThan(10);
+
+    // The four the file leaves blank on purpose. This is the control: a secret
+    // that arrived in the file would make the test below pass for the wrong
+    // reason, and no secret belongs in a committed file.
+    expect([
+      parsed.JWT_SECRET,
+      parsed.REFRESH_TOKEN_PEPPER,
+      parsed.STRIPE_SECRET_KEY,
+      parsed.STRIPE_WEBHOOK_SECRET,
+    ]).toEqual(['', '', '', '']);
+
+    expect(() =>
+      validateEnv({
+        ...parsed,
+        JWT_SECRET: 'a'.repeat(32),
+        REFRESH_TOKEN_PEPPER: 'b'.repeat(32),
+        STRIPE_SECRET_KEY: 'sk_test_spec',
+        STRIPE_WEBHOOK_SECRET: 'whsec_spec',
+      }),
+    ).not.toThrow();
+  });
+
+  /**
    * No boolean variable may read a word as truthy, and an unknown word stops
    * the boot. Discovered from `design:type`.
    */

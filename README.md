@@ -11,7 +11,7 @@ Seven commands, in this order. Three of them carry a trap, noted below.
 
 ```bash
 npm install
-cp .env.example .env      # then fill in the six blank values, see below
+cp .env.example .env      # then fill in the four blank values, see below
 npm run docker:up         # Postgres, Valkey and Mailpit
 npm run db:migrate        # applies the migrations
 npm run db:seed           # NOT optional, see below
@@ -45,19 +45,22 @@ them when `NODE_ENV` is `production`, and seeds only the roles and categories th
 ### The environment file
 
 `.env.example` names every variable the schema declares, and `src/app.module.spec.ts` fails
-if one is missing. Ten variables are blank and six of them need a value:
+if one is missing. Eight variables are blank and four of them need a value:
 
 - `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, at least 32 characters each. The boot refuses
   without them. The pepper is a separate value so that rotating the signing key keeps every
   stored token hash valid. ADR 1.
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, from the Stripe section below.
-- `S3_BUCKET` and `IMAGES_BASE_URL`, the `ImagesBucket` and `ApiUrl` outputs of the deployed
-  stack. The AWS SDK reads its credentials from the shell, `AWS_PROFILE=tshirt npm run start:dev`,
-  never from a file.
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+`S3_BUCKET` and `IMAGES_BASE_URL` carry placeholders, so the API boots with no AWS account.
+Only the image upload needs the real values, the `ImagesBucket` and `ApiUrl` outputs of the
+deployed stack. An upload against a placeholder fails at S3 with a 500, and never at boot.
+To upload an image, set the two variables to those outputs. The AWS SDK reads its credentials
+from the shell, `AWS_PROFILE=tshirt npm run start:dev`, never from a file.
 
 The other four stay blank on a laptop. An empty `CORS_ORIGINS` means no browser on another
 origin may call the service. `SMTP_USER` and `SMTP_PASS` stay empty because Mailpit wants no
