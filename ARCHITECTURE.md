@@ -7,7 +7,7 @@ Read the diagram first. Everything drawn is built and running.
 flowchart TB
     code["Commit<br/>pre-commit hook"]
     ci["CI, every push<br/>typecheck, lint, format,<br/>unit, e2e, image, deploy"]
-    citest[("postgres:16-alpine<br/>e2e service container")]
+    citest[("Postgres,<br/>e2e service container")]
     deploy["Deploy<br/>registry, migrate,<br/>then roll the tag"]
 
     client["Client<br/>browser or mobile"]
@@ -15,7 +15,7 @@ flowchart TB
     pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>20 connections per task,<br/>76 usable, so 3 tasks")]
     casl["CASL abilities<br/>a dependency, not a guard"]
     store[("Object storage<br/>product images")]
-    smtp["SES<br/>from the task role"]
+    smtp["Mail provider,<br/>from the task role"]
     stripe["Stripe"]
     valkey[("Valkey<br/>stock queue")]
     worker["Worker<br/>same image,<br/>different entrypoint"]
@@ -38,12 +38,7 @@ flowchart TB
     worker -->|"low-stock mail"| smtp
 ```
 
-The shared ceiling is Postgres. Each process opens a pool of `DATABASE_POOL_SIZE`
-connections, 10 by default, and a task runs two processes, the API and the worker, so a
-task holds 20. The database answered `SHOW max_connections` with 79 from a one-off task on
-2026-09-03, three of them reserved for the superuser, so 76 are usable: three tasks fit, a
-fourth does not, and the migrate task's single connection sits inside the margin. ADR 35
-records the choice and what would move it.
+The shared ceiling is Postgres. ADR 35 records the choice and what would move it.
 
 ## What comes off the request path
 
@@ -57,8 +52,7 @@ Why BullMQ. Valkey is already provisioned for the throttler's counter once it is
 across replicas, and one job type does not use what a broker sells. I rejected RabbitMQ:
 exchanges, bindings and inter-queue dead-lettering are routing this system has no second
 consumer for, and its at-least-once guarantee is the same, so the idempotency work is
-identical. I rejected pg-boss: it adds no service, and pays for that by polling the Postgres
-that is already the ceiling.
+identical.
 
 **Switch:** when a second consumer needs the same event under a different routing rule, say
 fulfilment subscribing to a paid order beside the mail worker, RabbitMQ. BullMQ makes each
@@ -71,60 +65,27 @@ build is a transactional outbox.
 
 One CloudFormation stack in `infra/`: the image on one arm64 ECS instance behind CloudFront
 for HTTPS, a managed Postgres, a managed Valkey, and an object store. Not serverless: a pool
-per invocation multiplies connections by concurrency until the database refuses them. CI runs
-the typecheck, the linter, the formatter, both suites and a `docker build` on every push. The
+per invocation multiplies connections by concurrency until the database refuses them. The
 release, registry then `prisma migrate deploy` as a one-off task then the tag rolled, is a
 job per push to `main` that assumes a role through GitHub's OIDC token and stores no key.
 Mail goes out through SES from the same task role, so no relay password exists either.
 
-Rollback is the image, never the schema, so migrations are forward-only and additive. Seven
-of the eight are. The second drops `users.reset_token` in the same statement that adds
-`reset_token_hash`, so a replica still on the previous image breaks mid-rollout. That rename
-needed expand and contract.
+Rollback is the image, never the schema, so migrations are forward-only and additive.
 
 ## Where a request fails halfway
 
 The seam is the payment webhook, because Stripe holds half the state. It is the only writer
 of `paid`, and stock comes down inside the transaction that sets it, so a disagreement is one
 failed transaction, not two drifting systems. The Stripe event id is the primary key of
-`stripe_events`, inserted first in that transaction, so a retry is a unique violation.
-`payments.service.ts` is that transaction: the event row, then one conditional write from
-`pending` to `paid`, then the history row, then each line's stock, and every answer but a bad
-signature is 200 because Stripe retries anything else. When the units are gone by the time
-the payment lands, the stock floors at zero and a warning names the shortfall, because the
-money is already taken. ADR 24 records the rest.
-
-## Where the security risks are
-
-Ahead of the OWASP list, a replayed webhook: Stripe retries, and a replayed
-`payment_intent.succeeded` that lowered the stock twice would be silent. The event id is the
-primary key of `stripe_events`, inserted first in the paying transaction, and the suite
-replays a signed event and asserts that the stock moved once. A01, broken access control, is
-first on the list, because one global guard is the only thing standing there. It is CASL: an
-ability per caller, a policy on every handler, deny by default, and the ownership conditions
-turned into the where clauses the services read with, so another client's order is a 404 by
-construction. A07 second: `argon2.hash` takes no options, so its cost is the library default,
-and reuse detection accepts a spent token for ten seconds after rotation without raising the
-alarm, the hole ADR 2 prices. API4 third, three tiers by route, and the last paragraph below
-names the setting it depends on.
+`stripe_events`, inserted first in that transaction, so a retry is a unique violation. ADR 24
+records the rest.
 
 ## How I know it still works, and what I would watch
 
 Per route: request rate, 4xx against 5xx, p95 latency, and saturation as pool usage and
 event loop lag. Then what no infrastructure metric shows: checkout conversion, webhook lag,
 the failed set's size, and stock going negative, which pages. Logs are pino JSON on stdout.
-Every line carries the request id, which a caller may set with `X-Request-Id` and reads back,
-and the filter writes one line per failure with the event, the status, the problem type, and
-the user id once a token verified, never a token. The job carries no request id: the enqueue
-line names both, and none of the metrics in this section exist yet.
+The job carries no request id: the enqueue line names the request id and the job ids, and
+none of the metrics in this section exist yet.
 
-One regression would reach production unnoticed, and it is a setting. `ThrottlerGuard` keys
-the limit on `req.ip` (`app.module.ts`, no `getTracker` override). With `trust proxy` unset,
-`req.ip` behind a load balancer is the balancer, so every caller shares one counter and one
-abusive client answers 429 to the whole store. `TRUST_PROXY_HOPS` carries the answer as a
-count, default 0: `trust proxy: true` would fix the sharing and open a worse hole, because
-any client could then forge `X-Forwarded-For` and evade the limit. A service put behind a
-proxy by someone who does not set it is back where it started, and no test catches that,
-because the end-to-end suite talks to the process directly and `req.ip` there is the real
-client. What a test does catch is the other half: `app.e2e-spec.ts` asserts helmet's headers
-and asserts that an origin outside `CORS_ORIGINS` gets no `Access-Control-Allow-Origin`.
+ADR 19 records where the security risks are, and the one setting no test catches.

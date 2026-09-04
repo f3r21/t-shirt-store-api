@@ -32,3 +32,9 @@ fourth task would be refused connections at runtime.
 
 **Switch:** a pooler when the shape goes serverless or the task count reaches the ceiling; a
 larger instance moves `max_connections`, and the page with it.
+
+**Revised 2026-09-04:** `ARCHITECTURE.md` is one page, so the connection arithmetic it carried
+moved here and the page keeps a pointer. This record already held the measurement, and this
+is the sentence it did not: each process opens a pool of `DATABASE_POOL_SIZE`
+connections, 10 by default, and a task runs two processes, the API and the worker, so a task
+holds 20.

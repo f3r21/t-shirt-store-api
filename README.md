@@ -191,7 +191,7 @@ on its own, through the service's circuit breaker. A release that became healthy
 needs that command. Rehearsed on 2026-09-03: about three minutes each way, proven by the
 running tag. Leave `MigrateImageTag` where it is: a migration is never reversed, so
 the previous image must read the current schema, and so every migration is additive
-(`ARCHITECTURE.md` names the one that was not).
+(the known gaps below name the one that was not).
 
 Mail and Stripe, once, after the first release:
 
@@ -294,6 +294,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
 
 - The liveness route reaches no database, so a task that boots against an incompatible
   schema passes the circuit breaker. The additive-migration rule is discipline, not a check.
+  Seven of the eight migrations are additive. The second drops `users.reset_token` in the same
+  statement that adds `reset_token_hash`, so a replica still on the previous image breaks
+  mid-rollout. That rename needed expand and contract.
 - Every link sale logs `payment.orphan` for its `payment_intent.succeeded` event, because the
   link's intent carries no order id (ADR 24). The warning is real only for an intent this
   service did not create.

@@ -15,6 +15,11 @@ retries per job.
 - Fire on equality: misses most sales.
 - One job per variant: a job dying halfway resends everything before it.
 - An enqueue inside the transaction: a queue outage fails a paid order.
+- pg-boss: it adds no service, and pays for that by polling the Postgres that is already the
+  ceiling.
+
+**Revised 2026-09-04:** the pg-boss option moved here from `ARCHITECTURE.md`, which is one
+page and keeps the RabbitMQ comparison only.
 
 ## Decision
 
