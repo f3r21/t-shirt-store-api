@@ -1445,6 +1445,10 @@ paths:
       description: |
         The server returns one page of the orders of the signed-in user.
 
+        Every entry carries the status, the total, the payment method and the number of
+        units. `getOrder` returns the lines, so one page costs a fixed number of queries
+        however many lines an order has.
+
         Every filter is optional and the server applies the ones it receives. To select
         one day, set `createdFrom` to that day and `createdTo` to the next day.
 
@@ -2144,6 +2148,11 @@ components:
           type: integer
           description: The number of units in the order, across every line.
           example: 3
+        paymentMethod:
+          allOf:
+            - $ref: '#/components/schemas/PaymentMethod'
+          description: The Stripe flow that paid this order. It is absent until a
+            payment succeeds.
         createdAt:
           type: string
           format: date-time

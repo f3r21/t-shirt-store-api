@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
-import { OrderStatus } from '../../generated/prisma/enums';
-import { OrderCustomerDto, ORDER_STATUSES } from './order.dto';
+import { OrderStatus, PaymentMethod } from '../../generated/prisma/enums';
+import { OrderCustomerDto, ORDER_STATUSES, PAYMENT_METHODS } from './order.dto';
 
 /**
  * The contract's `OrderSummary`. `itemCount` counts units, so a page carries
@@ -25,6 +25,13 @@ export class OrderSummaryDto {
 
   /** The number of units in the order, across every line. */
   itemCount!: number;
+
+  /**
+   * The Stripe flow that paid this order. Absent until a payment succeeds, and
+   * one column of the row, so a list entry carries it without a join.
+   */
+  @ApiPropertyOptional({ enum: PAYMENT_METHODS })
+  paymentMethod?: PaymentMethod;
 
   /** ISO 8601. */
   createdAt!: string;

@@ -124,6 +124,9 @@ export function toOrderSummaryDto(
   if (isManager(viewer)) {
     dto.customer = toOrderCustomerDto(row.user);
   }
+  if (row.paymentMethod !== null) {
+    dto.paymentMethod = row.paymentMethod;
+  }
 
   return dto;
 }

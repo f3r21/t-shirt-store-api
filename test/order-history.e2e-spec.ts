@@ -105,8 +105,18 @@ describe('Order history (e2e)', () => {
         subtotal: 3998,
         total: 3998,
         itemCount: 2,
+        paymentMethod: 'payment_intent',
         createdAt: '2026-08-15T12:00:00.000Z',
       });
+    });
+
+    it("carries the payment method on a paid order's list entry", async () => {
+      const res = await myOrders(ana).expect(200);
+
+      expect(res.body.data[0].paymentMethod).toBe('payment_intent');
+      // The control: the older order is pending, and an order no payment
+      // reached carries no method at all, the absence `getOrder` also answers.
+      expect(res.body.data[1]).not.toHaveProperty('paymentMethod');
     });
 
     it("answers 404, not 403, for another client's order id", async () => {
