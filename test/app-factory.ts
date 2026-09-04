@@ -213,7 +213,25 @@ export async function createTestApp(
   const app = configureApp(
     moduleRef.createNestApplication({ bufferLogs: true, rawBody: true }),
   );
-  await app.init();
+
+  // `listen`, not `init`, and on 127.0.0.1 rather than every address.
+  //
+  // supertest binds a port itself when the server it is handed carries no
+  // address, and closes it again when the response arrives. With `init` alone
+  // the suite therefore bound and released one ephemeral port per request,
+  // 1642 of them in a measured run, and each of those binds could collide.
+  // `listen(0)` with no host binds the dual stack wildcard with address reuse
+  // on the socket, and the capture shows the outcome: the kernel handed out a
+  // port that another process already held on IPv4 only. Both listeners
+  // end up on the port, an IPv4 connection goes to the IPv4 socket, and the
+  // request never reaches this application: the other process answered nothing
+  // and half closed, and superagent reported `socket hang up`.
+  //
+  // One listen for the life of the application removes the per-request bind,
+  // and the address removes what is left, because a socket bound to the address
+  // supertest dials wins over any wildcard. `app.close()` in `afterAll` closes
+  // it.
+  await app.listen(0, '127.0.0.1');
 
   return { app, prisma: app.get(PrismaService), mail, stripe, objects };
 }
