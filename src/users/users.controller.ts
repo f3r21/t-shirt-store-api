@@ -8,7 +8,6 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -17,10 +16,12 @@ import { UserDto } from './dto/user.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
-import { PASSWORD_THROTTLE } from '../auth/password-throttle';
-import { SIGN_IN_THROTTLE } from '../auth/sign-in-throttle';
 import { CheckPolicies } from '../authz/check-policies.decorator';
 import { can } from '../authz/policies';
+import {
+  SignInTier,
+  PasswordTier,
+} from '../auth/decorators/throttle-tier.decorator';
 
 @ApiTags('auth')
 @ApiResponse({ status: 500, description: 'Unexpected server error.' })
@@ -50,13 +51,12 @@ export class UsersController {
   })
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 409, description: 'The email address is taken.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   /**
    * The sign-in tier on sign-up: the 409 for a taken address is an
    * enumeration oracle, and the contract requires it, so the limit is the
    * answer. ADR 7.
    */
-  @Throttle(SIGN_IN_THROTTLE)
+  @SignInTier()
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createUser(
@@ -74,13 +74,12 @@ export class UsersController {
    * Rate limited because the body carries a password guess, which is the same
    * reason the contract declares a 429 here.
    */
-  @Throttle(PASSWORD_THROTTLE)
+  @PasswordTier()
   @CheckPolicies(can('update', 'User'))
   @ApiOperation({ summary: 'Change the password of the signed-in account' })
   @ApiResponse({ status: 204, description: 'Password changed.' })
   @ApiResponse({ status: 400, description: 'The request body is not valid.' })
   @ApiResponse({ status: 401, description: 'Authentication is required.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @Patch('me/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   changePassword(

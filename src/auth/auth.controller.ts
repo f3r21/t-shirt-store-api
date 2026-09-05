@@ -11,7 +11,6 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { CreateSessionDto } from './dto/create-session.dto';
@@ -25,11 +24,10 @@ import type { AccessTokenPayload } from './access-token-payload';
 import { PageQueryDto } from '../common/dto/page-query.dto';
 import { ApiPageResponse } from '../common/dto/api-page-response';
 import { SessionDto } from './dto/session.dto';
-import { PASSWORD_THROTTLE } from './password-throttle';
 import { CheckPolicies } from '../authz/check-policies.decorator';
 import { can } from '../authz/policies';
-import { SIGN_IN_THROTTLE } from './sign-in-throttle';
 import { ParseIdPipe } from '../common/parse-id.pipe';
+import { SignInTier, PasswordTier } from './decorators/throttle-tier.decorator';
 
 @ApiTags('auth')
 @ApiResponse({ status: 500, description: 'The server failed.' })
@@ -44,7 +42,7 @@ export class AuthController {
    * later without listing them first.
    */
   @Public()
-  @Throttle(SIGN_IN_THROTTLE)
+  @SignInTier()
   @ApiOperation({ summary: 'Create a session and get tokens' })
   @ApiResponse({
     status: 201,
@@ -60,7 +58,6 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The credentials are wrong.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @Post('sessions')
   @HttpCode(HttpStatus.CREATED)
   async createSession(
@@ -82,7 +79,6 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 401, description: 'The token is not valid.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   /**
    * The sign-in tier, and this route was the only credential route without one.
    *
@@ -93,7 +89,7 @@ export class AuthController {
    * both of the other findings in this unit: a replay loop is only a weapon at
    * the rate the route allows.
    */
-  @Throttle(SIGN_IN_THROTTLE)
+  @SignInTier()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refreshSession(@Body() dto: RefreshSessionDto): Promise<SessionTokensDto> {
@@ -152,11 +148,10 @@ export class AuthController {
    * though the answer never differs.
    */
   @Public()
-  @Throttle(PASSWORD_THROTTLE)
+  @PasswordTier()
   @ApiOperation({ summary: 'Request a password reset link' })
   @ApiResponse({ status: 202, description: 'The request is accepted.' })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
   requestPasswordReset(@Body() dto: RequestPasswordResetDto): Promise<void> {
@@ -164,12 +159,11 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle(PASSWORD_THROTTLE)
+  @PasswordTier()
   @ApiOperation({ summary: 'Set a new password with a reset token' })
   @ApiResponse({ status: 204, description: 'The password is changed.' })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 422, description: 'The reset token is not valid.' })
-  @ApiResponse({ status: 429, description: 'Too many requests.' })
   @Post('reset-password')
   @HttpCode(HttpStatus.NO_CONTENT)
   resetPassword(@Body() dto: ResetPasswordDto): Promise<void> {

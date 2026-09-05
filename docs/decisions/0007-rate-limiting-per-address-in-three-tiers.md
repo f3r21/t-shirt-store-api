@@ -1,6 +1,6 @@
 # 7. Rate limiting is per source address, in three tiers
 
-Status: accepted
+Status: accepted, revised 2026-09-04
 Date: 2026-08-28
 
 ## Context
@@ -30,3 +30,7 @@ misspelled `@Throttle` key compiles and does nothing.
 for one process.
 
 **Switch:** when the service runs twice, a Redis storage for the throttler.
+
+**Revised 2026-09-04:** the 429 is declared by the tier decorator (`SignInTier`,
+`PasswordTier`) together with the throttle, so a throttled handler cannot omit it and a tier
+applied where the contract has no 429 fails the drift suite.
