@@ -1,6 +1,6 @@
 # 24. The webhook is the only writer of `paid`, and a retry is a unique violation
 
-Status: accepted, revised 2026-09-03
+Status: accepted, revised 2026-09-04
 Date: 2026-09-01
 
 ## Context
@@ -36,6 +36,16 @@ keeps the event row and warns `payment.unpaid-session`.
 after a read, so a restock landing in between was discarded. The floor now carries the stock
 it read, zero rows starts the round again from the decrement, and a third miss throws so the
 transaction rolls back and Stripe retries. ADR 34.
+
+**Revised 2026-09-04, from the fix list (F-04):** the handler read no amount, so a correctly
+signed success for one minor unit paid an order of 3998 and took its stock. `paymentOf` now
+reads what was charged off the event object, `amount_received` for an intent and
+`amount_total` for a session, each beside its currency. The currency is compared with the
+gateway's `CURRENCY` before the order is touched, and the paying write carries the amount in
+its `WHERE`, the shape ADR 34 names, so it moves only the order that costs what was taken. A
+mismatch keeps the event row, leaves the order `pending`, warns `payment.amount-mismatch` and
+still answers 200, because Stripe retries anything else. Nothing is fetched back from Stripe
+to decide it: the signature covers the bytes, so the amount in the body is Stripe's own.
 
 **Switch:** a second payment method is added in code, `payment_method_types` on the link and
 the intent, after `checkout.session.async_payment_succeeded` is handled; the dashboard alone

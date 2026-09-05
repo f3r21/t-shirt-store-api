@@ -13,7 +13,11 @@ import { accessibleBy } from '@casl/prisma';
 import type { AppAbility } from '../authz/ability';
 import { visibleProductWhere } from '../products/product-visibility';
 import { insufficientStock } from '../common/problem/insufficient-stock';
-import { STRIPE_MINIMUM_CENTS, StripeGateway } from './stripe.gateway';
+import {
+  CURRENCY,
+  STRIPE_MINIMUM_CENTS,
+  StripeGateway,
+} from './stripe.gateway';
 import { LowStockProducer } from '../stock-notifications/low-stock.producer';
 import type { StockChange } from '../stock-notifications/low-stock';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
@@ -30,11 +34,30 @@ type Outcome =
   | { kind: 'not-applied'; orderId: number; status: string }
   | { kind: 'unpaid'; orderId: number }
   | {
+      kind: 'amount-mismatch';
+      orderId: number;
+      amount: number | null;
+      currency: string | null;
+    }
+  | {
       kind: 'applied';
       orderId: number;
       stocks: StockChange[];
       oversold: { variantId: number; shortfall: number }[];
     };
+
+/**
+ * What one handled event says: the flow it belongs to, the order it names,
+ * whether money was taken, and what was taken. The amount and the currency
+ * come off the event object, so both can be absent.
+ */
+interface Payment {
+  method: PaymentMethod;
+  orderId: number | null;
+  paid: boolean;
+  amount: number | null;
+  currency: string | null;
+}
 
 /**
  * Read the order id an event carries in its metadata. Stripe metadata values
@@ -226,24 +249,32 @@ export class PaymentsService {
   }
 
   /**
-   * Which flow an event belongs to, the order it names, and whether money was
-   * taken: a session completes `unpaid` for a delayed payment method. ADR 24.
+   * Which flow an event belongs to, the order it names, whether money was
+   * taken (a session completes `unpaid` for a delayed payment method), and
+   * what was taken: the charged amount in minor units, beside the currency it
+   * was charged in, each read off the field its own kind carries it on. An
+   * object can arrive without either, so a missing value is `null` and the
+   * caller pays nothing for it. ADR 24.
    */
-  private paymentOf(
-    event: Stripe.Event,
-  ): { method: PaymentMethod; orderId: number | null; paid: boolean } | null {
+  private paymentOf(event: Stripe.Event): Payment | null {
     if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
       return {
         method: 'payment_link',
-        orderId: orderIdOf(event.data.object.metadata),
-        paid: event.data.object.payment_status === 'paid',
+        orderId: orderIdOf(session.metadata),
+        paid: session.payment_status === 'paid',
+        amount: session.amount_total ?? null,
+        currency: session.currency ?? null,
       };
     }
     if (event.type === 'payment_intent.succeeded') {
+      const intent = event.data.object;
       return {
         method: 'payment_intent',
-        orderId: orderIdOf(event.data.object.metadata),
+        orderId: orderIdOf(intent.metadata),
         paid: true,
+        amount: intent.amount_received ?? null,
+        currency: intent.currency ?? null,
       };
     }
     return null;
@@ -251,10 +282,10 @@ export class PaymentsService {
 
   /**
    * Apply a verified event. It always resolves, because Stripe retries
-   * anything but 200. The event id first, then one conditional move to
-   * `paid`, the history row, then each line's stock, floored at zero with a
-   * warning when the units are gone. The stocks go to the low-stock producer
-   * after the commit. ADR 24.
+   * anything but 200. The event id first, then the charged amount against the
+   * order's total, then one conditional move to `paid`, the history row, then
+   * each line's stock, floored at zero with a warning when the units are gone.
+   * The stocks go to the low-stock producer after the commit. ADR 24.
    */
   async applyEvent(event: Stripe.Event): Promise<void> {
     const payment = this.paymentOf(event);
@@ -273,14 +304,7 @@ export class PaymentsService {
       select: { id: true },
     });
     const outcome: Outcome =
-      seen !== null
-        ? { kind: 'duplicate' }
-        : await this.apply(
-            event,
-            payment.method,
-            payment.orderId,
-            payment.paid,
-          );
+      seen !== null ? { kind: 'duplicate' } : await this.apply(event, payment);
 
     this.report(event, payment.method, outcome);
     if (outcome.kind === 'applied') {
@@ -288,12 +312,8 @@ export class PaymentsService {
     }
   }
 
-  private async apply(
-    event: Stripe.Event,
-    method: PaymentMethod,
-    orderId: number | null,
-    paid: boolean,
-  ): Promise<Outcome> {
+  private async apply(event: Stripe.Event, payment: Payment): Promise<Outcome> {
+    const { method, orderId, paid, amount, currency } = payment;
     try {
       return await this.prisma.$transaction(async (tx) => {
         await tx.stripeEvent.create({
@@ -307,9 +327,19 @@ export class PaymentsService {
         if (!paid) {
           return { kind: 'unpaid', orderId };
         }
+        // What was taken, against what this store sells in. The endpoint
+        // hears every success of the Stripe account, and a valid signature
+        // says who sent the body, not which order it belongs to. Another
+        // currency, or an object that carries no amount, pays nothing, and
+        // the event row stays so a replay is a duplicate.
+        if (currency !== CURRENCY || amount === null) {
+          return { kind: 'amount-mismatch', orderId, amount, currency };
+        }
 
         const moved = await tx.order.updateMany({
-          where: { id: orderId, status: 'pending' },
+          // The move carries the amount it assumed, so an order that costs
+          // something else matches nothing here. ADR 34.
+          where: { id: orderId, status: 'pending', totalCents: amount },
           data: { status: 'paid', paymentMethod: method },
         });
         if (moved.count === 0) {
@@ -317,8 +347,13 @@ export class PaymentsService {
             where: { id: orderId },
             select: { status: true },
           });
-          return current === null
-            ? { kind: 'orphan', orderId }
+          if (current === null) {
+            return { kind: 'orphan', orderId };
+          }
+          // Zero rows on a row that is still pending: the guard that missed
+          // was the total, so what Stripe took is not what this order costs.
+          return current.status === 'pending'
+            ? { kind: 'amount-mismatch', orderId, amount, currency }
             : { kind: 'not-applied', orderId, status: current.status };
         }
         await tx.orderStatusChange.create({
@@ -434,6 +469,16 @@ export class PaymentsService {
           event: 'payment.unpaid-session',
           stripeEvent,
           orderId: outcome.orderId,
+        });
+        return;
+      case 'amount-mismatch':
+        this.logger.warn({
+          msg: 'payment amount does not match the order',
+          event: 'payment.amount-mismatch',
+          stripeEvent,
+          orderId: outcome.orderId,
+          amount: outcome.amount,
+          currency: outcome.currency,
         });
         return;
       case 'not-applied':

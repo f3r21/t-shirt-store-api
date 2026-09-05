@@ -29,6 +29,10 @@ const MANAGER_ABILITY = abilities.for(AS_MANAGER);
 /**
  * A Stripe event carrying an order id, or none, in its object's metadata. A
  * session completes paid unless a case says otherwise.
+ *
+ * The charged amount rides on the field its own kind carries it on, and is
+ * the fixture order's total in the store's currency, so a case that is about
+ * something else pays. A case about the amount overrides one of the two.
  */
 const anEvent = (
   type: string,
@@ -43,9 +47,10 @@ const anEvent = (
     data: {
       object: {
         metadata,
+        currency: 'usd',
         ...(type === 'checkout.session.completed'
-          ? { payment_status: 'paid' }
-          : {}),
+          ? { payment_status: 'paid', amount_total: 4498 }
+          : { amount_received: 4498 }),
         ...object,
       },
     },
@@ -432,7 +437,9 @@ describe('PaymentsService', () => {
         data: { id: 'evt_1', type: 'payment_intent.succeeded' },
       });
       expect(nthArg(prisma.order.updateMany)).toEqual({
-        where: { id: 501, status: 'pending' },
+        // The move carries the amount Stripe took, so the order it pays is
+        // the one that costs it. ADR 34.
+        where: { id: 501, status: 'pending', totalCents: 4498 },
         data: { status: 'paid', paymentMethod: 'payment_intent' },
       });
       expect(nthArg(prisma.orderStatusChange.create)).toEqual({
@@ -502,6 +509,89 @@ describe('PaymentsService', () => {
         expect.objectContaining({
           event: 'payment.unpaid-session',
           orderId: 501,
+        }),
+      );
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    // Written by hand against the handler, 2026-09-04. The endpoint hears
+    // every success event of the Stripe account, and a valid signature says
+    // who sent the body, not what it paid for. The amount the event carries
+    // has to be the order's total, in the currency this store sells in.
+    it("keeps an intent whose amount is not the order's total off the order, keeps the event, and warns", async () => {
+      // The move carries the amount, so it matches no row and the order is
+      // still pending when the outcome is read back.
+      prisma.order.updateMany.mockResolvedValue({ count: 0 });
+      prisma.order.findUnique.mockResolvedValue({
+        status: 'pending',
+        totalCents: 4498,
+      });
+
+      await service.applyEvent(
+        anEvent('payment_intent.succeeded', { orderId: '501' }, 'evt_1', {
+          amount_received: 1,
+        }),
+      );
+
+      expect(prisma.stripeEvent.create).toHaveBeenCalledTimes(1);
+      expect(nthArg(prisma.order.updateMany)).toEqual({
+        where: { id: 501, status: 'pending', totalCents: 1 },
+        data: { status: 'paid', paymentMethod: 'payment_intent' },
+      });
+      expect(prisma.orderStatusChange.create).not.toHaveBeenCalled();
+      expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'payment.amount-mismatch',
+          orderId: 501,
+          amount: 1,
+          currency: 'usd',
+        }),
+      );
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('keeps a session in another currency off the order, keeps the event, and warns', async () => {
+      await service.applyEvent(
+        anEvent('checkout.session.completed', { orderId: '501' }, 'evt_1', {
+          currency: 'eur',
+        }),
+      );
+
+      expect(prisma.stripeEvent.create).toHaveBeenCalledTimes(1);
+      // The currency is read before the order is touched at all.
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      expect(prisma.orderStatusChange.create).not.toHaveBeenCalled();
+      expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'payment.amount-mismatch',
+          orderId: 501,
+          amount: 4498,
+          currency: 'eur',
+        }),
+      );
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('keeps a session that carries no total off the order, keeps the event, and warns', async () => {
+      // Stripe types `amount_total` as nullable, and no amount is no match.
+      await service.applyEvent(
+        anEvent('checkout.session.completed', { orderId: '501' }, 'evt_1', {
+          amount_total: null,
+        }),
+      );
+
+      expect(prisma.stripeEvent.create).toHaveBeenCalledTimes(1);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+      expect(prisma.orderStatusChange.create).not.toHaveBeenCalled();
+      expect(prisma.productVariant.updateMany).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'payment.amount-mismatch',
+          orderId: 501,
+          amount: null,
+          currency: 'usd',
         }),
       );
       expect(notify).not.toHaveBeenCalled();

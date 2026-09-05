@@ -57,13 +57,29 @@ describe('Stock notifications, the producer (e2e)', () => {
       })
     ).stock;
 
-  const event = (orderId: number, id = 'evt_1') =>
-    JSON.stringify({
+  /**
+   * One signed body, carrying what Stripe took: the order's own total, in the
+   * store's currency, because the webhook pays nothing for anything else.
+   */
+  const event = async (orderId: number, id = 'evt_1'): Promise<string> => {
+    const order = await ctx.prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { totalCents: true },
+    });
+    return JSON.stringify({
       id,
       object: 'event',
       type: 'payment_intent.succeeded',
-      data: { object: { id: 'obj_1', metadata: { orderId: String(orderId) } } },
+      data: {
+        object: {
+          id: 'obj_1',
+          metadata: { orderId: String(orderId) },
+          currency: 'usd',
+          amount_received: order.totalCents,
+        },
+      },
     });
+  };
 
   const deliver = (payload: string) =>
     http()
@@ -90,7 +106,7 @@ describe('Stock notifications, the producer (e2e)', () => {
       .set('Authorization', bearer(t))
       .expect(201);
     const orderId = res.body.id as number;
-    await deliver(event(orderId, eventId)).expect(200);
+    await deliver(await event(orderId, eventId)).expect(200);
     return orderId;
   };
 
@@ -208,7 +224,7 @@ describe('Stock notifications, the producer (e2e)', () => {
     // Emptied first, so a second job would be visible and not hidden by the
     // id that already exists.
     await inspect.obliterate({ force: true });
-    await deliver(event(orderId)).expect(200);
+    await deliver(await event(orderId)).expect(200);
 
     expect(await jobs()).toEqual([]);
     expect(await stockOf(fixture.variantId)).toBe(3);

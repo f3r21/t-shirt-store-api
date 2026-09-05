@@ -331,13 +331,37 @@ describe('Checkout (e2e)', () => {
   describe('paying', () => {
     const SECRET = process.env.STRIPE_WEBHOOK_SECRET as string;
 
-    const event = (
+    /**
+     * What Stripe took, for the event to carry: the order's own total when
+     * the id names a row, so a case that is about something else pays, and 1
+     * when it names none, which is no order's total.
+     */
+    const chargedFor = async (
+      orderId: number | string | undefined,
+    ): Promise<number> => {
+      const id = Number(orderId);
+      if (!Number.isInteger(id) || id <= 0) {
+        return 1;
+      }
+      const row = await ctx.prisma.order.findUnique({
+        where: { id },
+        select: { totalCents: true },
+      });
+      return row?.totalCents ?? 1;
+    };
+
+    /**
+     * One signed body, with the amount on the field its own kind carries it
+     * on. A case about the amount overrides that field through `object`.
+     */
+    const event = async (
       type: string,
       orderId: number | string | undefined,
       id = 'evt_1',
       object: Record<string, unknown> = {},
-    ) =>
-      JSON.stringify({
+    ): Promise<string> => {
+      const amount = await chargedFor(orderId);
+      return JSON.stringify({
         id,
         object: 'event',
         type,
@@ -345,14 +369,16 @@ describe('Checkout (e2e)', () => {
           object: {
             id: 'obj_1',
             metadata: orderId === undefined ? {} : { orderId: String(orderId) },
+            currency: 'usd',
             // A session completes paid unless a case says otherwise.
             ...(type === 'checkout.session.completed'
-              ? { payment_status: 'paid' }
-              : {}),
+              ? { payment_status: 'paid', amount_total: amount }
+              : { amount_received: amount }),
             ...object,
           },
         },
       });
+    };
 
     const deliver = (payload: string, secret = SECRET) =>
       http()
@@ -391,7 +417,7 @@ describe('Checkout (e2e)', () => {
         metadata: { orderId: String(id) },
       });
 
-      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      await deliver(await event('payment_intent.succeeded', id)).expect(200);
 
       const row = await orderRow(id);
       expect(row.status).toBe('paid');
@@ -415,7 +441,7 @@ describe('Checkout (e2e)', () => {
 
     it('applies an event once: a replay is 200 and moves nothing', async () => {
       const id = await placeOrder(token);
-      const payload = event('payment_intent.succeeded', id);
+      const payload = await event('payment_intent.succeeded', id);
       await deliver(payload).expect(200);
 
       await deliver(payload).expect(200);
@@ -430,9 +456,13 @@ describe('Checkout (e2e)', () => {
 
     it('a second event for an order already paid is 200 and changes nothing', async () => {
       const id = await placeOrder(token);
-      await deliver(event('payment_intent.succeeded', id, 'evt_1')).expect(200);
+      await deliver(
+        await event('payment_intent.succeeded', id, 'evt_1'),
+      ).expect(200);
 
-      await deliver(event('payment_intent.succeeded', id, 'evt_2')).expect(200);
+      await deliver(
+        await event('payment_intent.succeeded', id, 'evt_2'),
+      ).expect(200);
 
       expect(await stockOf(fixture.variantId)).toBe(5);
       expect((await orderRow(id)).statusHistory).toHaveLength(2);
@@ -441,7 +471,7 @@ describe('Checkout (e2e)', () => {
 
     it('refuses a body that changed after it was signed, with 400', async () => {
       const id = await placeOrder(token);
-      const payload = event('payment_intent.succeeded', id);
+      const payload = await event('payment_intent.succeeded', id);
       const header = ctx.stripe.webhooks.generateTestHeaderString({
         payload,
         secret: SECRET,
@@ -462,7 +492,7 @@ describe('Checkout (e2e)', () => {
 
     it('refuses a signature made with another secret, and a missing header', async () => {
       const id = await placeOrder(token);
-      const payload = event('payment_intent.succeeded', id);
+      const payload = await event('payment_intent.succeeded', id);
 
       await deliver(payload, 'whsec_someone_else').expect(400);
       await http()
@@ -477,14 +507,16 @@ describe('Checkout (e2e)', () => {
     it('answers 200 for an event kind it does not handle, and records nothing', async () => {
       const id = await placeOrder(token);
 
-      await deliver(event('charge.succeeded', id)).expect(200);
+      await deliver(await event('charge.succeeded', id)).expect(200);
 
       expect((await orderRow(id)).status).toBe('pending');
       expect(await eventsRecorded()).toBe(0);
     });
 
     it('answers 200 for an event that names no order, and records it', async () => {
-      await deliver(event('payment_intent.succeeded', undefined)).expect(200);
+      await deliver(await event('payment_intent.succeeded', undefined)).expect(
+        200,
+      );
 
       expect(await eventsRecorded()).toBe(1);
       expect(await ctx.prisma.order.count()).toBe(0);
@@ -499,7 +531,7 @@ describe('Checkout (e2e)', () => {
       const orderId = link.body.orderId as number;
 
       const res = await deliver(
-        event('checkout.session.completed', orderId, 'evt_unpaid', {
+        await event('checkout.session.completed', orderId, 'evt_unpaid', {
           payment_status: 'unpaid',
         }),
       );
@@ -514,11 +546,39 @@ describe('Checkout (e2e)', () => {
       expect(recorded).toBe(1);
     });
 
+    // Written by hand against the handler, 2026-09-04. The endpoint receives
+    // every success event of the Stripe account, and the body says what was
+    // taken. An amount that is not the order's total pays nothing: the event
+    // row is kept, so the replay is a duplicate, and the order stays pending.
+    it("leaves the order pending, keeps the event and warns when the signed success carries an amount that is not the order's total", async () => {
+      const id = await placeOrder(token);
+      const payload = await event('payment_intent.succeeded', id, 'evt_short', {
+        amount_received: 1,
+      });
+
+      const res = await deliver(payload);
+      const row = await orderRow(id);
+
+      expect(res.status).toBe(200);
+      expect(row.status).toBe('pending');
+      expect(row.paymentMethod).toBeNull();
+      expect(row.statusHistory.map((h) => h.status)).toEqual(['pending']);
+      expect(await stockOf(fixture.variantId)).toBe(7);
+      expect(await eventsRecorded()).toBe(1);
+
+      await deliver(payload).expect(200);
+
+      expect((await orderRow(id)).status).toBe('pending');
+      expect((await orderRow(id)).statusHistory).toHaveLength(1);
+      expect(await stockOf(fixture.variantId)).toBe(7);
+      expect(await eventsRecorded()).toBe(1);
+    });
+
     it('a cancel that landed first wins: the payment does not reopen the order', async () => {
       const id = await placeOrder(token);
       await setStatus(token, id, 'cancelled').expect(200);
 
-      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      await deliver(await event('payment_intent.succeeded', id)).expect(200);
 
       const row = await orderRow(id);
       expect(row.status).toBe('cancelled');
@@ -531,7 +591,7 @@ describe('Checkout (e2e)', () => {
     // client cancel a paid order, and the webhook already took the units.
     it('gives the units back when the client cancels a paid order', async () => {
       const id = await placeOrder(token);
-      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      await deliver(await event('payment_intent.succeeded', id)).expect(200);
       expect(await stockOf(fixture.variantId)).toBe(5);
 
       await setStatus(token, id, 'cancelled').expect(200);
@@ -542,7 +602,7 @@ describe('Checkout (e2e)', () => {
 
     it('gives the units back when the manager cancels a processing order', async () => {
       const id = await placeOrder(token);
-      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      await deliver(await event('payment_intent.succeeded', id)).expect(200);
       const manager = await signInAs(ctx, 'manager@example.com', 'manager');
       await setStatus(manager, id, 'processing').expect(200);
 
@@ -558,7 +618,7 @@ describe('Checkout (e2e)', () => {
         data: { stock: 1 },
       });
 
-      await deliver(event('payment_intent.succeeded', id)).expect(200);
+      await deliver(await event('payment_intent.succeeded', id)).expect(200);
 
       expect((await orderRow(id)).status).toBe('paid');
       expect(await stockOf(fixture.variantId)).toBe(0);
@@ -647,7 +707,9 @@ describe('Checkout (e2e)', () => {
       const res = await createLink(token, fixture.variantId, 2).expect(201);
       const orderId = res.body.orderId as number;
 
-      await deliver(event('checkout.session.completed', orderId)).expect(200);
+      await deliver(await event('checkout.session.completed', orderId)).expect(
+        200,
+      );
 
       const row = await orderRow(orderId);
       expect(row.status).toBe('paid');

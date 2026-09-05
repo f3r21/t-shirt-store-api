@@ -10,8 +10,15 @@ import type { EnvironmentVariables } from '../config/env.validation';
 import { STRIPE_CLIENT } from './stripe.client';
 import type { StripeClient } from './stripe.client';
 
-/** The store is single-currency, and the contract says which one. */
-const CURRENCY = 'usd';
+/**
+ * The store is single-currency, and the contract says which one.
+ *
+ * Exported because the webhook compares it with the currency the event
+ * carries: this file is what every outgoing amount is denominated in, so a
+ * success event in another currency paid for something this server never
+ * asked for. ADR 24.
+ */
+export const CURRENCY = 'usd';
 
 /**
  * The smallest amount Stripe will collect in this currency, in minor units.
