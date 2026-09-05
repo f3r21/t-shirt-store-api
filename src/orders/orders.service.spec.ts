@@ -188,8 +188,9 @@ describe('OrdersService', () => {
 
     /**
      * Optional Feature 13, the client's half. Every case fixes the subtotal
-     * with one line at a stated price, so the arithmetic under test is two
-     * literals and not a sum the reader has to do. ADR 37.
+     * with one line at a stated price, so a total the reader checks is two
+     * literals and not a sum. The rules and the arithmetic applied to that
+     * subtotal are `promo-code-rules.spec.ts`. ADR 37.
      */
     describe('with a promo code', () => {
       /** One line at this price, quantity one, so the subtotal is `cents`. */
@@ -228,56 +229,6 @@ describe('OrdersService', () => {
         expect(nthArg(prisma.promoCode.findUnique)).toEqual({
           where: { code: 'save10' },
         });
-      });
-
-      it('takes the percentage off the subtotal and rounds down', async () => {
-        // 10 percent of 1999 is 199.9, and a discount is a whole minor unit.
-        codeOnFile({ discountType: 'percentage', discountValue: 10 });
-
-        await checkout();
-
-        expect(written().subtotalCents).toBe(1999);
-        expect(written().discountCents).toBe(199);
-        expect(written().totalCents).toBe(1800);
-      });
-
-      it('takes the whole subtotal at 100 percent, and the total is 0', async () => {
-        codeOnFile({ discountType: 'percentage', discountValue: 100 });
-
-        await checkout();
-
-        expect(written().discountCents).toBe(1999);
-        expect(written().totalCents).toBe(0);
-      });
-
-      it('rounds a discount below one minor unit down to nothing', async () => {
-        // Half of 1 is 0.5. Rounding up would give the store 0 for a code that
-        // says half price, so the floor is the direction that cannot lose.
-        cartWorth(1);
-        codeOnFile({ discountType: 'percentage', discountValue: 50 });
-
-        await checkout();
-
-        expect(written().discountCents).toBe(0);
-        expect(written().totalCents).toBe(1);
-      });
-
-      it('never takes more than the subtotal off for a fixed amount', async () => {
-        codeOnFile({ discountType: 'fixed', discountValue: 5000 });
-
-        await checkout();
-
-        expect(written().discountCents).toBe(1999);
-        expect(written().totalCents).toBe(0);
-      });
-
-      it('takes a fixed amount below the subtotal in full', async () => {
-        codeOnFile({ discountType: 'fixed', discountValue: 500 });
-
-        await checkout();
-
-        expect(written().discountCents).toBe(500);
-        expect(written().totalCents).toBe(1499);
       });
 
       it('snapshots the code as the manager typed it, beside the row it points at', async () => {

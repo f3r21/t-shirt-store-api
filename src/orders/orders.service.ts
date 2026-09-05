@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '../generated/prisma/client';
-import type { PromoCode as PromoCodeRow } from '../generated/prisma/client';
 import type { AccessTokenPayload } from '../auth/access-token-payload';
 import { accessibleBy } from '@casl/prisma';
 import { subject } from '@casl/ability';
@@ -17,6 +16,14 @@ import { CART_LINE_INCLUDE } from '../cart/cart.mapper';
 import { insufficientStock } from '../common/problem/insufficient-stock';
 import { ProblemException } from '../common/problem/problem.exception';
 import { ProblemType } from '../common/problem/problem-type';
+import {
+  discountOf,
+  promoBelowMinimum,
+  promoCodeVerdict,
+  promoExhausted,
+  promoExpired,
+  promoUnknown,
+} from '../promo-codes/promo-code-rules';
 import { PageMetaDto } from '../common/dto/page-meta.dto';
 import { OrderDto } from './dto/order.dto';
 import { OrderSummaryDto } from './dto/order-summary.dto';
@@ -82,78 +89,12 @@ export class OrdersService {
     );
   }
 
-  /**
-   * The four refusals a promo code can meet, one per rule the brief lists.
-   *
-   * All four are 422 and not 400: the body is well formed and the server
-   * refuses it on its content, which is the reading `assertAllExist` already
-   * makes for a category id that names no row. Each carries its own type,
-   * because a client shows a different message for each. ADR 37.
-   */
-  private promoUnknown(): ProblemException {
-    return new ProblemException(
-      ProblemType.PromoCodeUnknown,
-      'Promo code unknown',
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'This promo code does not exist, or it is disabled.',
-    );
-  }
-
-  private promoExpired(expiresAt: Date): ProblemException {
-    return new ProblemException(
-      ProblemType.PromoCodeExpired,
-      'Promo code expired',
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      `This promo code expired on ${expiresAt.toISOString()}.`,
-    );
-  }
-
-  /**
-   * One detail for both ways a code runs out, because the caller acts the same
-   * on either: the count was already at the limit, or another checkout took
-   * the last use while this one ran.
-   */
-  private promoExhausted(): ProblemException {
-    return new ProblemException(
-      ProblemType.PromoCodeExhausted,
-      'Promo code exhausted',
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      'This promo code reached its usage limit.',
-    );
-  }
-
-  private promoBelowMinimum(
-    minimum: number,
-    subtotal: number,
-  ): ProblemException {
-    return new ProblemException(
-      ProblemType.PromoCodeMinimum,
-      'Order below the promo code minimum',
-      HttpStatus.UNPROCESSABLE_ENTITY,
-      `This promo code applies to a subtotal of ${minimum} or more, and this order is ${subtotal}.`,
-    );
-  }
-
   /** No problem `type`: the enum names none for this, and the status explains it. */
   private illegalMove(from: string, to: string): ConflictException {
     return new ConflictException({
       title: 'Conflict',
       detail: `An order in status ${from} cannot move to ${to}.`,
     });
-  }
-
-  /**
-   * What a code takes off a subtotal, in minor units.
-   *
-   * A percentage rounds down, so a discount is never a fraction of a minor
-   * unit and never more than the share the code names. A fixed amount stops at
-   * the subtotal, so the total floors at 0 and no order is ever negative.
-   * ADR 37.
-   */
-  private discountOf(code: PromoCodeRow, subtotalCents: number): number {
-    return code.discountType === 'percentage'
-      ? Math.floor((subtotalCents * code.discountValue) / 100)
-      : Math.min(code.discountValue, subtotalCents);
   }
 
   /**
@@ -178,14 +119,20 @@ export class OrdersService {
     // The column is `citext`, so the database compares without case and
     // `save10` finds the row a manager typed as `SAVE10`.
     const row = await tx.promoCode.findUnique({ where: { code } });
-    if (row === null || !row.isActive) {
-      throw this.promoUnknown();
+
+    // The rules themselves are in `promo-code-rules.ts`; this reads the
+    // verdict and names the refusal. The null check beside each branch is
+    // what tells TypeScript that the row, and the column the detail quotes,
+    // are there: the verdict already guarantees both.
+    const verdict = promoCodeVerdict(row, subtotalCents, new Date());
+    if (row === null || verdict === 'unknown') {
+      throw promoUnknown();
     }
-    if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
-      throw this.promoExpired(row.expiresAt);
+    if (verdict === 'expired' && row.expiresAt !== null) {
+      throw promoExpired(row.expiresAt);
     }
-    if (row.minPurchaseCents !== null && subtotalCents < row.minPurchaseCents) {
-      throw this.promoBelowMinimum(row.minPurchaseCents, subtotalCents);
+    if (verdict === 'below-minimum' && row.minPurchaseCents !== null) {
+      throw promoBelowMinimum(row.minPurchaseCents, subtotalCents);
     }
 
     const counted = await tx.promoCode.updateMany({
@@ -196,7 +143,7 @@ export class OrdersService {
       data: { usedCount: { increment: 1 } },
     });
     if (counted.count === 0) {
-      throw this.promoExhausted();
+      throw promoExhausted();
     }
 
     return {
@@ -204,7 +151,7 @@ export class OrdersService {
       // The code as the store holds it and not as the caller typed it: the
       // order records which code was used, in the one spelling that names it.
       promoCode: row.code,
-      discountCents: this.discountOf(row, subtotalCents),
+      discountCents: discountOf(row, subtotalCents),
     };
   }
 

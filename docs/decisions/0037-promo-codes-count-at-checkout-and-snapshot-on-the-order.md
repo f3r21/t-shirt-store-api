@@ -1,6 +1,6 @@
 # 37. Promo codes count at checkout and snapshot on the order
 
-Status: accepted
+Status: accepted, revised 2026-09-04
 Date: 2026-09-04
 
 ## Context
@@ -109,3 +109,11 @@ and a link sells one product outside the cart, so `createPaymentLink` still writ
 **Gives up:** no index on `orders.promo_code_id`. Nothing reads an order by its code, and the
 only lookup `ON DELETE RESTRICT` performs is on a delete this API never offers. A manager turns
 a code off instead, which is what the brief asks for.
+
+**Revised 2026-09-04:** the three read-only rules, the rounding and the four refusals live in
+`src/promo-codes/promo-code-rules.ts`, a pure module beside the manager's operations, with a
+spec of direct calls in place of a checkout that reached the arithmetic through the data of
+`order.create`. The clock the expiry rule reads is a parameter, which is what makes the
+boundary a pair of literals. The lookup and the guarded count stay inside checkout's
+transaction, where this record and ADR 34 put them, so no transaction client crosses the new
+edge and nothing about the decisions above changes.

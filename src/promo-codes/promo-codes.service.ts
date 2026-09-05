@@ -14,7 +14,9 @@ import { toPromoCodeDto } from './promo-code.mapper';
 
 /**
  * The manager's three promo code operations, Optional Feature 13. Applying a
- * code at checkout is not here: that reads the table from `OrdersService`.
+ * code at checkout is `OrdersService`'s, inside its transaction (ADR 37). The
+ * rules and the arithmetic it applies are in `promo-code-rules.ts`, beside
+ * this file.
  */
 @Injectable()
 export class PromoCodesService {
