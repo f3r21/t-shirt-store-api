@@ -12,7 +12,7 @@ flowchart TB
 
     client["Client<br/>browser or mobile"]
     api["API, NestJS<br/>helmet, CORS, policies guard,<br/>throttler with a<br/>per-process counter"]
-    pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>20 connections per task,<br/>76 usable, so 3 tasks")]
+    pg[("PostgreSQL<br/>users, catalog, carts, orders<br/>a pool of 10 per process, two per task,<br/>76 usable, so 3 tasks")]
     casl["CASL abilities<br/>a dependency, not a guard"]
     store[("Object storage<br/>product images")]
     smtp["Mail provider,<br/>from the task role"]
