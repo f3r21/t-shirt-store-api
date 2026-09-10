@@ -72,9 +72,11 @@ job per push to `main` that assumes a role through GitHub's OIDC token and store
 
 **Switch:** a pooler in front of Postgres removes that objection.
 
-Migrations are additive, one early rename aside, and run before the roll, so the old image
-reads the new schema. Rollback is the image, rehearsed at three minutes each way. The roll is
-not zero downtime: one task, one host port, seconds of 504.
+Migrations are additive, two aside, and run before the roll, so the old image reads the new
+schema. The early `reset_token` rename dropped a column the previous image still read, and
+the `citext` change rewrites `users` under an ACCESS EXCLUSIVE lock. Rollback is the image,
+rehearsed at three minutes each way. The roll is not zero downtime: one task, one host port,
+seconds of 504.
 
 ## Where a request fails halfway
 
