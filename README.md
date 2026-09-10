@@ -45,12 +45,12 @@ them when `NODE_ENV` is `production`, and seeds only the roles and categories th
 
 ### The environment file
 
-`.env.example` names every variable the schema declares, and `src/app.module.spec.ts` fails
-if one is missing. Eight variables are blank and four of them need a value:
+`.env.example` names every variable and explains each one, and `src/app.module.spec.ts` fails
+if one is missing. Four blank values need yours:
 
-- `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, at least 32 characters each. The boot refuses
-  without them. The pepper is a separate value so that rotating the signing key keeps every
-  stored token hash valid. ADR 1.
+- `JWT_SECRET` and `REFRESH_TOKEN_PEPPER`, 32 characters or more. The boot refuses without
+  them. The pepper is separate, so rotating the signing key keeps every stored token hash
+  valid. ADR 1.
 - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`, from the Stripe section below.
 
 ```bash
@@ -58,18 +58,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
 `S3_BUCKET` and `IMAGES_BASE_URL` carry placeholders, so the API boots with no AWS account.
-Only the image upload needs the real values, the `ImagesBucket` and `ApiUrl` outputs of the
-deployed stack. An upload against a placeholder fails at S3 with a 500, and never at boot.
-To upload an image, set the two variables to those outputs. The AWS SDK reads its credentials
-from the shell, `AWS_PROFILE=tshirt npm run start:dev`, never from a file.
-
-The other four stay blank on a laptop. An empty `CORS_ORIGINS` means no browser on another
-origin may call the service. `SMTP_USER` and `SMTP_PASS` stay empty because Mailpit wants no
-credentials, and the mailer sends none unless both are set. `DATABASE_SSL_CA` stays empty
-because the compose container speaks no TLS. The deployed task sets `MAIL_TRANSPORT` to
-`ses`, which reads no `SMTP_*` and sends from the task role, and points `DATABASE_SSL_CA` at
-the RDS bundle in the image. `REDIS_URL` is filled in and required: the queue opens it at
-boot, and the compose file's Valkey answers it.
+An upload against a placeholder fails at S3 with a 500, and never at boot. To upload an
+image, set the two variables to the `ImagesBucket` and `ApiUrl` outputs of the deployed
+stack, then start with `AWS_PROFILE=tshirt npm run start:dev`. The AWS SDK reads its
+credentials from the shell, never from a file.
 
 ### Stripe
 
@@ -151,66 +143,64 @@ The five names are `JWT_SECRET`, `REFRESH_TOKEN_PEPPER`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`, which only the `smtp` transport reads.
 
 Every push to `main` is a release, once the checks pass. The `deploy` job in
-`.github/workflows/ci.yml` builds both images on an arm runner, pushes them tagged with the
-commit, points the migrate task at the commit, runs the migrations, rolls the service, and
-proves the running task carries the tag of that commit. No key is stored in GitHub: the run's
-OIDC token assumes `tshirt-deploy`, a role `infra/ci.yml` creates, and the stack is changed
-through `tshirt-cloudformation`, a role only CloudFormation can assume. The one-time setup is
-that template as the stack `tshirt-ci`, and its two outputs as the repository variables
+`.github/workflows/ci.yml` builds both images, pushes them tagged with the commit, runs the
+migrations, rolls the service, and proves the running task carries that tag. No key is stored
+in GitHub: the run's OIDC token assumes `tshirt-deploy`, and the stack is changed through
+`tshirt-cloudformation`, a role only CloudFormation can assume. `infra/ci.yml` creates both,
+as the stack `tshirt-ci`, and its two outputs are the repository variables
 `AWS_DEPLOY_ROLE_ARN` and `AWS_STACK_ROLE_ARN`. ADR 30 says why this shape.
 
 The first deploy, and a rescue when the job cannot run, is the same release from a laptop.
-From a clean checkout, with `<sha>` as the short commit id:
-
-1. Create the stack with the service at zero:
-   `aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --parameter-overrides DbPassword="$(openssl rand -hex 16)" MailFrom=<your address> DesiredCount=0`
-2. Build the two images: `docker build -t api .` and `docker build --target migrate -t migrate .`
-3. Tag them `<ecr>:<sha>` and `<ecr>:<sha>-migrate`, log in with
-   `aws ecr get-login-password`, and push both. The ECR address is a stack output.
-4. Point the migrate task at the tag: the deploy command again, with
-   `--parameter-overrides MigrateImageTag=<sha>`.
-5. Run the migrations once:
-   `aws ecs run-task --profile tshirt --region us-east-2 --cluster tshirt --task-definition tshirt-migrate --launch-type EC2`
-6. Seed the roles once, with the same command and
-   `--overrides '{"containerOverrides":[{"name":"migrate","command":["node","dist/prisma/seed.js"]}]}'`.
-   Add `"environment":[{"name":"SEED_MANAGER_EMAIL","value":"<email>"}]` inside the override to
-   make an existing account the manager; the demo accounts never reach a deployed database.
-7. Start the service: the deploy command again, with
-   `--parameter-overrides ImageTag=<sha> DesiredCount=1`.
-
-To restore the previous release, run the deploy command with the tag of the previous commit.
-Then wait for the service:
+This is the deploy command, and every step below runs it again with other overrides:
 
 ```bash
-aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides ImageTag=<previous sha>
+aws cloudformation deploy --profile tshirt --region us-east-2 --stack-name tshirt --template-file infra/stack.yml --capabilities CAPABILITY_IAM --no-fail-on-empty-changeset --parameter-overrides <overrides>
+```
+
+From a clean checkout, with `<sha>` as the short commit id:
+
+1. `DbPassword="$(openssl rand -hex 16)" MailFrom=<your address> DesiredCount=0`, which
+   creates the stack with the service stopped.
+2. `docker build -t api .` and `docker build --target migrate -t migrate .`, then tag both
+   `<ecr>:<sha>` and `<ecr>:<sha>-migrate` and push. The ECR address is a stack output.
+3. `MigrateImageTag=<sha>`, then run the migrations:
+   `aws ecs run-task --profile tshirt --region us-east-2 --cluster tshirt --task-definition tshirt-migrate --launch-type EC2`
+4. The same run-task with
+   `--overrides '{"containerOverrides":[{"name":"migrate","command":["node","dist/prisma/seed.js"]}]}'`,
+   which seeds the roles. Add `"environment":[{"name":"SEED_MANAGER_EMAIL","value":"<email>"}]`
+   to make an existing account the manager.
+5. `ImageTag=<sha> DesiredCount=1`, which starts the service.
+
+To restore the previous release, run the deploy command with `ImageTag=<previous sha>`, then
+wait for the service:
+
+```bash
 aws ecs wait services-stable --profile tshirt --region us-east-2 --cluster tshirt --services tshirt-app
 ```
 
 Then read the running task's image back, as the deploy job does in its last step. Two
-mechanisms exist. A task that never becomes healthy returns to the previous task definition
-on its own, through the service's circuit breaker. A release that became healthy and is wrong
-needs that command. Rehearsed on 2026-09-03: about three minutes each way, proven by the
-running tag. Leave `MigrateImageTag` where it is: a migration is never reversed, so
-the previous image must read the current schema, and so every migration is additive
-(the known gaps below name the one that was not).
+mechanisms cover two failures. A task that never becomes healthy returns to the previous task
+definition on its own, through the service's circuit breaker. A release that became healthy
+and is wrong needs that command. Rehearsed on 2026-09-03: about three minutes each way,
+proven by the running tag. Leave `MigrateImageTag` where it is, because a migration is never
+reversed, so the previous image must read the current schema. The known gaps below name the
+two migrations that broke that rule.
 
 Mail and Stripe, once, after the first release:
 
 1. Verify the sender:
    `aws sesv2 create-email-identity --profile tshirt --region us-east-2 --email-identity <your address>`,
-   then open the link in the mail AWS sends.
-2. Replace the two Stripe placeholders: the `put-parameter` command of the five secrets, with `--overwrite`,
-   `/tshirt/STRIPE_SECRET_KEY` with the `sk_test_` key and `/tshirt/STRIPE_WEBHOOK_SECRET` with
-   the signing secret of the endpoint from the Stripe section.
-3. Switch the transport: the deploy command again, with
+   then open the link AWS sends.
+2. Replace the two Stripe placeholders by running the `put-parameter` command again with
+   `--overwrite`, for `/tshirt/STRIPE_SECRET_KEY` and `/tshirt/STRIPE_WEBHOOK_SECRET`.
+3. Switch the transport: the deploy command, with
    `--parameter-overrides MailTransport=ses MailFrom=<your address>`. That roll also reads the
    two new secrets.
 
 The API answers at the `ApiUrl` stack output. The review instance is
-`https://daat4q77vztp7.cloudfront.net/v1`: sign up there, and the operator's seed override
-makes one account the manager. Tear everything down in two commands: empty the images bucket
-first, because CloudFormation refuses to delete a bucket that holds objects, then delete the
-stack, and the trust with the same command on `tshirt-ci`:
+`https://daat4q77vztp7.cloudfront.net/v1`. Tear everything down in two commands. Empty the
+images bucket first, because CloudFormation refuses to delete a bucket that holds objects,
+then delete the stack, and the trust with the same command on `tshirt-ci`:
 
 ```bash
 aws s3 rm "s3://$(aws cloudformation describe-stacks --profile tshirt --region us-east-2 --stack-name tshirt --query "Stacks[0].Outputs[?OutputKey=='ImagesBucket'].OutputValue" --output text)" --recursive --profile tshirt --region us-east-2
@@ -224,28 +214,28 @@ records, and the account's credits carry that for the review.
 
 | Area | State |
 |---|---|
-| Sign up, sign in, sign out | Done, with unit tests |
-| Refresh token rotation and reuse detection | Done, with unit tests |
-| Device session list, per-device sign out | Done, with unit tests |
-| Forgot password, reset password, change password | Done, with unit tests |
-| Mail on password change and password reset | Done, through Mailpit locally and through SES from the task role in production |
-| RFC 9457 problem documents on every error | Done |
-| Structured JSON logs with a request id | Done, through pino. Every line carries the id, and no line carries a token |
+| Sign up, sign in, sign out | Done, unit tested |
+| Refresh token rotation and reuse detection | Done, unit tested. ADR 1 to 4 |
+| Device session list, per-device sign out | Done, unit tested |
+| Forgot password, reset password, change password | Done, unit tested |
+| Mail on password change and password reset | Done. Mailpit locally, SES in production |
+| RFC 9457 problem documents on every error | Done. ADR 11 |
+| Structured JSON logs with a request id | Done, through pino. No line carries a token. ADR 21 |
 | Helmet, CORS, environment schema validation | Done |
-| Rate limiting | Done, in three tiers: browsing, sign-in, and the three password operations |
-| Products, variants, categories | Done, with unit tests |
-| Three-way product visibility, soft delete, manager-only writes | Done, with unit tests |
-| Cart | Done, five operations: a live view priced now, a stock check before every write, and only products on sale |
-| Orders | Done, five operations: placed from the cart in one transaction, the status flow as one table, a cancel after payment giving the units back, and the history with its five filters |
-| Delivery person, Optional Features 11 and 12 | Done, one operation and one status: `GET /deliveries` lists the shipped orders to deliver, and the same list under `status=delivered` is the caller's own delivery history. The role sends `delivered` on a shipped order and nothing else, and the server records who delivered it. A client reads the full status history of its own order, as before |
-| Payments | Done, both Stripe flows: a payment link for one product and a payment intent for a cart, and one webhook that verifies the signature over the raw body, marks the order paid once, and lowers the stock. The deployed endpoint receives Stripe's own test-mode events through the distribution |
-| Promo codes, Optional Feature 13 | Done, both halves. A manager creates a code, reads one page of codes with the number of orders each has been used on, and disables or enables one. A client sends `promoCode` in the body of `POST /orders`. The server checks the four rules the brief lists and answers 422 with its own problem type for each one. A percentage rounds down and a fixed amount stops at the subtotal, so a total is never negative. The code column is `citext`, so `SAVE10` and `save10` are one code: the second create answers 409 and a buyer may type either. The use is counted inside the checkout transaction, guarded on the limit, so two checkouts racing for the last use place one order. The order keeps the code and the discount, and a later change to the code does not reach it. See ADR 37 |
-| Likes | Done, three operations: like and unlike a variant, idempotent on the primary key, and the liked products as one page in the product list's shape |
-| Images | Done, two operations: an upload sniffed by its bytes with a 5 MiB limit, stored in S3 under a random key and served through CloudFront, one primary per product; a delete that removes the row and then the object |
-| End-to-end tests | Done, in sixteen suites against a real database and a real Valkey: liveness and the kernel's headers, authentication, the cart, catalog authorization, catalog reads, checkout through a signed Stripe event to the stock decrement and the status flow, deliveries for two delivery people, a client and a manager, product images with the store in memory, likes, the served OpenAPI document against the contract, order history for two clients and a manager, the promo codes a manager creates and disables, a code applied at checkout with its four refusals and a ten-trial race for the last use, rate limits, roles, and the low-stock notifications through the real queue and worker to the mail |
-| CASL authorization | Done. An ability per caller, a policy on every handler, deny by default, and the ownership conditions turned into the where clauses the services read with |
-| Stock notifications | Done. When a write takes a variant's stock from more than 3 to 3 or fewer, one BullMQ job per liker who has not bought it lands after the commit, from the webhook and from the manager's stock count alike, and a worker in its own process mails each person once, with the product's image, retrying a failed send. See `ARCHITECTURE.md` for the queue rationale |
-| Deploy | Done. One CloudFormation stack, ECS on one instance behind CloudFront, a managed database, and a managed cache; every push to `main` releases through a job that assumes a role by OIDC, with no key stored |
+| Rate limiting | Done, in three tiers: browsing, sign-in, and the three password operations. ADR 7 |
+| Products, variants, categories | Done, unit tested |
+| Three-way product visibility, soft delete, manager-only writes | Done, unit tested. ADR 15 and 16 |
+| Cart | Done, five operations, priced live and stock checked before every write. ADR 22 |
+| Orders | Done, five operations, placed from the cart in one transaction, with a history and its five filters. ADR 23 |
+| Delivery person, Optional Features 11 and 12 | Done. `GET /deliveries` lists the shipped orders, and the role sends `delivered` and nothing else |
+| Payments | Done, both Stripe flows. One webhook verifies the signature over the raw body and is the only writer of `paid`. ADR 24 |
+| Promo codes, Optional Feature 13 | Done, both halves, with a `citext` code and the use counted inside the checkout transaction. ADR 37 |
+| Likes | Done, three operations, idempotent on the primary key. ADR 26 |
+| Images | Done. Sniffed by their bytes, stored in S3 under a random key, served through CloudFront |
+| End-to-end tests | Done, sixteen suites against a real database and a real Valkey |
+| CASL authorization | Done. Deny by default, and the ownership conditions become the where clauses the services read with. ADR 25 |
+| Stock notifications | Done. One queued job per liker on a crossing to 3 or fewer, mailed by a worker in its own process. ADR 27 |
+| Deploy | Done. One CloudFormation stack, and every push to `main` releases by OIDC with no key stored. ADR 29 and 30 |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite
 runs against a real database. Neither has a placeholder entry left. What is untested is what
@@ -280,7 +270,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
 
 - `POST /auth/forgot-password` answers identically for a known and an unknown address, but
   the two paths do not take the same time. The endpoint is rate limited instead. Sign-in
-  closed the same gap by running one argon2 verify on the unknown-address path.
+  closed the same gap by running one argon2 hash on the unknown-address path.
 - A failed mail send does not fail the request. Both mailing operations change the password
   first and mail afterwards, so an error would make the caller retry with a password that
   no longer works. The failure is logged.
@@ -290,19 +280,24 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
   alarm, up to ten rows per spent token at the defaults. `REFRESH_GRACE_SECONDS` is the dial
   and 0 turns it off.
 - The rate limit counter is in process memory. Correct for one instance, wrong for two.
-- Production mail goes through SES in its sandbox. Only verified addresses receive until AWS
-  grants production access: the request is `aws sesv2 put-account-details`, answered in
-  about a day. The mails land in spam, because the sender is a personal address SES cannot
-  sign for. A domain with DKIM fixes that.
-
+- Production mail goes through SES in its sandbox, so only verified addresses receive. The
+  request for production access was denied, case 178837643400798, so the sandbox limits
+  stand: 200 messages in 24 hours, one per second. The mails land in spam, because the
+  sender is a personal address SES cannot sign for. A domain with DKIM fixes the spam, and
+  it is also the change that would make a second production request defensible.
 - The liveness route reaches no database, so a task that boots against an incompatible
   schema passes the circuit breaker. The additive-migration rule is discipline, not a check.
-  Seven of the eight migrations are additive. The second drops `users.reset_token` in the same
-  statement that adds `reset_token_hash`, so a replica still on the previous image breaks
-  mid-rollout. That rename needed expand and contract.
-- Every link sale logs `payment.orphan` for its `payment_intent.succeeded` event, because the
-  link's intent carries no order id (ADR 24). The warning is real only for an intent this
-  service did not create.
+  Nine of the eleven migrations are additive and two are not. The second drops
+  `users.reset_token` in the same statement that adds `reset_token_hash`, so a replica still
+  on the previous image breaks mid-rollout. That rename needed expand and contract. The
+  eighth changes `users.email` to `citext`, which rewrites the table under an ACCESS
+  EXCLUSIVE lock, so a rolling deploy waits on it.
+- A `payment.orphan` warning has two causes and the line does not say which. An intent that
+  carries no order id is a link sale, which is expected: the link's intent cannot carry one
+  (ADR 24). An intent that names an order id no row matches is not expected, and the
+  deployed service logged three of those on 2026-09-07, for orders 2 and 3. The order rows
+  were gone by the time the event arrived. Only the second kind is worth an alert, and the
+  log line needs to separate them before one can be written.
 
 ## License
 
