@@ -41,7 +41,12 @@ Measured here: issue 8 carries three comments and the plain view shows none of t
 rg -n --hidden -g '!.git/' '<pattern>' .
 ```
 
-`--hidden` reaches `.claude/`, `.github/` and `.vale/`. Plain `rg` skips them and reports zero.
+`--hidden` adds the directories whose names start with a dot, so the search reaches `.claude/`,
+`.github/` and `.vale/`. Plain `rg` skips them and reports zero.
+
+It does not switch off `.gitignore`, so `node_modules`, `dist` and `coverage` stay out without
+naming them, and naming them changes nothing. `--no-ignore` is what floods a search: measured
+here, `module.exports` matches 1 file with the command above and 12653 with `--no-ignore` added.
 
 Start from the layout:
 
@@ -66,7 +71,22 @@ a change that breaks the rule needs the ADR changed first. Report that as part o
 **Done when** every citation in the code you report resolves to a file, and you have read each
 one.
 
-## 4. Find the tests
+## 4. Find who consumes what would change
+
+A name in a log line, a response field or an exported symbol may have readers outside the file
+that writes it. Search for the literal before you propose changing it, and report what would
+break.
+
+```sh
+rg -n --hidden -g '!.git/' '<the literal you would change>' .
+```
+
+Report the count, and say whether any reader is an alert, a metric filter, a contract file or a
+test. A name nothing reads is cheap to change; a name a check reads is part of the change.
+
+**Done when** every name your proposal changes carries the list of the places that read it.
+
+## 5. Find the tests
 
 A unit spec sits beside its source as `*.spec.ts` and mocks Prisma, so it needs no database. Run
 one file, or one test by name:
@@ -85,7 +105,7 @@ comment that describes behaviour your change alters is part of the change, so na
 **Done when** each behaviour you report is marked covered or uncovered, and each uncovered one
 names the file that would hold its test.
 
-## 5. Report
+## 6. Report
 
 **Files.** Each entry is `path:line`, with one sentence on what that line does.
 
