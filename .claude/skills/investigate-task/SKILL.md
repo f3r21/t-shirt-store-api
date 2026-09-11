@@ -45,8 +45,16 @@ rg -n --hidden -g '!.git/' '<pattern>' .
 `.github/` and `.vale/`. Plain `rg` skips them and reports zero.
 
 It does not switch off `.gitignore`, so `node_modules`, `dist` and `coverage` stay out without
-naming them, and naming them changes nothing. `--no-ignore` is what floods a search: measured
-here, `module.exports` matches 1 file with the command above and 12653 with `--no-ignore` added.
+naming them, and naming them changes nothing. `--no-ignore` is what floods a search. Measure it
+with prose excluded, because a document that quotes a pattern becomes a match for it and moves the
+count you are reading:
+
+```sh
+rg -l --hidden -g '!.git/' -g '!*.md' '<pattern>' . | wc -l
+```
+
+Measured that way on `15ab926`, `module.exports` matches 1 file, and 12507 with `--no-ignore`
+added. Re-run both before you quote either. The second moves with every dependency change.
 
 Start from the layout:
 
