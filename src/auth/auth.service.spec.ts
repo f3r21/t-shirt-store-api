@@ -633,6 +633,46 @@ describe('AuthService', () => {
       expect(result.data[0].id).toBe(42);
     });
 
+    /**
+     * The rows of one family expire independently. `rotateLiveToken` rewrites
+     * `expiresAt` in place and never touches `id`, and every row the grace
+     * path writes copies the founder's `createdAt`, so neither the id nor the
+     * creation time says which row keeps the device alive longest. A second
+     * tab used once and abandoned holds the higher id and the sooner date, and
+     * a caller that reads that date signs in again for nothing. ADR 2.
+     *
+     * Both orders, because the answer must not depend on the order the
+     * database hands the rows back.
+     */
+    it.each([
+      ['the abandoned row first', 'abandoned'],
+      ['the live row first', 'live'],
+    ])(
+      'reports the latest expiry of a family, with %s',
+      async (_label, first) => {
+        const abandoned = aRefreshToken({
+          id: 77,
+          familyId: 42,
+          expiresAt: new Date('2026-09-12T09:14:00.000Z'),
+        });
+        const live = aRefreshToken({
+          id: 42,
+          familyId: null,
+          expiresAt: new Date('2026-09-20T09:14:00.000Z'),
+        });
+        prisma.refreshToken.findMany.mockResolvedValue(
+          first === 'abandoned' ? [abandoned, live] : [live, abandoned],
+        );
+
+        const result = await service.listSessions(128, new PageQueryDto());
+
+        expect(result.data).toHaveLength(1);
+        // A literal, not a date read back off the fixture: an expectation the
+        // test computes the way the code computes it can never disagree.
+        expect(result.data[0].expiresAt).toBe('2026-09-20T09:14:00.000Z');
+      },
+    );
+
     it('leaves the deviceName key absent when the row holds none', async () => {
       prisma.refreshToken.findMany.mockResolvedValue([
         aRefreshToken({ deviceName: null }),
