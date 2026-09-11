@@ -621,7 +621,7 @@ describe('AuthService', () => {
      * The id a caller reads is the family, which the contract promises stays
      * stable for the life of the device session.
      */
-    it('names a family by its founder, whichever row is newest', async () => {
+    it('names a family by its founder, whichever row represents it', async () => {
       prisma.refreshToken.findMany.mockResolvedValue([
         aRefreshToken({ id: 77, familyId: 42 }),
         aRefreshToken({ id: 42, familyId: null }),
