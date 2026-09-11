@@ -13,6 +13,9 @@ npm run start:dev          # the API
 npm run start:worker:dev   # the queue consumer
 ```
 
+`docker:up` runs `docker compose` over `docker-compose.yml`, which is where a service, a port or
+an image tag changes.
+
 The worker is a second process from the same image. Work that goes on the queue stays on the
 queue until the worker runs.
 
