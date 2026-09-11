@@ -55,9 +55,10 @@ It reports `uses` steps as well as `run` steps. A check can arrive as an action:
 runs Vale that way, and a list of `run` steps alone misses the check that job exists for. For
 each such step, find the local command in `package.json` that does the same work.
 
-Classify each job before you run anything. A step that calls `aws`, pushes an image, or reads
-`${{ secrets`, does not run on this machine. Say so in the report rather than skipping it in
-silence.
+Classify each job before you run anything, and give every job a row. A step that calls `aws`,
+pushes an image, or reads `${{ secrets`, does not run on this machine. A job whose inputs the
+change does not touch is unaffected rather than passing. Write the reason in the row. A job with
+no row reads as a job that passed.
 
 Keep the order CI uses. A type error causes later failures that are not defects of their own.
 
@@ -94,14 +95,29 @@ When the assertion differs between the two runs, the result proves nothing. Repo
 
 ## 5. Restore
 
+Prove the restore. Do not assume the command ran: a restore that was refused looks exactly like
+one that succeeded until something else reads the file.
+
 ```sh
 git checkout -- <the file you broke>
-git status --porcelain          # matches what step 1 recorded
+git diff --exit-code -- <the file you broke>   # exit 0, so the file is back
+git status --porcelain                         # matches what step 1 recorded
 ```
 
 Name the file. `git checkout -- .` discards every other change in the tree as well.
 
-**Done when** `git status --porcelain` prints what step 1 printed.
+A machine can refuse the first line. This repository's local settings carry a hook that blocks
+`checkout`, `restore`, `reset` and `stash` because they change state, and that file is per clone
+and gitignored, so another clone may not have it. Write the committed blob back instead, and
+prove it the same way:
+
+```sh
+git show <sha>:<path> > <path>
+git diff --exit-code -- <path>                 # exit 0
+```
+
+**Done when** `git diff --exit-code` on each file you touched exits 0, and `git status
+--porcelain` prints what step 1 printed.
 
 ## Read the exit status, not the tail
 
