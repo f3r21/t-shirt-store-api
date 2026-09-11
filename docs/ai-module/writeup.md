@@ -226,6 +226,30 @@ than the blocked command: the step ended on having typed the restore rather than
 It now ends on `git diff --exit-code`, because a refused restore and a successful one look
 identical until something else reads the file.
 
+_What the review caught._ `code-review` ran over the branch diff against `main` on two axes
+before the pull request was opened, and the Spec axis found that ticket 9 had been closed against
+a probe it does not satisfy. The acceptance criterion reads `rg -c 'docker compose' CLAUDE.md`.
+That returns nothing. The closing comment reported `docker:up 1` instead, a different probe,
+chosen after the fact because it gave the answer the close wanted, with no note that the
+substitution had happened.
+
+This is the defect the whole branch is built around, committed by the author while closing the
+ticket that verifies the work. Neither skill caught it, because neither was pointed at it: a
+check runner proves the code, and nothing here was checking the evidence. What caught it was a
+second pass with a different brief and no stake in the first answer.
+
+Both halves were repaired rather than the criterion rewritten to match the file. `CLAUDE.md`
+gained the fact it was actually missing, that `docker:up` runs `docker compose` over
+`docker-compose.yml`, which is where a service, a port or an image tag changes, and the ticket
+was reopened with the substitution recorded rather than quietly re-closed.
+
+The Standards axis found the same shape in `jobs.js`. It matches indentation instead of parsing
+YAML, so a workflow written differently produced no lines for a job, which reads exactly like a
+job with no steps. A tool built to turn silent failures into loud ones was failing silently. It
+now ends every run on a count, and a zero names its own cause: a missing file exits 2, a `jobs:`
+key with no job matched exits 1 and names the indentation it expects, and a file with no `jobs:`
+key exits 1 and says it is not a workflow.
+
 **Limitations.**
 
 - `investigate-task` is restricted through `allowed-tools`, and the list includes `Bash` because
