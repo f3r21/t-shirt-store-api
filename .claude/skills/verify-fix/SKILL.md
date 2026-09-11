@@ -135,8 +135,10 @@ Report the `exit=` line beside every figure.
 ## Three more traps in this repository
 
 - `npm run lint` carries `--fix` and rewrites files. Run `npm run lint:ci` to check.
-- Four steps of the Verify job need the containers: `prisma migrate deploy`, `prisma migrate
-  diff`, `npm run test:e2e`, and anything that opens a connection. Start them with
+- Three steps of the Verify job need the containers, and step 2 names them:
+  `npx prisma migrate deploy`, `npx prisma migrate diff`, and `npm run test:e2e`. Count them
+  rather than trusting this line, because a new step can join them:
+  `node .claude/skills/verify-fix/jobs.js .github/workflows/ci.yml`. Start the containers with
   `npm run docker:up`. Without them these steps fail for a reason that reads like a code defect.
 - A push runs the end to end suite through `.husky/pre-push`. A red end to end suite blocks
   `git push`, so verify before you push, not after.

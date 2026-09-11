@@ -1,7 +1,8 @@
 # AI Module write-up
 
-**Repository / PR:** https://github.com/f3r21/t-shirt-store-api
-<!-- FILL: the PR link, once the branch is pushed and the pull request is open. -->
+**Repository:** https://github.com/f3r21/t-shirt-store-api
+
+**Pull request:** [#15](https://github.com/f3r21/t-shirt-store-api/pull/15), open and unmerged.
 
 **Starting commit:** [`7139980`](https://github.com/f3r21/t-shirt-store-api/commit/7139980),
 "docs: name both non-additive migrations in the architecture page". Confirmed as the base with
@@ -131,10 +132,24 @@ test "$(wc -w < ARCHITECTURE.md)" -lt 650  exit=1   669 words
 ```
 
 The last line is the one failure, and CI agreed with it on the same commit:
-`gh run view 34612434335 --json jobs` returns `Verify success, Prose failure, Image success,
-Deploy success`. Its parent measured 648 words, two under the ceiling, so naming both
-non-additive migrations was always going to cross it. The failure was recorded before anything
-changed, and repaired in its own commit, `ebbffe3`, outside the improvement.
+
+```sh
+$ gh run view 34612434335 --json jobs --jq '.jobs[] | "\(.name)  \(.conclusion)"'
+Verify  success
+Prose  failure
+Image  success
+vale  neutral
+Deploy  success
+```
+
+Five rows for four jobs. `vale` is not in `ci.yml`, which `jobs.js` reads as four; it is a check
+run that `vale-cli/vale-action` creates from inside `Prose` with `reporter: github-check`, and
+`neutral` is neither of the two answers a reader is looking for. The two surfaces disagree about
+what a check even is, which is the argument for reading the workflow file rather than the run.
+
+Its parent measured 648 words, two under the ceiling, so naming both non-additive migrations was
+always going to cross it. The failure was recorded before anything changed, and repaired in its
+own commit, `ebbffe3`, outside the improvement.
 
 _Failing, then passing._ The same test, run with the same command, before and after `f3e6e6e`:
 
@@ -250,6 +265,16 @@ now ends every run on a count, and a zero names its own cause: a missing file ex
 key with no job matched exits 1 and names the indentation it expects, and a file with no `jobs:`
 key exits 1 and says it is not a workflow.
 
+A third pass, run after the branch was pushed and aimed only at the figures, found three more.
+`verify-fix` claimed four steps of `Verify` need the containers and named three; there are three,
+and the line now carries the command that counts them. This page quoted the CI run above as four
+rows when the command prints five, the same substitution as ticket 9 and caught the same way, by
+running the command rather than reading the sentence. The third was a sentence that began in
+lower case.
+
+The pattern across all three passes is one thing: every defect was in the evidence, not in the
+code. The checks were green each time.
+
 **Limitations.**
 
 - `investigate-task` is restricted through `allowed-tools`, and the list includes `Bash` because
@@ -271,5 +296,5 @@ key exits 1 and says it is not a workflow.
   migration. `adr-conformance` would check that every decision citation in the code resolves to one of
   the files under `docs/decisions/`. Measured on this branch with
   `rg -o --hidden 'ADR [0-9]+|DECISIONS [0-9]+' src/ prisma/ .github/ | wc -l` and
-  `ls docs/decisions/ | wc -l`: 137 citations against 37 files. it was cut because that check is green today, so
-  its demonstration would have rested on a sabotage rather than a defect.
+  `ls docs/decisions/ | wc -l`: 137 citations against 37 files. It was cut because that check is
+  green today, so its demonstration would have rested on a sabotage rather than a defect.
