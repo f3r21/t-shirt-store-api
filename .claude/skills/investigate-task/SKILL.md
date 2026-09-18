@@ -28,8 +28,8 @@ The issue, when the first argument is an issue number:
 
 !`.claude/skills/investigate-task/fetch-issue.sh "$issue"`
 
-If the line above reads `NO INPUT`, stop. Reply with one line that asks for an issue number or a
-description, and do nothing else.
+If the line above reads `NO INPUT`, reply with one line that asks for an issue number or a
+description, and stop.
 
 ## 1. State the request
 

@@ -74,7 +74,7 @@ When the regression test is new or changed at the head, copy it into the base:
 git show "$HEAD_SHA:<test file>" > "$D/base/<test file>"
 ```
 
-Change nothing else in the base. Record each file you copied.
+Leave every other file in the base as committed. Record each file you copied.
 
 ## 6. Run the reproduction in both
 

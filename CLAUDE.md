@@ -2,8 +2,7 @@
 
 A NestJS API for a t-shirt store. Prisma over PostgreSQL, Jest for tests, Stripe for payments.
 
-`package.json` holds the scripts and `ARCHITECTURE.md` holds the shape of the system. This file
-holds what neither of them says.
+`package.json` holds the scripts and `ARCHITECTURE.md` holds the shape of the system.
 
 ## Run it
 
@@ -39,8 +38,8 @@ commit needs no containers.
 
 ## Checks
 
-CI defines four jobs: `Verify`, `Image`, `Prose` and `Deploy`. A green `Verify` is not a green
-branch. Each job runs these npm scripts, and a terminal runs the same ones:
+CI defines four jobs: `Verify`, `Image`, `Prose` and `Deploy`. Report all four. Each job runs
+these npm scripts, and a terminal runs the same ones:
 
 | Job | Local command | Needs |
 | --- | --- | --- |
@@ -58,9 +57,6 @@ Read how a run decided the jobs:
 ```sh
 gh run view <run-id> --json jobs --jq '.jobs[] | "\(.name)  \(.conclusion)"'
 ```
-
-This has happened here. On one commit `Verify`, `Image` and `Deploy` all passed while `Prose`
-failed, so nothing in the deployment said the branch was red.
 
 Run `npm run lint:ci` to check the code. `npm run lint` carries `--fix` and rewrites files.
 
@@ -82,7 +78,7 @@ Migrations are additive, two aside. `20260828063219_reset_token_hash_and_indexes
 the previous image still reads, and `20260902013632_email_citext` rewrites `users` under an
 ACCESS EXCLUSIVE lock. A new migration that is not additive needs expand and contract.
 
-## Traps this environment does not confess
+## Environment traps
 
 - The shell is zsh. A pipe reports the status of its last command, so `cmd | tail` hides a
   failure. Write `cmd > /tmp/out.log 2>&1; echo "exit=$?"`, or read `$pipestatus[1]`.
@@ -99,4 +95,4 @@ ACCESS EXCLUSIVE lock. A new migration that is not additive needs expand and con
 - **ADR**: one decision record under `docs/decisions/`, cited from the code by its number.
 - **additive**: a migration the previous image can still read. Two of the eleven are not.
 - **control**: a second command, aimed at something known to be present, that proves the first
-  command can return a result at all. An empty result with no control is a guess.
+  command can return a result at all. Give every empty result a control.

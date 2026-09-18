@@ -11,7 +11,7 @@
 holding more than one live refresh token row, which the grace window produces whenever a second
 tab refreshes. Fixed in [`f3e6e6e`](https://github.com/f3r21/t-shirt-store-api/commit/f3e6e6e).
 The test supplies both row orders the database can return. Before the fix, the order the
-database actually produces fails. After it, both pass.
+database produces fails. After it, both pass.
 
 No improvement had been suggested when the branch was cut, so this one came from a survey of the
 repository. The brief then asks for an alternative of the same size agreed with the mentor, and
@@ -30,8 +30,6 @@ _References._ Both files follow [Agent Skills](https://code.claude.com/docs/en/s
 arguments, forked execution and injected context. They follow
 [Writing for Agents](https://www.aihero.dev/skills-writing-for-agents) for style: one action per
 instruction, a checkable completion condition, and reference material kept behind a pointer.
-The mentor review in issue #16 removed the prose that argued for an instruction instead of
-giving it.
 
 _Reused tooling._ Neither skill adds a dependency. `verify-fix` runs the same `check:*` npm
 scripts that CI runs, so the list of checks lives in `package.json` and nothing parses the
@@ -56,19 +54,14 @@ _Safety and rollback._ `investigate-task` runs in a subagent whose tools are `Re
 
 **Before → after:**
 
-Done by hand, this work is not slower. It goes wrong in two particular ways.
+Checks. Before: a local run covered the `Verify` steps. On `7139980`, `Verify`, `Image` and
+`Deploy` passed in CI while `Prose` failed on a word count. After: `verify-fix` reports a row for
+each of the four jobs, and each row runs the npm script that CI runs.
 
-The first is the shape of a check run. By hand, the four cheap checks get run and the result gets
-called green. CI defines four jobs, and on this branch's first commit `Verify`, `Image` and
-`Deploy` passed while `Prose` failed on a word count. `verify-fix` reports a row for every job.
-After #16, each row comes from the same npm script CI runs, so the local run and the CI run
-cannot drift apart.
-
-The second is the order of investigation. By hand, the defect gets fixed first, and what the fix
-broke turns up later. `investigate-task` reads the tests around the code before anything changes,
-and that decided this fix. Sorting the query by `expires_at` is one line, but it would have
-broken `auth.service.spec.ts:733`, which pins the query order. The loop rewrite was the only
-route to green that did not weaken a test.
+Investigation. Before: the fix came first and the broken tests showed up afterwards. After:
+`investigate-task` reads the tests before any edit. Here it found that
+`auth.service.spec.ts:733` pins the query order. Sorting the query by `expires_at` would have
+broken that test, so the fix rewrites the grouping loop and leaves the query alone.
 
 `verify-fix` then proved the fix at pinned commits. The base `af19d13` fails on the expected
 assertion and the head `736e54e` passes. Each commit ran in its own worktree, and the checkout
@@ -121,10 +114,10 @@ The review in issue #16 found the defects below, and each one is fixed:
 - `.husky/pre-commit` runs the unit suite, so no commit on the branch can hold the failing test.
   The red state exists only in a worktree at the base, as recorded in the evidence.
 - The jobs table in the `verify-fix` evidence was taken at `736e54e`, which predates the check
-  scripts. Those scripts were run in the working checkout instead, and a clean table needs a run
-  at a head that contains them.
-- The Prose job still runs Vale through its action, so that it keeps its annotations. Locally
-  `check:prose` runs the `vale` binary, which must be on the path.
+  scripts, so it reads `Missing script`. CI run 35371898230 ran the scripts at `876fe9d`, and
+  all four jobs passed there.
+- The Prose job runs Vale 3.19.0 through its action, which keeps the annotations. Locally,
+  `check:prose` needs the same Vale version on the path.
 - The investigator cannot see gitignored paths, because Glob and Grep honour the ignore files.
   It cannot confirm that `.env`, `node_modules` or `src/generated` exist, and it reports that
   as unresolved.
@@ -132,5 +125,4 @@ The review in issue #16 found the defects below, and each one is fixed:
   that the session had no history. The probes each report quotes can be re-derived.
 - Two skills were designed and then dropped. `migration-safety` was cut because an auth fix
   touches no migration. `adr-conformance` was cut because its check passes today: 137 citations
-  resolve to 37 files. So its demonstration would have had to rest on a sabotage instead of a
-  real defect.
+  resolve to 37 files, so the only demonstration available was a sabotage.

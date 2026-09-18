@@ -43,7 +43,7 @@ head  Tests:       47 skipped, 2 passed, 49 total
 ```
 
 Result: **verified**. The base fails on the expected assertion, and only the row order the
-database actually returns fails. The head passes both orders.
+database returns fails. The head passes both orders.
 
 ## Jobs
 
@@ -81,7 +81,9 @@ git worktree list         neither verify worktree remains
 ## Check sensitivity
 
 A separate run for #17 created a scratch worktree at `736e54e` and copied in the working
-checkout's `package.json`, because the `check:*` scripts are not committed at that SHA. It then
-wrote `f3e6e6e^`'s `auth.service.ts` into the worktree and ran `check:unit` there. The result was `exit=1`, with 1 failed of 681 on the same
-assertion. The first attempt also failed `AppModule`, because the worktree had no `.env`. That was a setup
-failure and not the defect, and it is why step 4 links `.env`.
+checkout's `package.json`, because the `check:*` scripts are not committed at that SHA. It wrote
+`f3e6e6e^`'s `auth.service.ts` into the worktree and ran `check:unit` there: `exit=1`, with 1
+failed of 681 on the same assertion.
+
+The first attempt also failed `AppModule`, because the worktree had no `.env`. That failure came
+from setup, so step 4 now links `.env` into each worktree.
