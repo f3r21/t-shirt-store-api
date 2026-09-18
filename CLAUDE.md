@@ -46,7 +46,7 @@ branch. Each job runs these npm scripts, and a terminal runs the same ones:
 | --- | --- | --- |
 | Verify | `npm run check:unit` | the network, for `npm audit` |
 | Verify | `npm run check:db` | the three containers and the `tshirt_store_test` database |
-| Prose | `npm run check:prose` | `vale` on the path. CI runs Vale through its action, then `docs:length` |
+| Prose | `npm run check:prose` | Vale 3.19.0 on the path, the version CI pins. CI runs Vale through its action, then `docs:length` |
 | Image | `npm run check:image` | a running Docker daemon |
 | Deploy | none | AWS credentials, so it runs in CI only |
 
