@@ -1,0 +1,10 @@
+# The punctuation tell, alongside the vocabulary tells in AiSigns.yml. It lives in its
+# own file because AiSigns matches words and this needs nonword, which is a per-rule
+# setting. None of these appears in the four pages today, so one recurrence fails Prose.
+extends: existence
+message: "An em dash or en dash marks machine-written prose. Use a comma, a colon or a full stop."
+level: error
+nonword: true
+tokens:
+  - '\x{2014}'
+  - '\x{2013}'
