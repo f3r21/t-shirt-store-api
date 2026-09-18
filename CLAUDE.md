@@ -19,6 +19,12 @@ an image tag changes.
 The worker is a second process from the same image. Work that goes on the queue stays on the
 queue until the worker runs.
 
+## Layout
+
+- `src/` holds one directory for each NestJS module: its controller, service, DTOs and specs.
+- `prisma/schema.prisma` names every column. The comments beside a column carry its reason.
+- `test/` holds the end to end suite. `contract/openapi.yaml` holds the published API.
+
 ## Tests
 
 Unit tests sit beside the code as `*.spec.ts`. They mock Prisma, so they need no database.
@@ -33,11 +39,23 @@ commit needs no containers.
 
 ## Checks
 
-CI defines four jobs: `Verify`, `Image`, `Prose` and `Deploy`. No command runs all four, and a
-green `Verify` is not a green branch. Read the jobs, and read how a run decided them:
+CI defines four jobs: `Verify`, `Image`, `Prose` and `Deploy`. A green `Verify` is not a green
+branch. Each job runs these npm scripts, and a terminal runs the same ones:
+
+| Job | Local command | Needs |
+| --- | --- | --- |
+| Verify | `npm run check:unit` | the network, for `npm audit` |
+| Verify | `npm run check:db` | the three containers and the `tshirt_store_test` database |
+| Prose | `npm run check:prose` | `vale` on the path. CI runs Vale through its action, then `docs:length` |
+| Image | `npm run check:image` | a running Docker daemon |
+| Deploy | none | AWS credentials, so it runs in CI only |
+
+`check:db` migrates and tests `TEST_DATABASE_URL`, or `tshirt_store_test` when that is unset, and
+never the development database.
+
+Read how a run decided the jobs:
 
 ```sh
-rg -n --hidden 'name:|run:' .github/workflows/ci.yml
 gh run view <run-id> --json jobs --jq '.jobs[] | "\(.name)  \(.conclusion)"'
 ```
 
