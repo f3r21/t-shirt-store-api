@@ -4,124 +4,76 @@ description: |-
   Find the code and the tests behind a request, and report where a change belongs. Reads only.
   Use for an issue number, a bug report, a proposed change, or a failing test you did not write,
   and use it before anyone edits a file.
-allowed-tools:
-  - Bash
-  - Read
-  - Grep
-  - Glob
+argument-hint: <issue-number | "description">
+arguments: [issue]
+context: fork
+agent: investigator
+background: false
+allowed-tools: Bash(.claude/skills/investigate-task/fetch-issue.sh *)
 ---
 
 # Investigate a task
 
-Find the code. Find its tests. Report both, and report how to prove a change works.
+Report the code, the decisions and the tests behind the request below. Do not edit a file and do
+not run a test.
 
-This skill reads. The person who receives the report decides what to change.
+`CLAUDE.md` defines **control**, **ADR** and **job**, and its Layout and Tests sections describe
+where code and tests live. Read those sections first.
 
-**Input:** an issue number, a bug report, or a proposed change.
+## The request
 
-**Output:** three sections. Files, Findings, Test plan.
+Arguments: `$ARGUMENTS`
 
-`CLAUDE.md` defines **control**, **ADR** and **job**, and this skill uses those words with those
-meanings. Give every empty result a control, in every step below.
+The issue, when the first argument is an issue number:
 
-## 1. Read the whole request
+!`.claude/skills/investigate-task/fetch-issue.sh "$issue"`
 
-```sh
-gh issue view <n> --json body,comments
-```
+If the line above reads `NO INPUT`, stop. Reply with one line that asks for an issue number or a
+description, and do nothing else.
 
-One command returns both parts. `gh issue view <n>` prints the body and drops the comments.
-Measured here: issue 8 carries three comments and the plain view shows none of them.
+## 1. State the request
 
-**Done when** you can state the request in one sentence, and you have read every comment on it.
+Read the issue body and every comment, or the arguments when no issue was fetched. State the
+request in one sentence.
 
 ## 2. Find the code
 
-```sh
-rg -n --hidden -g '!.git/' '<pattern>' .
-```
+Search with Grep. Rules for scope:
 
-`--hidden` adds the directories whose names start with a dot, so the search reaches `.claude/`,
-`.github/` and `.vale/`. Plain `rg` skips them and reports zero.
+- Hidden directories (`.claude/`, `.github/`, `.vale/`) hold configuration. When the request can
+  touch configuration, search each one by path.
+- Grep honours `.git/info/exclude`, which hides `.claude/` from a directory search. List the
+  files under `.claude/agents/` and `.claude/skills/` with Glob, and Grep each file by its path.
+- `.claude/worktrees/` holds other checkouts of this repository. Leave its matches out of the
+  report.
+- When you count source matches, exclude prose with the glob `!*.md`. A document that quotes a
+  pattern is a match for it.
+- For every empty search, run a control in the same scope, and report both results.
 
-It does not switch off `.gitignore`, so `node_modules`, `dist` and `coverage` stay out without
-naming them, and naming them changes nothing. `--no-ignore` is what floods a search. Measure it
-with prose excluded, because a document that quotes a pattern becomes a match for it and moves the
-count you are reading:
-
-```sh
-rg -l --hidden -g '!.git/' -g '!*.md' '<pattern>' . | wc -l
-```
-
-Measured that way on `15ab926`, `module.exports` matches 1 file, and 12507 with `--no-ignore`
-added. Re-run both before you quote either. The second moves with every dependency change.
-
-Start from the layout:
-
-- One directory for each NestJS module under `src/`. A module holds its controller, its service,
-  its DTOs and its specs together.
-- Prisma is the data layer. `prisma/schema.prisma` names every column, and the comments beside
-  the columns carry the reasons.
-- `test/` holds the end to end suite. `contract/openapi.yaml` holds the published API.
-
-**Done when** every file you will report carries a line number.
+Record each file you will report with its line number.
 
 ## 3. Resolve the decisions
 
-```sh
-rg -o --hidden 'ADR [0-9]+|DECISIONS [0-9]+' <the files you found>
-ls docs/decisions/
-```
+Grep the files from step 2 for `ADR [0-9]+|DECISIONS [0-9]+`. Find each cited file under
+`docs/decisions/` with Glob. Read only the sections that bear on your finding or on the proposed
+change. When the change breaks a rule an ADR states, report the ADR as part of the change.
 
-Read each ADR that the code beside your finding cites. An ADR states a rule the code follows, so
-a change that breaks the rule needs the ADR changed first. Report that as part of the finding.
+## 4. Find the consumers
 
-**Done when** every citation in the code you report resolves to a file, and you have read each
-one.
+For each name the proposal would change (a log event, a response field, an exported symbol),
+Grep the literal across the repository, hidden directories included. List every reader. Mark each
+reader that is an alert, a metric filter, a contract file or a test.
 
-## 4. Find who consumes what would change
+## 5. Plan the tests
 
-A name in a log line, a response field or an exported symbol may have readers outside the file
-that writes it. Search for the literal before you propose changing it, and report what would
-break.
+Find the unit spec beside each source file and the end to end specs in `test/`. For each
+behaviour you report, name the test file, the command that runs it, and the services it needs.
+Mark each behaviour that no test covers, and name the file that would hold its test.
 
-```sh
-rg -n --hidden -g '!.git/' '<the literal you would change>' .
-```
-
-Report the count, and say whether any reader is an alert, a metric filter, a contract file or a
-test. A name nothing reads is cheap to change; a name a check reads is part of the change.
-
-**Done when** every name your proposal changes carries the list of the places that read it.
-
-## 5. Find the tests
-
-A unit spec sits beside its source as `*.spec.ts` and mocks Prisma, so it needs no database. Run
-one file, or one test by name:
-
-```sh
-npx jest src/auth/auth.service.spec.ts
-npx jest -t 'the name of the test'
-```
-
-An end to end spec sits in `test/` as `*.e2e-spec.ts`. It uses `test/jest-e2e.json` and it needs
-the three containers.
-
-Read the comment beside every line you report. Comments here carry the reason for the code. A
-comment that describes behaviour your change alters is part of the change, so name that comment.
-
-**Done when** each behaviour you report is marked covered or uncovered, and each uncovered one
-names the file that would hold its test.
+Read the comment beside each line you report. Name each comment that the change would make
+false.
 
 ## 6. Report
 
-**Files.** Each entry is `path:line`, with one sentence on what that line does.
-
-**Findings.** Each finding cites a `path:line` from Files, or the command that produced it. State
-what is true of the code now.
-
-**Test plan.** Each entry names the file that holds the test, the behaviour it asserts, and the
-command that runs it. Mark every entry that needs the containers.
-
-**Done when** every file carries a line number, every finding carries a citation, every zero
-carries the command that proves the pattern fires, and every test names its file and its command.
+Read `${CLAUDE_SKILL_DIR}/report-template.md` and fill it. Every file entry carries a line
+number. Every empty result carries its control.
