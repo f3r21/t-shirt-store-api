@@ -89,8 +89,9 @@ The end-to-end suite never reaches Stripe. It replaces the two API calls with a 
 signs its own events with the same secret the server verifies, so the signature check is the
 production code path.
 
-In production the endpoint is the distribution's URL,
-`https://daat4q77vztp7.cloudfront.net/v1/webhooks/stripe`, added in the Stripe dashboard in
+In production the endpoint is the distribution's URL followed by `/v1/webhooks/stripe` (on
+the review instance, torn down on 2026-09-14, that was
+`https://daat4q77vztp7.cloudfront.net/v1/webhooks/stripe`), added in the Stripe dashboard in
 test mode for `checkout.session.completed` and `payment_intent.succeeded`. Its signing secret
 and the `sk_test_` key replace the two placeholders in SSM, in the Deploy section below, and
 the tasks read them at their next start. The distribution forwards the body and the
@@ -199,8 +200,9 @@ Mail and Stripe, once, after the first release:
    `--parameter-overrides MailTransport=ses MailFrom=<your address>`. That roll also reads the
    two new secrets.
 
-The API answers at the `ApiUrl` stack output. The review instance is
-`https://daat4q77vztp7.cloudfront.net/v1`. Tear everything down in two commands. Empty the
+The API answers at the `ApiUrl` stack output. The review instance,
+`https://daat4q77vztp7.cloudfront.net/v1`, was torn down on 2026-09-14 and no longer answers.
+Tear everything down in two commands. Empty the
 images bucket first, because CloudFormation refuses to delete a bucket that holds objects,
 then delete the stack, and the trust with the same command on `tshirt-ci`:
 

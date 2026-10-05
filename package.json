@@ -2,7 +2,7 @@
   "name": "t-shirt-store-api",
   "version": "0.0.1",
   "description": "T-shirt store API: catalog, cart, orders, Stripe payments and low-stock mail on NestJS and Prisma",
-  "author": "Fabian Espinoza",
+  "author": "Fernando Ramirez",
   "private": true,
   "license": "UNLICENSED",
   "engines": {
