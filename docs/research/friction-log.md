@@ -60,18 +60,13 @@ session is still a friction log, and links point here.
   Flow Notetaker writes the transcript; it starts with the call, because it cannot import a
   recording later. Files are named by P number and stay out of this repository ("What this
   repository holds").
-- **Consent.** In writing on 2026-10-06, and, when the session is recorded, confirmed at the start
-  of the recording. A participant who declines recording is not recorded; their written reply
-  stands, and only quotes are used. It covers taking part, recording screen and voice with a
-  transcript, and clips of 60 seconds or less and quotes shown to RAVN evaluators on an unlisted
-  page. Without clip consent, that page quotes words only. Publishing is a separate box: a
-  participant's de-identified results (task times, ratings and paraphrased notes, with no name and
-  no quotes) go into this public repository only if they ticked "Publish my de-identified results".
-  Every file and note uses the P number: no name, email or employer, and a frame that shows one is
-  cut. The full recordings and transcripts are deleted by 2026-10-23. A participant may withdraw at
-  any time, which deletes their recording, transcript and notes and removes their results from this
-  repository; earlier versions stay in its history, de-identified. Clips they agreed to stay until
-  they ask for them to be removed.
+- **Privacy.** No consent step: the participants are friends of the moderator, and the project is
+  internal. Every file and note uses the P number only: no name, email or employer. Before a clip
+  is used, names, emails, notifications and open tabs are cut from it. Quotes and clips go only to
+  the unlisted page for RAVN evaluators. This repository holds only de-identified results, such as
+  outcomes, times, ratings, paraphrased findings and context answers ("What this repository holds"
+  lists them all). Recordings, transcripts and session notes stay outside it, and the full
+  recordings and transcripts are deleted by 2026-10-23.
 - **Order.** P3 before P4, 15 minutes or more apart, so a store problem shows up first with the
   developer, and the stock check between them catches a variant P3 bought.
 - **Accounts.** Every account in either session uses a made-up email ending in `@example.com`.
@@ -112,8 +107,9 @@ Repository: https://github.com/f3r21/t-shirt-store-api
 Base URL: https://d1hfx5i8kcs8ag.cloudfront.net/v1
 ```
 
-**Timing.** Minutes 0 to 2: consent and the task. Then the run, with a hard stop at 23:00 on the
-run clock, which starts when P3 finishes reading. The last 5 minutes: the debrief.
+**Timing.** Minutes 0 to 2: the moderator starts OBS, then Wispr, and gives the intro and the
+task. Then the run, with a hard stop at 23:00 on the run clock, which starts when P3 finishes
+reading. The last 5 minutes: the debrief.
 
 | # | Milestone | Reached when | Clock |
 |---|---|---|---|
@@ -170,8 +166,9 @@ The card says "Pay in US dollars" because the webhook marks an order paid only w
 is in USD (`src/payments/payments.service.ts:335`), and Stripe's page may offer the local
 currency first. No test has paid in another currency.
 
-**Timing.** Minutes 0 to 3: consent, the framing and the card. 3 to 15: shopping and paying. 15
-to 18: the word check. 18 to 22: the debrief. 22 to 25: close.
+**Timing.** Minutes 0 to 3: the moderator starts OBS, then Wispr, and gives the intro, the
+framing and the card. 3 to 15: shopping and paying. 15 to 18: the word check. 18 to 22: the
+debrief. 22 to 25: close.
 
 | Step | When P4 | The moderator sends |
 |---|---|---|
@@ -266,24 +263,21 @@ still run.
 
 ## What this repository holds
 
-Only de-identified results, each under a P number, and only from a participant who ticked the
-"Publish my de-identified results" box; any other participant's column and findings are left out,
-and their results stay on the unlisted page. Those results are outcomes, times, the SEQ, milestone
-status, scores, findings in paraphrase, context answers (experience band, prior tools), and the
-session's setup (Swagger "Servers", the fallback, whether clips were agreed). A free answer, such as
-what a word means, is paraphrased. A pick from a fixed list, such as the five reaction words, may be
-listed, but never the reason spoken for it. Recordings, transcripts and session notes stay outside
-this repository, because the notes hold quotes and reasons, and a withdrawal deletes them. It also
-removes the participant's results from this repository; earlier versions stay in its history,
-de-identified. Quotes and clips go only to the unlisted page for RAVN evaluators: one clip of 60
-seconds or less with captions, from a P who agreed to clips, or else one quote with the P number.
+Only de-identified results, each under a P number; every participant's results may go in. Those
+results are outcomes, times, the SEQ, milestone status, scores, findings in paraphrase, context
+answers (experience band, prior tools), and the session's setup (Swagger "Servers", the
+fallback). A free answer, such as what a word means, is paraphrased. A pick from a fixed list,
+such as the five reaction words, may be listed, but never the reason spoken for it. Recordings,
+transcripts and session notes stay outside this repository, because the notes hold quotes and
+reasons. If a participant later asks, their results are removed from this repository; earlier
+versions stay in its history, de-identified. Quotes and clips go only to the unlisted page for
+RAVN evaluators, each under the P number: one clip of 60 seconds or less, with captions.
 
 ## Results
 
 Blank until the sessions on 2026-10-07, and filled after each one within "What this repository
-holds". Leave a participant's column and findings out unless they ticked the publish box. Timestamps
-(mm:ss) exist only for recorded sessions; for a session that was not recorded, those cells read "not
-recorded".
+holds". Timestamps (mm:ss) exist only for recorded sessions; for a session that was not recorded,
+those cells read "not recorded".
 
 ### Context
 
@@ -293,7 +287,6 @@ recorded".
 | This file opened at (mm:ss), or not opened | | n/a |
 | Backend experience band: under 2, 2 to 5, or over 5 years | | n/a |
 | Used Stripe before: yes / no | | n/a |
-| Clips agreed: yes / no | | |
 | Fallback used: no / store / Stripe | n/a | |
 
 ### Outcome
