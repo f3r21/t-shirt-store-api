@@ -80,10 +80,11 @@ watching.
 - **Stripe test mode.** The store holds `sk_test_` keys and the webhook endpoint is added in the
   Stripe dashboard for `checkout.session.completed` (README, "Stripe"). Otherwise M5 never
   arrives. A rehearsal payment turns `paid` within 60 seconds of Stripe's thank-you page.
-- **Swagger can send requests.** The "Servers" box in `/docs` lists `/v1`. On 2026-10-06 at
-  18:26 UTC it listed only `http://localhost:3000/v1`, so "Try it out" fails with "Failed to
-  fetch". For P3 that is friction to log. For P4 the moderator sends the same requests from a
-  terminal.
+- **Swagger can send requests.** The "Servers" box in `/docs` lists `/v1` first. On 2026-10-06
+  it did at 18:39 UTC, after the deploy of PR #27; at 18:26, before that deploy, it listed only
+  `http://localhost:3000/v1`, which makes "Try it out" fail with "Failed to fetch". If it lists only
+  `localhost` again, that is friction to log for P3, and for P4 the moderator sends the same
+  requests from a terminal.
 - **A storefront account for P4.** The moderator creates it on 2026-10-06 with `POST /v1/users`
   and signs in with it during P4's session. Its password lives in a password manager, never in a
   file. A second made-up account rehearses P4's session once, end to end.
