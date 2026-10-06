@@ -23,7 +23,7 @@ runs, on what, and when a result counts.
 | Dependencies | `npm audit --omit=dev --audit-level=high` | The tree the image ships |
 | Image | `npm run check:image` | `docker build` of the runtime image |
 | Prose | `npm run check:prose` | Vale on the README, the architecture page, the contract README and the ADRs |
-| Pilot | `docs/research/friction-log.md` | Two interviews on the deployed store, by hand: P3, a developer, and P4, a non-developer |
+| Pilot | `docs/research/friction-log.md` | Two interviews with developers, P3 and P4, by hand: a story, the problem statement, then a few minutes on the deployed store |
 
 ## Environments and data
 
@@ -45,8 +45,8 @@ A run starts when all of these hold:
 3. The environment carries every variable `src/config/env.validation.ts` requires, or the
    application refuses to boot.
 
-For the pilot, also the "Dependencies" in `docs/research/friction-log.md`: a product with stock,
-a reachable store in Stripe test mode, and a storefront account for P4.
+For the pilot, also "Before the sessions" in `docs/research/friction-log.md`: the deployed store
+lists its products, and the "Servers" box in Swagger UI lists `/v1`.
 
 ## Exit criteria
 

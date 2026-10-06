@@ -58,6 +58,7 @@ They run without a database. Thirteen of them replace Prisma with
 - The deploy itself, apart from its own check that the running task is this commit.
 - Live Stripe, SES delivery, S3 and CloudFront.
 - Load, and races beyond the pairs `Promise.all` sends.
-- The integrating developer's experience, and whether a shopper reads the API's answers as
-  meant. Interviews with P3, a developer, and P4, a non-developer, are planned for 2026-10-07
-  (`docs/research/friction-log.md`).
+- The integrating developer's experience. Interviews with two developers, P3 and P4, are
+  planned for 2026-10-07 (`docs/research/friction-log.md`).
+- Whether a shopper reads what a front end shows from the API's answers as meant. No interview
+  reaches the shopper.
