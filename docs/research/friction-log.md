@@ -148,7 +148,8 @@ never announced:
 - Penetrability: "When you were stuck, how did you find the way?"
 - Progressive evaluation: "How soon could you try something and see if it worked?"
 
-Last, for the context: years of backend experience, and whether P3 has used Stripe before.
+Last, for the context: years of backend experience, recorded as a band, and whether P3 has used
+Stripe before.
 
 ## P4: the non-developer shops through the API (25 minutes)
 
@@ -209,12 +210,14 @@ you to sign in.", and is logged too.
 - **The moderator never** reads the JSON aloud, points at a field, converts cents, or says "paid"
   before P4 does.
 
-**Probes,** each asked once, when its answer is on screen:
+**Probes,** each asked once: R3's at the sign-in prompt, the others when their answer is on
+screen.
 
 | After | Probe | Correct answer |
 |---|---|---|
 | R1 | "How much is this one?" | the price in dollars, such as 24 for `2400` (cents of USD) |
 | R2 | "Is M available?" | matches `variants[]`: size M with stock 1 or more |
+| R3 | "What would you expect to give the shop here?" | none: what P4 expects is logged, not scored |
 | R6 | "Did it work? How do you know?" | yes, because the status says `paid` |
 
 **Word check.** One word at a time: "What does this word mean to you?"
@@ -261,12 +264,13 @@ still run.
 ## What this repository holds
 
 Only de-identified results, each under a P number: outcomes, times, the SEQ, milestone status,
-scores, and findings in paraphrase. A free answer, such as what a word means, is paraphrased. A
-pick from a fixed list, such as the five reaction words, may be listed, but never the reason
-spoken for it. Recordings, transcripts and session notes stay outside this repository, because
-the notes hold quotes and reasons, and a withdrawal has to delete them. Quotes and clips go only
-to the unlisted page for RAVN evaluators: one clip of 60 seconds or less with captions, from a P
-who agreed to clips, or else one quote with the P number.
+scores, findings in paraphrase, context answers (experience band, prior tools), and the session's
+setup (Swagger "Servers", the fallback, whether clips were agreed). A free answer, such as what a
+word means, is paraphrased. A pick from a fixed list, such as the five reaction words, may be
+listed, but never the reason spoken for it. Recordings, transcripts and session notes stay outside
+this repository, because the notes hold quotes and reasons, and a withdrawal has to delete them.
+Quotes and clips go only to the unlisted page for RAVN evaluators: one clip of 60 seconds or less
+with captions, from a P who agreed to clips, or else one quote with the P number.
 
 ## Results
 
@@ -279,7 +283,7 @@ holds".
 |---|---|---|
 | Swagger "Servers" at the start: `/v1` or `localhost` | | |
 | This file opened at (mm:ss), or not opened | | n/a |
-| Years of backend experience | | n/a |
+| Backend experience band: under 2, 2 to 5, or over 5 years | | n/a |
 | Used Stripe before: yes / no | | n/a |
 | Clips agreed: yes / no | | |
 | Fallback used: no / store / Stripe | n/a | |
