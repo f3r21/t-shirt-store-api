@@ -105,8 +105,8 @@ What stops it:
 - The rate limit counter lives in one process (README, "Known gaps").
 
 **Ship criteria:** live Stripe keys and a refund path; Multi-AZ, deletion protection and longer
-backups; the four business metrics `ARCHITECTURE.md` names; the API interviews, with P3 reaching
-M5 and P4 a paid order.
+backups; the four business metrics `ARCHITECTURE.md` names; the API interviews, with P3 a success
+(M5 without help) and P4 a success or a partial.
 **Owner:** Fernando Ramirez. **Rollback trigger:** after a release, a signed success that does not
 turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<previous sha>`.
 **Watch:** paid orders per week, and the `payment.*` and `stock.oversold` log events.
@@ -114,7 +114,7 @@ turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<prev
 ## Now, next and later
 
 - **Now:** interview P3 and P4 on the deployed store on 2026-10-07. Fix the README where P3 got
-  stuck, and put what stopped P4 on the "Next" list.
+  stuck. Every other finding from either interview goes on the "Next" list, not into the code.
 - **Next:** the checkout metrics; split the two causes of `payment.orphan`; a DKIM domain for mail.
 - **Later:** live Stripe with refunds; a shared rate-limit counter before a second task; the
   outbox; Multi-AZ.

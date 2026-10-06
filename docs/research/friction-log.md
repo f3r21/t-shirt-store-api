@@ -55,14 +55,18 @@ session is still a friction log, and links point here.
   recorder's microphone track silent. P3 shares the entire screen for the whole run. P4 watches
   the moderator's shared Swagger window, and shares their own screen only to pay.
 - **Recording.** Cap 0.6.0 in Studio mode records the entire screen, the microphone and the
-  system audio, locally on the moderator's Mac. Wispr Flow Notetaker writes the transcript; it
-  starts with the call, because it cannot import a recording later. Files are named by
-  P number and kept outside every repository.
+  system audio, locally on the moderator's Mac. Cap is pending confirmation by a test call. If
+  its microphone track comes out flat, OBS Studio 32.2.2 records instead, and if that fails too,
+  Zoom's local recording, which moves the calls to Zoom. Wispr Flow Notetaker writes the
+  transcript; it starts with the call, because it cannot import a recording later. Files are
+  named by P number and kept outside every repository.
 - **Consent.** In writing on 2026-10-06, and confirmed on the recording before the task. It
   covers taking part, recording screen and voice with a transcript, and clips of 60 seconds or
-  less shown to RAVN evaluators on an unlisted page. Without clip consent, results quote words
-  only. Every file and note uses the P number: no name, email or employer, and a frame that shows
-  one is cut. The full recordings and transcripts are deleted by 2026-10-23.
+  less and quotes shown to RAVN evaluators on an unlisted page. Without clip consent, that page
+  quotes words only. Every file and note uses the P number: no name, email or employer, and a
+  frame that shows one is cut. The full recordings and transcripts are deleted by 2026-10-23.
+  A participant may withdraw at any time, which deletes their recording, transcript and notes.
+  Clips they agreed to stay until they ask for them to be removed.
 - **Order.** P3 before P4, 15 minutes or more apart, so a store problem shows up first with the
   developer, and the stock check between them catches a variant P3 bought.
 - **Accounts.** Every account in either session uses a made-up email ending in `@example.com`.
@@ -89,7 +93,8 @@ watching.
   and signs in with it during P4's session. Its password lives in a password manager, never in a
   file. A second made-up account rehearses P4's session once, end to end.
 - **The recording works.** A test call puts both voices in Cap's video and in Wispr's transcript,
-  and the microphone track in Cap is not flat.
+  and the microphone track in Cap is not flat. Otherwise the test call repeats with OBS, then
+  Zoom.
 
 ## P3: the developer's friction log (30 minutes)
 
@@ -120,6 +125,8 @@ run clock, which starts when P3 finishes reading. The last 5 minutes: the debrie
   "Let's stop here. That's a result too." No hints and no endpoint names.
 - **If the store stays down for 3 minutes,** the run clock stops, the outage is logged as the
   store's, and the session is rescheduled.
+- **If P3 pays the same link twice,** it is logged. Stripe takes a second test payment and the
+  store does not record it (README, "Known limitations"). No real money moves.
 
 **Expected friction,** from a dry run on 2026-10-06. Each is logged when it starts and ends, and
 never announced:
@@ -180,11 +187,25 @@ you to sign in.", and is logged too.
   15.
 - **Time:** from the end of reading the card to `paid` on screen. It includes the moderator's
   time sending requests, and is labelled wizard time.
-- **The moderator says only:** "Here is the shop's answer." after each request; "The shop has no
-  answer for that."; the sign-in lines of R3; "What are you thinking?" after 10 seconds of
-  silence; "What do you think?" when asked what an answer means; and "Please check the task card
-  again." only when P4 is about to pay in another currency, logged as help. The moderator never
-  reads the JSON aloud, points at a field, converts cents, or says "paid" before P4 does.
+- **Besides the probes, the word check and the debrief, the moderator says only these lines:**
+  - After each request: "Here is the shop's answer."
+  - When no operation fits: "The shop has no answer for that."
+  - At the first purchase intent: "The shop asks you to sign in. I have a test account ready."
+    Then "One moment while I sign in." Then "You're signed in."
+  - When P4 asks to buy as a guest: "The shop asks you to sign in." When a call answers 401:
+    "The shop asks you to sign in again."
+  - After 10 seconds of silence: "What are you thinking?" or "What would you like to do?"
+  - When P4 asks what an answer means: "What do you think?"
+  - At R5: "Please open the link, and share your screen while you pay."
+  - After Stripe's thank-you page: "Please close that payment tab and stop sharing."
+  - If P4 has not asked about the order 30 seconds after that: "Here is what the shop shows
+    about your order now." It is logged that P4 did not ask.
+  - Only if P4 is about to pay in another currency: "Please check the task card again." It is
+    logged as help.
+  - When the store fails during R1 to R4: "The shop's system is down right now, so let's do
+    something different."
+- **The moderator never** reads the JSON aloud, points at a field, converts cents, or says "paid"
+  before P4 does.
 
 **Probes,** each asked once, when its answer is on screen:
 
@@ -210,10 +231,12 @@ Probes and words score correct, partial (right with doubt, or a guess) or wrong.
 2 minutes or more left, P4 picks the five words that best describe shopping this way from a list
 of 25, and says why they picked the first.
 
-**If the store fails.** Two 5xx answers or timeouts in a row before the payment switch P4 to a
-fallback: a README tour, three business questions, and six of the API's responses to interpret.
-It is reported as the fallback, not as the purchase. If Stripe fails, the order is logged as not
-paid, and the probes, the word check and the debrief still run.
+**If the store fails.** If the check after P3 fails and the store is not back 10 minutes before
+P4, P4's session is the fallback from the start. Two 5xx answers or timeouts in a row before the
+payment switch P4 to it mid-session. The fallback is a README tour, three business questions, and
+six of the API's responses to interpret. It is reported as the fallback, not as the purchase.
+If Stripe fails, the order is logged as not paid, and the probes, the word check and the debrief
+still run.
 
 ## Scoring and reporting
 
@@ -229,18 +252,23 @@ paid, and the probes, the word check and the debrief still run.
 - **Individual values only.** "P3: success, 12:40, SEQ 5". Never an average, a percentage or
   "100%". Under the results, once: "Times are think-aloud times. One participant per lens, so
   each result is a single observation."
-- **One clip,** 60 seconds or less with captions, only from a P who agreed to clips. Otherwise one
-  quote, with the P number.
+- **Quotes and clips stay on the unlisted page for RAVN evaluators, never in this repository.**
+  That page shows one clip of 60 seconds or less with captions, only from a P who agreed to
+  clips, or else one quote, with the P number.
+- **Every finding ends in a Next item** on the list in `docs/product.md`. No code changes come
+  from these findings in the week of the interviews; a fix to the README or another doc may.
 
 ## Results
 
-Blank until the sessions on 2026-10-07. Filled from the recordings and the notes after each one.
+Blank until the sessions on 2026-10-07. Filled after each one with outcomes, times, the SEQ,
+milestone status and paraphrased findings only. No participant's words go here.
 
 ### Context
 
 | | P3 | P4 |
 |---|---|---|
 | Swagger "Servers" at the start: `/v1` or `localhost` | | |
+| This file opened at (mm:ss), or not opened | | n/a |
 | Years of backend experience | | n/a |
 | Used Stripe before: yes / no | | n/a |
 | Clips agreed: yes / no | | |
@@ -253,7 +281,7 @@ Blank until the sessions on 2026-10-07. Filled from the recordings and the notes
 | Task | one t-shirt to `paid` | a size M under 30 USD, paid in USD |
 | Success, partial or fail | | |
 | SEQ, 1 to 7 | | |
-| The quote that best explains the biggest stall or mismatch (mm:ss) | | |
+| The biggest stall or mismatch, paraphrased (mm:ss) | | |
 
 ### Milestones
 
@@ -269,13 +297,13 @@ P3 on the run clock. P4 in wizard time; M1 and M2 are the moderator's calls.
 
 ### P3's stream of consciousness
 
-| mm:ss | What P3 did or said | Where (README section, Swagger operation, response) | Green, yellow or red |
+| mm:ss | What P3 did, paraphrased | Where (README section, Swagger operation, response) | Green, yellow or red |
 |---|---|---|---|
 | | | | |
 
-### P4's words
+### P4's understanding
 
-| Probe or word | P4's words | Correct, partial or wrong |
+| Probe or word | Correct, partial or wrong | The theme of P4's answer, paraphrased |
 |---|---|---|
 | "How much is this one?" | | |
 | "Is M available?" | | |
@@ -288,11 +316,13 @@ P3 on the run clock. P4 in wizard time; M1 and M2 are the moderator's calls.
 
 ### P4's capability gaps
 
-| mm:ss | What P4 asked for | The shop's answer |
+| mm:ss | What P4 asked for, paraphrased | The shop's answer |
 |---|---|---|
 | | | |
 
 ### Debrief
+
+Answers are paraphrased, never quoted.
 
 | Question | P3 | P4 |
 |---|---|---|
@@ -302,8 +332,8 @@ P3 on the run clock. P4 in wizard time; M1 and M2 are the moderator's calls.
 | What P4 expected to give at sign-in | n/a | |
 | Currency picked on Stripe's page, and any pause | | |
 | Asked about the order unprompted: yes / no | n/a | |
-| "If you ran this shop, what would worry you?" | n/a | |
-| Five words, and why the first | n/a | |
+| The worry P4 would have running this shop | n/a | |
+| Reaction words: how many of the five are positive, and the theme of the reason | n/a | |
 
 ### Pros and cons
 
@@ -314,13 +344,13 @@ P3 on the run clock. P4 in wizard time; M1 and M2 are the moderator's calls.
 
 ## Findings
 
-| # | Friction, mismatch or capability gap | P3 (mm:ss, minutes lost) | P4 (mm:ss) | Severity 0-4 | Fix belongs in (README, contract, error body, code) |
-|---|---|---|---|---|---|
-| F1 | | | | | |
+| # | Friction, mismatch or capability gap | P3 (mm:ss, minutes lost) | P4 (mm:ss) | Severity 0-4 | Fix belongs in (README, docs, contract, error body) | Next item |
+|---|---|---|---|---|---|---|
+| F1 | | | | | | |
 
 ### What changes because of this
 
 - In `docs/product.md`: whether D1 stays the user these documents serve (P3), what a front end
-  has to translate for the shopper (P4), and the "Now, next and later" list.
+  has to translate for the shopper (P4), and a Next item for each finding.
 - In `docs/qa/risk-register.md`: any new risk, from R10 onward.
 - In the README: the line each finding says was missing.
