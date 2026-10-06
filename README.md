@@ -19,7 +19,8 @@ npm run start:dev
 npm run start:worker:dev  # in a second terminal, see below
 ```
 
-The API is then on `http://localhost:3000/v1`. Mailpit's web interface at
+The API is then on `http://localhost:3000/v1`, and Swagger UI shows the contract at
+`http://localhost:3000/docs`, outside the `/v1` prefix. Mailpit's web interface at
 `http://localhost:8025` shows every message the API and the worker send.
 
 The worker is a second process. It consumes the low-stock queue and sends the mails from the
@@ -212,7 +213,7 @@ aws cloudformation delete-stack --profile tshirt --region us-east-2 --stack-name
 ```
 
 It costs about 31 USD a month plus storage at the prices of 2026-09-02, the figure ADR 29
-records, and the account's credits carry that for the review.
+records, and the account's credits carry it while the stack is up.
 
 ## What is implemented
 
@@ -267,8 +268,13 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
   the index. Tokens and sessions are ADR 1 to 4, problem documents ADR 11, money as an
   integer ADR 13, and 404 for another client's row ADR 25.
 - `contract/README.md` says where the contract came from and why it lives here.
-- `../BE-Nerdery-Challenges/5-api-design/DECISIONS.md` records the contract's design.
-- `../BE-Nerdery-Challenges/4-database/3-erd/DECISIONS.md` records the data model's.
+- [`5-api-design/DECISIONS.md`](https://github.com/f3r21/BE-Nerdery-Challenges/blob/aedfe45/5-api-design/DECISIONS.md), in BE-Nerdery-Challenges,
+  records the contract's design.
+- [`4-database/3-erd/DECISIONS.md`](https://github.com/f3r21/BE-Nerdery-Challenges/blob/aedfe45/4-database/3-erd/DECISIONS.md), in the same
+  repository, records the data model's.
+- `docs/ai-module/writeup.md` is the AI module: the two project skills, `investigate-task`
+  and `verify-fix`, the session-expiry fix they produced, and the runs in
+  `docs/ai-module/evidence/`.
 
 ## Known gaps
 
