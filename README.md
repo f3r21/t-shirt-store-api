@@ -7,6 +7,10 @@ A store API on NestJS, Prisma and PostgreSQL, built to a hand-written OpenAPI co
 It is the capstone of RAVN's NodeJS programme. The contract at `contract/openapi.yaml` is
 authoritative, and `contract/README.md` says where it came from and why it lives here.
 
+A deployed instance answers at `https://d1hfx5i8kcs8ag.cloudfront.net/v1` until 2026-10-23,
+with Swagger UI at `https://d1hfx5i8kcs8ag.cloudfront.net/docs`. Payments there run in Stripe
+test mode. Deploy, below, says what it runs and how it comes down.
+
 ## Run it
 
 Seven commands, in this order. Three of them carry a trap, noted below.
@@ -93,8 +97,8 @@ signs its own events with the same secret the server verifies, so the signature 
 production code path.
 
 In production the endpoint is the distribution's URL followed by `/v1/webhooks/stripe` (on
-the review instance, torn down on 2026-09-14, that was
-`https://daat4q77vztp7.cloudfront.net/v1/webhooks/stripe`), added in the Stripe dashboard in
+the deployed instance, `https://d1hfx5i8kcs8ag.cloudfront.net/v1/webhooks/stripe`), added in
+the Stripe dashboard in
 test mode for `checkout.session.completed` and `payment_intent.succeeded`. Its signing secret
 and the `sk_test_` key replace the two placeholders in SSM, in the Deploy section below, and
 the tasks read them at their next start. The distribution forwards the body and the
@@ -203,8 +207,11 @@ Mail and Stripe, once, after the first release:
    `--parameter-overrides MailTransport=ses MailFrom=<your address>`. That roll also reads the
    two new secrets.
 
-The API answers at the `ApiUrl` stack output. The review instance,
-`https://daat4q77vztp7.cloudfront.net/v1`, was torn down on 2026-09-14 and no longer answers.
+The API answers at the `ApiUrl` stack output. The deployed instance,
+`https://d1hfx5i8kcs8ag.cloudfront.net/v1`, runs `e64d69f`, released from a laptop on 2026-10-06.
+`DEPLOY_ENABLED` stays unset, so later merges to `main` do not redeploy it, and it comes down
+on 2026-10-23. The first review instance, `https://daat4q77vztp7.cloudfront.net`, was torn down
+on 2026-09-14.
 Tear everything down in two commands. Empty the
 images bucket first, because CloudFormation refuses to delete a bucket that holds objects,
 then delete the stack, and the trust with the same command on `tshirt-ci`:
