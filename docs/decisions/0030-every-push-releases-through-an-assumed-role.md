@@ -1,6 +1,6 @@
 # 30. Every push to main releases through a role GitHub assumes, and the stack changes through a role of its own
 
-Status: accepted, revised 2026-09-03
+Status: accepted, revised 2026-09-03 and 2026-10-06
 Date: 2026-09-02
 
 ## Context
@@ -35,6 +35,10 @@ role is wider than the stack needs.
 **Revised 2026-09-03:** the rollback is the deploy command with the previous tag, in the
 Deploy section of the README, rehearsed once to `ba49a7a` and back in about three minutes
 each way; before that it was a sentence and the circuit breaker.
+
+**Revised 2026-10-06:** the job also needs the repository variable `DEPLOY_ENABLED` set to
+`true`. The stack was torn down on 2026-09-14, and a push to `main` with green checks would
+have tried to recreate it. With the variable unset, the checks still run and nothing deploys.
 
 **Switch:** release branches when a versioned cadence or a second supported version exists;
 an environment protection rule when a second environment exists.

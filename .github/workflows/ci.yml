@@ -158,18 +158,21 @@ jobs:
       - name: The architecture page is one page
         run: npm run docs:length
 
-  # The release, on every push to the two refs, once the checks above are green:
-  # build on an arm runner (the instance is arm64), push both images, point the
-  # migrate task at this commit, run the migrations as a one-off task, roll the
-  # service to the tag, and prove the running task carries this commit. The
-  # credentials are a short-lived OIDC token exchanged for the deploy role, so
-  # no key is stored anywhere; the stack itself is changed through its own
+  # The release, on every push to main while the repository variable
+  # DEPLOY_ENABLED is 'true', once the checks above are green. The variable is
+  # the switch for a stack that is not always up: with it unset, a green main
+  # cannot recreate a torn-down stack by itself. When it runs, the job builds
+  # on an arm runner (the instance is arm64), pushes both images, points the
+  # migrate task at this commit, runs the migrations as a one-off task, rolls
+  # the service to the tag, and proves the running task carries this commit.
+  # The credentials are a short-lived OIDC token exchanged for the deploy role,
+  # so no key is stored anywhere; the stack itself is changed through its own
   # service role, so this job never holds a permission on an instance, a
   # database or a role. infra/ci.yml is the trust, DECISIONS 30 the reasons.
   deploy:
     name: Deploy
     needs: [verify, image]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     permissions:
