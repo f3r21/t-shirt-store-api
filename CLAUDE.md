@@ -29,7 +29,8 @@ queue until the worker runs.
 Unit tests sit beside the code as `*.spec.ts`. They mock Prisma, so they need no database.
 
 End to end tests live in `test/` as `*.e2e-spec.ts`. They use a separate configuration at
-`test/jest-e2e.json`. They need the three containers. They run one worker at a time. They
+`test/jest-e2e.json`. They need Postgres and Valkey from `npm run docker:up`. The mailer is a
+spy, so Mailpit is not used. They run one worker at a time. They
 truncate and reseed their own data, which ADR 33 explains.
 
 **A push runs the end to end suite.** `.husky/pre-push` calls `npm run test:e2e`, so `git push`
@@ -44,10 +45,10 @@ these npm scripts, and a terminal runs the same ones:
 | Job | Local command | Needs |
 | --- | --- | --- |
 | Verify | `npm run check:unit` | the network, for `npm audit` |
-| Verify | `npm run check:db` | the three containers and the `tshirt_store_test` database |
+| Verify | `npm run check:db` | Postgres, Valkey and the `tshirt_store_test` database |
 | Prose | `npm run check:prose` | Vale 3.19.0 on the path, the version CI pins. CI runs Vale through its action, then `docs:length` |
 | Image | `npm run check:image` | a running Docker daemon |
-| Deploy | none | AWS credentials, so it runs in CI only |
+| Deploy | the deploy command in README "Deploy" | AWS credentials. CI runs it only on `main` while `DEPLOY_ENABLED` is `true`; the variable is unset, so every run reports it skipped |
 
 `check:db` migrates and tests `TEST_DATABASE_URL`, or `tshirt_store_test` when that is unset, and
 never the development database.
@@ -80,14 +81,10 @@ ACCESS EXCLUSIVE lock. A new migration that is not additive needs expand and con
 
 ## Environment traps
 
-- The shell is zsh. A pipe reports the status of its last command, so `cmd | tail` hides a
-  failure. Write `cmd > /tmp/out.log 2>&1; echo "exit=$?"`, or read `$pipestatus[1]`.
+- In zsh, a pipe reports the status of its last command, so `cmd | tail` hides a failure.
+  Write `cmd > /tmp/out.log 2>&1; echo "exit=$?"`, or read `$pipestatus[1]`.
 - `rg` skips a directory whose name starts with a dot. Add `--hidden` to reach `.claude/`,
   `.github/` and `.vale/`.
-- `git check-ignore` answers 128 for a path that goes through a symlink. The vendored skills
-  under `.claude/skills/` are symlinks into `.agents/skills/`, so name the symlink itself.
-- An issue needs a `## Verification` section. A hook rejects an issue without one.
-- That hook reads the command before the shell expands it. Pass `--body-file` a literal path.
 
 ## Words this file uses
 

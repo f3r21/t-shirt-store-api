@@ -4,10 +4,10 @@
 #
 #   npx --yes @redocly/cli lint contract/openapi.yaml
 #
-# Measured 2026-09-03: 0 errors and 4 warnings, none silenced with placeholder data.
+# Measured 2026-10-06: 0 errors and 4 warnings, none silenced with placeholder data.
 #
 #   1 info-license           Coursework, not a published API.
-#   1 no-server-example.com  The server really is localhost.
+#   1 no-server-example.com  The second server really is localhost.
 #   2 no-illogical-          A one-member `allOf` around a `$ref`, at the `MinTotal`
 #     composition-keywords   and `MaxTotal` parameters. 3.0 ignores a sibling of `$ref`,
 #                            so this is the only way to attach an example to a
@@ -45,9 +45,14 @@ info:
     when it refuses a request. This document declares the 429 response only where a client
     must handle it, but the server can answer 429 on any path.
 
+# The /v1 prefix lives here, not on each path key. The relative server comes first,
+# because Swagger UI sends "Try it out" to the first entry: `/v1` resolves against the
+# host that serves the page, so the deployed page calls the store and not localhost.
 servers:
+  - url: /v1
+    description: This host
   - url: http://localhost:3000/v1
-    description: Local development. The /v1 prefix lives here, not on each path key.
+    description: Local development
 
 tags:
   - name: auth
@@ -440,7 +445,7 @@ paths:
           description: The server created the account.
           headers:
             Location:
-              description: The URL of the new account.
+              description: The URL of the new account. No endpoint reads it yet.
               schema:
                 type: string
               example: /v1/users/128
@@ -1670,10 +1675,11 @@ paths:
   /payment-links:
     post:
       tags: [payments]
-      summary: Create a payment link for one product
+      summary: Create a payment link for one variant
       description: |
-        The server creates an order for one variant and returns a Stripe payment link.
-        This is the flow that buys a single product without the cart.
+        The server creates a `pending` order for one variant and a Stripe-hosted payment
+        page. Send the buyer to `url`. This is the flow that buys a single product without
+        the cart, and it needs no frontend.
 
         The order belongs to the caller. `orders.user_id` cannot be null, so the server
         cannot record an anonymous purchase. Another person can pay the link, but the
@@ -1681,6 +1687,10 @@ paths:
 
         The order starts in `pending`. The stock falls when the
         `checkout.session.completed` event arrives, and not here.
+
+        The link stays payable after the order is paid. A second payment is charged by
+        Stripe and changes nothing here: no new order, no status change, no stock change.
+        No operation refunds it.
 
         A quantity above the stock on hand returns 409 with the `insufficient-stock`
         problem type.
@@ -1695,6 +1705,7 @@ paths:
               properties:
                 variantId:
                   type: integer
+                  description: A `variants[].id` from `GET /products/{id}`.
                   example: 340
                 quantity:
                   type: integer
@@ -1732,7 +1743,8 @@ paths:
       summary: Create a payment intent for an order
       description: |
         The server creates a Stripe payment intent for this order and returns its client
-        secret. This is the flow that pays for a cart.
+        secret for Stripe.js. This is the flow that pays for a cart, and it needs a
+        frontend. To pay without one, use `POST /payment-links`.
 
         The server checks the stock of every line before it creates the intent. A line
         above the stock on hand returns 409 with the `insufficient-stock` problem type.
@@ -2073,8 +2085,8 @@ components:
     # Everything else omits `type`, which RFC 9457 defines as `about:blank`, meaning no
     # semantics beyond the status code.
     #
-    # These URIs are identifiers first. RFC 9457 says consumers SHOULD NOT dereference them
-    # automatically. Week 3 serves a short page per member at /problems/{slug}.
+    # These URIs are identifiers and do not resolve. RFC 9457 says consumers SHOULD NOT
+    # dereference them automatically.
     ProblemType:
       type: string
       format: uri
@@ -2240,9 +2252,9 @@ components:
           # `$ref`.
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The lowest price among the variants of this product. It is
-            absent when the product has no variant, which is the state `createProduct`
-            leaves it in.
+          description: The lowest price among the variants of this product, in minor units
+            of USD. It is absent when the product has no variant, which is the state
+            `createProduct` leaves it in.
         primaryImageUrl:
           type: string
           description: The primary image of the product. It is absent when the product
@@ -2444,17 +2456,17 @@ components:
         subtotal:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The sum of the lines, before any discount.
+          description: The sum of the lines, before any discount, in minor units of USD.
         discount:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: What the promo code took off the subtotal. It is 0 when the order
-            used no code.
+          description: What the promo code took off the subtotal, in minor units of USD. It
+            is 0 when the order used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges. It is the subtotal less the
-            discount.
+          description: The amount the store charges, in minor units of USD. It is the
+            subtotal less the discount.
         promoCode:
           type: string
           description: The promo code this order used, in the case the manager typed. It
@@ -2491,17 +2503,17 @@ components:
         subtotal:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The sum of the lines, before any discount.
+          description: The sum of the lines, before any discount, in minor units of USD.
         discount:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: What the promo code took off the subtotal. It is 0 when the order
-            used no code.
+          description: What the promo code took off the subtotal, in minor units of USD. It
+            is 0 when the order used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges. It is the subtotal less the
-            discount.
+          description: The amount the store charges, in minor units of USD. It is the
+            subtotal less the discount.
         promoCode:
           type: string
           description: The promo code this order used, in the case the manager typed. It
@@ -2586,14 +2598,12 @@ components:
           example: 502
         url:
           type: string
-          description: The Stripe page that takes the payment. Send the buyer to this
-            page.
-          example: https://checkout.stripe.com/c/pay/cs_test_a1b2c3
-        expiresAt:
-          type: string
-          format: date-time
-          description: When Stripe stops accepting this link.
-          example: '2026-08-22T18:22:00Z'
+          description: A Stripe Payment Link. Send the buyer to this page. It does not
+            expire, and Stripe accepts more than one payment on it. Only the first payment
+            moves the order to `paid`. Stripe's page does not redirect back. Read
+            `GET /orders/{orderId}`. `status` turns `paid` when the
+            `checkout.session.completed` webhook arrives.
+          example: https://buy.stripe.com/test_00000000000000
 
     PaymentIntent:
       type: object
@@ -2678,8 +2688,8 @@ components:
     Money:
       type: integer
       minimum: 0
-      description: An amount in minor units. 1999 means 19.99. The store is
-        single-currency and prices are in USD. No amount in this contract is negative. A
+      description: An amount in minor units of USD, so 2400 is 24.00 USD. The store is
+        single-currency. No amount in this contract is negative. A
         discount is a positive amount that the server takes off the subtotal, and the
         contract carries no refund.
       example: 1999

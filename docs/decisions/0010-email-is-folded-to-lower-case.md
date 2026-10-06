@@ -13,7 +13,7 @@ and no mail provider a customer uses treats `Ana@` and `ana@` as two people.
 
 - A `citext` column plus a normaliser (chosen).
 - A `lower(email)` expression index: the schema cannot state it, and `migrate dev` has dropped
-  hand-written indexes it meets in the shadow database (`prisma/prisma#29289`).
+  hand-written indexes it meets in the shadow database (`prisma/orm#29289`).
 - Normalise in code only: any other writer can still store a second capitalisation.
 
 ## Decision
@@ -26,4 +26,4 @@ lookup the same string.
 ## Consequences
 
 **Gives up:** every comparison on the column is case-insensitive, `ORDER BY` included. Nothing
-else is `citext`.
+else was `citext` until ADR 37 made `promo_codes.code` one.

@@ -43,6 +43,7 @@ export class PromoCodeDto {
   /** A disabled code returns an error at checkout. It stays in the list. */
   isActive!: boolean;
 
-  /** ISO 8601. The mapper converts the `Date` the database returns. */
+  /** ISO 8601. */
+  // The mapper converts the `Date` the database returns.
   createdAt!: string;
 }

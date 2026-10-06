@@ -13,7 +13,7 @@ It is a single run, not a study.
   feedback" (<https://blog.postman.com/the-most-important-api-metric-is-time-to-first-call/>).
 - **A friction log records the trip, not a score.** Stripe's developer-platform team had people
   "try to use a new thing and document all the friction along the way"
-  (<https://kenneth.io/post/insights-from-building-stripes-developer-platform-and-api-developer-experience-part-1>).
+  (<https://kenneth.io/post/insights-from-building-stripes-developer-platform-and-api-developer-experience>).
   The template has four parts: Context, Pros, Cons, and Stream of consciousness
   (<https://github.com/mikeb-stripe/friction-logging-toolkit>).
 
@@ -96,7 +96,7 @@ Fill this in during the run. Interpretation goes in "Findings".
 |---|---|---|---|---|
 | F1 | | | | |
 
-Severity uses the same 0-4 scale as the frontend pilot, from Nielsen Norman Group:
+Severity uses the 0-4 scale from Nielsen Norman Group:
 <https://www.nngroup.com/articles/how-to-rate-the-severity-of-usability-problems/>.
 
 ### What changes because of this

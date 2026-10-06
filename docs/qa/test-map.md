@@ -16,7 +16,7 @@ a real Postgres and a real Valkey. It replaces four things:
 | The object store | an in-memory store | that S3 accepts or serves the file |
 | The rate-limit counter | a counter that never blocks, except in `rate-limit.e2e-spec.ts` | the limits, outside that one suite |
 
-## End-to-end suites (16 suites, 294 tests)
+## End-to-end suites (16 suites, 296 tests)
 
 | Suite | Proves | Does not prove |
 |---|---|---|

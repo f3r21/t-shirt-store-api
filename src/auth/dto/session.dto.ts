@@ -8,12 +8,8 @@ export class SessionDto {
    */
   id!: number;
 
-  /**
-   * The label the device sent at sign-in.
-   *
-   * The key is absent when the device sent none. The contract admits no null
-   * value, so the mapper omits the key instead.
-   */
+  /** The label the device sent at sign-in. Absent when the device sent none. */
+  // The contract admits no null value, so the mapper omits the key instead.
   deviceName?: string;
 
   /** ISO 8601. When this device first signed in. Rotation does not change it. */

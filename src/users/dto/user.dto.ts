@@ -17,6 +17,7 @@ export class UserDto {
 
   role!: RoleName;
 
-  /** ISO 8601. The mapper converts the `Date` the database returns. */
+  /** ISO 8601. */
+  // The mapper converts the `Date` the database returns.
   createdAt!: string;
 }

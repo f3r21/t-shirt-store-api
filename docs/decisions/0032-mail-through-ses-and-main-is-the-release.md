@@ -1,6 +1,6 @@
-# 32. Mail leaves through SES from the task role, Stripe delivers to the distribution, and main is the release
+# 32. Mail leaves through SES from the task role, Stripe delivers to the distribution, and main releases while `DEPLOY_ENABLED` is true
 
-Status: accepted
+Status: accepted, revised 2026-10-06
 Date: 2026-09-02
 
 ## Context
@@ -19,8 +19,9 @@ release stopped storing keys.
 The SES branch is a dozen lines in one constructor, and `smtp` stays the default for a laptop
 and CI. The account has no domain, so the sender is one verified identity and, in the
 sandbox, only verified addresses receive. The Stripe endpoint is the distribution's URL,
-because the default behaviour forwards the body and `stripe-signature` as sent. Main is the
-release since the merge of 2026-09-02.
+because the default behaviour forwards the body and `stripe-signature` as sent. Main was the
+release from the merge of 2026-09-02; since 2026-10-06 it releases only while
+`DEPLOY_ENABLED` is `true` (ADR 30).
 
 ## Consequences
 

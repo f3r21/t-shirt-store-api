@@ -44,7 +44,7 @@ export class UsersController {
     type: UserDto,
     headers: {
       Location: {
-        description: 'The URL of the new account.',
+        description: 'The URL of the new account. No endpoint reads it yet.',
         schema: { type: 'string' },
       },
     },

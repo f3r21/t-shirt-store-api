@@ -97,8 +97,8 @@ npm run check:unit    exit=0   681 tests across 39 suites, 679 before the fix
 The fix is proved against a mock. `auth.service.spec.ts` supplies the rows through
 `prisma.refreshToken.findMany.mockResolvedValue`, so the new cases test the grouping loop and not
 the query. That is why they supply both row orders. The end to end suite, 294 tests against
-Postgres, Valkey and Mailpit, passed before and after the change, but it does not cover this
-behaviour.
+Postgres and Valkey with the mailer replaced by a spy, passed before and after the change, but
+it does not cover this behaviour.
 
 The review in issue #16 found the defects below, and each one is fixed:
 
@@ -115,8 +115,8 @@ The review in issue #16 found the defects below, and each one is fixed:
 - `.husky/pre-commit` runs the unit suite, so no commit on the branch can hold the failing test.
   The red state exists only in a worktree at the base, as recorded in the evidence.
 - The jobs table in the `verify-fix` evidence was taken at `736e54e`, which predates the check
-  scripts, so it reads `Missing script`. CI run 35371898230 ran the scripts at `876fe9d`, and
-  all four jobs passed there.
+  scripts, so it reads `Missing script`. CI run 35371898230 ran the scripts at `876fe9d`:
+  Verify, Image and Prose passed, and Deploy was skipped, as it is off `main`.
 - The Prose job runs Vale 3.19.0 through its action, which keeps the annotations. Locally,
   `check:prose` needs the same Vale version on the path.
 - The investigator cannot see gitignored paths, because Glob and Grep honour the ignore files.

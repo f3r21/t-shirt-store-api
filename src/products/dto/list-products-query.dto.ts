@@ -25,9 +25,9 @@ export class ListProductsQueryDto extends PageQueryDto {
    * Include the disabled products.
    *
    * Only a manager may set this field to true. A caller with no token receives
-   * 401 and a caller who is not a manager receives 403. The guard applies both
-   * rules, because this class cannot read the caller.
+   * 401 and a caller who is not a manager receives 403.
    */
+  // The guard applies both rules, because this class cannot read the caller.
   @ApiPropertyOptional()
   @IsOptionalNotNull()
   @Transform(({ value }: { value: unknown }) => {

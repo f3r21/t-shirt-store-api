@@ -101,6 +101,10 @@ The cart flow pays with a payment intent. The payment-link flow sells one varian
 cart, and the shopper pays on Stripe's hosted Checkout page. Both end at the same webhook,
 which is the only writer of `paid` (ADR 24).
 
+The cart flow needs Stripe.js and the store's publishable key, so a developer calling from a
+terminal or Swagger pays through the payment link. A payment link creates its own order from
+one variant. It does not pay an order already placed from the cart.
+
 ```mermaid
 sequenceDiagram
     autonumber

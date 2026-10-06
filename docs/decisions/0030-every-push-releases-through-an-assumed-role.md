@@ -1,4 +1,4 @@
-# 30. Every push to main releases through a role GitHub assumes, and the stack changes through a role of its own
+# 30. A push to main releases through a role GitHub assumes while `DEPLOY_ENABLED` is true, and the stack changes through a role of its own
 
 Status: accepted, revised 2026-09-03 and 2026-10-06
 Date: 2026-09-02

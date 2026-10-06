@@ -10,7 +10,8 @@ export class ProductVariantDto {
   /** Absent when the variant carries no color. */
   color?: string;
 
-  /** Minor units, so 1999 means 19.99. ADR 13. */
+  /** The price in minor units of USD, so 2400 is 24.00 USD. */
+  // ADR 13.
   price!: number;
 
   /** The units on hand. The contract does not treat the number as a secret. */
