@@ -20,10 +20,9 @@ export class PageQueryDto {
   @Max(100, { message: 'must be at most 100' })
   limit: number = 20;
 
-  /**
-   * Rows to skip. Bounded at `INT4_MAX`, because Prisma's `skip` refuses a
-   * larger integer with an error nothing maps.
-   */
+  /** Rows to skip. */
+  // Bounded at `INT4_MAX`, because Prisma's `skip` refuses a larger integer
+  // with an error nothing maps.
   @ApiPropertyOptional()
   @IsOptionalNotNull()
   @Type(() => Number)

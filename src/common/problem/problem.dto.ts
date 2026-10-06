@@ -35,10 +35,9 @@ export class Problem {
   /** A URI reference that identifies this occurrence. */
   instance?: string;
 
-  /**
-   * One entry per rejected field, on a validation 400 only. The one decorator
-   * here: without a lazy resolver the plugin reports a circular dependency.
-   */
+  /** One entry per rejected field, on a validation 400 only. */
+  // The one decorator here: without a lazy resolver the plugin reports a
+  // circular dependency.
   @ApiProperty({ type: () => [ProblemField], required: false })
   errors?: ProblemField[];
 }

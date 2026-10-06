@@ -13,20 +13,30 @@ export class OrderSummaryDto {
   @ApiProperty({ enum: ORDER_STATUSES })
   status!: OrderStatus;
 
-  /** The sum of the lines, before any discount, in minor units. */
+  /**
+   * The sum of the lines, before any discount, in minor units of USD, so 2400
+   * is 24.00 USD.
+   */
   subtotal!: number;
 
-  /** What the promo code took off the subtotal. 0 when there was no code. */
+  /**
+   * What the promo code took off the subtotal, in minor units of USD. 0 when
+   * there was no code.
+   */
   discount!: number;
 
-  /** The amount the store charges, in minor units. The subtotal less the discount. */
+  /**
+   * The amount the store charges, in minor units of USD, so 2400 is 24.00 USD.
+   * The subtotal less the discount.
+   */
   total!: number;
 
   /**
    * The promo code this order used, in the case the manager typed. Absent when
-   * the order used no code. One column of the row, so a list entry carries it
-   * without a join, the same way `paymentMethod` travels.
+   * the order used no code.
    */
+  // One column of the row, so a list entry carries it without a join, the
+  // same way `paymentMethod` travels.
   promoCode?: string;
 
   /** Present only when the caller is a manager. */
@@ -36,10 +46,8 @@ export class OrderSummaryDto {
   /** The number of units in the order, across every line. */
   itemCount!: number;
 
-  /**
-   * The Stripe flow that paid this order. Absent until a payment succeeds, and
-   * one column of the row, so a list entry carries it without a join.
-   */
+  /** The Stripe flow that paid this order. Absent until a payment succeeds. */
+  // One column of the row, so a list entry carries it without a join.
   @ApiPropertyOptional({ enum: PAYMENT_METHODS })
   paymentMethod?: PaymentMethod;
 

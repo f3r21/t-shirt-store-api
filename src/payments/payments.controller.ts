@@ -44,7 +44,15 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @CheckPolicies(can('create', 'Order'))
-  @ApiOperation({ summary: 'Create a payment link for one product' })
+  @ApiOperation({
+    summary: 'Create a payment link for one variant',
+    description:
+      'Creates a `pending` order for one variant and a Stripe-hosted payment ' +
+      'page. Send the buyer to `url`. This flow needs no frontend.\n\n' +
+      'The link stays payable after the order is paid. A second payment is ' +
+      'charged by Stripe and changes nothing here: no new order, no status ' +
+      'change, no stock change. No operation refunds it.',
+  })
   @ApiResponse({
     status: 201,
     description: 'The server created the order and the payment link.',
@@ -79,7 +87,12 @@ export class PaymentsController {
   }
 
   @CheckPolicies(can('pay', 'Order'))
-  @ApiOperation({ summary: 'Create a payment intent for an order' })
+  @ApiOperation({
+    summary: 'Create a payment intent for an order',
+    description:
+      'Returns a client secret for Stripe.js. To pay without a frontend, use ' +
+      '`POST /payment-links`.',
+  })
   @ApiResponse({
     status: 201,
     description: 'The server created the payment intent.',

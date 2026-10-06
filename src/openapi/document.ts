@@ -110,6 +110,24 @@ function declareUniversalHeaders(document: OpenAPIObject): OpenAPIObject {
 }
 
 /**
+ * Type every number `integer`, as the contract does. Ids are `int4`, money is
+ * minor units (ADR 13), and counts are whole, so this API has no fractional
+ * number. The plugin reads a TypeScript `number` as `type: number`, and the
+ * alternative is a decorator on every id, amount, count and path parameter.
+ */
+function typeNumbersAsIntegers<T>(node: T): T {
+  if (Array.isArray(node)) {
+    node.forEach(typeNumbersAsIntegers);
+  } else if (node !== null && typeof node === 'object') {
+    const record = node as Record<string, unknown>;
+    if (record.type === 'number') record.type = 'integer';
+    Object.values(record).forEach(typeNumbersAsIntegers);
+  }
+
+  return node;
+}
+
+/**
  * The document this service generates from its controllers. It is not the
  * contract: `contract/openapi.yaml` wins where the two disagree, and
  * `test/openapi-contract.e2e-spec.ts` compares the two. One factory serves and
@@ -121,11 +139,20 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle('T-Shirt Store API')
     .setVersion('0.1.0')
+    // The contract test cites the first `openapi.yaml` path in this text and
+    // checks the file exists, so the repository path comes before the URL.
     .setDescription(
-      'Generated from the controllers. The hand written contract at ' +
-        'contract/openapi.yaml in this repository is authoritative where the ' +
-        'two disagree.',
+      'Generated from the controllers. The hand-written contract, ' +
+        '[`contract/openapi.yaml`](https://github.com/f3r21/t-shirt-store-api/blob/main/contract/openapi.yaml), ' +
+        'is authoritative where the two disagree. ' +
+        '`test/openapi-contract.e2e-spec.ts` fails when this document drifts ' +
+        'from it in operations, status codes, request bodies, parameters, ' +
+        'headers or bounds. It does not compare descriptions.\n\n' +
+        'Every amount is an integer in minor units of USD, so 2400 is 24.00 USD.',
     )
+    // First, because Swagger UI sends "Try it out" to the first server: a
+    // relative `/v1` is the host that serves the page, deployed or local.
+    .addServer('/v1', 'This host')
     .addServer('http://localhost:3000/v1', 'Local development')
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
@@ -143,7 +170,9 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
 
   // Order matters: the 400 is added first so `describeFailuresAsProblems` gives
   // it the same `Problem` body every other failure carries.
-  return declareUniversalHeaders(
-    describeFailuresAsProblems(declarePathParamBadRequest(document)),
+  return typeNumbersAsIntegers(
+    declareUniversalHeaders(
+      describeFailuresAsProblems(declarePathParamBadRequest(document)),
+    ),
   );
 }

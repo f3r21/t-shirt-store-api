@@ -43,11 +43,9 @@ export class CartItemDto {
  */
 @ApiSchema({ name: 'Cart' })
 export class CartDto {
-  /**
-   * The explicit lazy `type` is the same workaround `ProductDto` records: the
-   * Swagger plugin's own inference explores this class before `CartItemDto` is
-   * registered and reports a circular dependency that does not exist.
-   */
+  // The explicit lazy `type` is the same workaround `ProductDto` records: the
+  // Swagger plugin's own inference explores this class before `CartItemDto` is
+  // registered and reports a circular dependency that does not exist.
   @ApiProperty({ type: () => CartItemDto, isArray: true })
   items!: CartItemDto[];
 

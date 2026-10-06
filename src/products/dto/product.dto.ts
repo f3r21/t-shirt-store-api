@@ -30,14 +30,17 @@ export class ProductDto {
 
   isActive!: boolean;
 
-  /** ISO 8601. The mapper converts the `Date` the database returns. */
+  /** ISO 8601. */
+  // The mapper converts the `Date` the database returns.
   createdAt!: string;
 
   /**
-   * A lazy `type` on the three arrays, because the plugin's own inference
-   * explores this class before the ones it points at are registered and
-   * reports a circular dependency that does not exist.
+   * One entry per size and color. Its `id` is the `variantId` that the cart and
+   * `POST /payment-links` take.
    */
+  // A lazy `type` on the three arrays, because the plugin's own inference
+  // explores this class before the ones it points at are registered and
+  // reports a circular dependency that does not exist.
   @ApiProperty({ type: () => ProductVariantDto, isArray: true })
   variants!: ProductVariantDto[];
 

@@ -14,9 +14,9 @@ reasoning written while the API was built:
 | What D1 needs | Where it was written, and when |
 |---|---|
 | To tell an expired token from a wrong password, or the app "loops between refreshing and the sign-in screen" | ADR 5, 2026-08-28 |
-| One value to branch on: "A client branches on this value and on nothing else" | `contract/openapi.yaml:2071`, 2026-08-28 (`43b7995`) |
-| To tell three 409 answers apart "to show the right message" | `contract/openapi.yaml:2087`, 2026-08-28 |
-| To know which rule refused a promo code: "a client retypes an unknown code and removes an expired one" | `contract/openapi.yaml:2093`, 2026-09-04 (`3864713`) |
+| One value to branch on: "A client branches on this value and on nothing else" | `contract/openapi.yaml:2083`, 2026-08-28 (`43b7995`) |
+| To tell three 409 answers apart "to show the right message" | `contract/openapi.yaml:2099`, 2026-08-28 |
+| To know which rule refused a promo code: "a client retypes an unknown code and removes an expired one" | `contract/openapi.yaml:2105`, 2026-09-04 (`3864713`) |
 | Their own origin allowed: "a deployment with a front end names it" | ADR 19, 2026-09-01 |
 
 The brief's users, the manager, the client and the delivery person, reach the API only through

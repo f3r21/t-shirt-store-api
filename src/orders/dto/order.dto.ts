@@ -69,13 +69,22 @@ export class OrderDto {
   @ApiProperty({ enum: ORDER_STATUSES })
   status!: OrderStatus;
 
-  /** The sum of the lines, before any discount, in minor units. */
+  /**
+   * The sum of the lines, before any discount, in minor units of USD, so 2400
+   * is 24.00 USD.
+   */
   subtotal!: number;
 
-  /** What the promo code took off the subtotal. 0 when there was no code. */
+  /**
+   * What the promo code took off the subtotal, in minor units of USD. 0 when
+   * there was no code.
+   */
   discount!: number;
 
-  /** The amount the store charges, in minor units. The subtotal less the discount. */
+  /**
+   * The amount the store charges, in minor units of USD, so 2400 is 24.00 USD.
+   * The subtotal less the discount.
+   */
   total!: number;
 
   /**
@@ -85,7 +94,7 @@ export class OrderDto {
    */
   promoCode?: string;
 
-  /** The explicit lazy `type` is the workaround `ProductDto` records. */
+  // The explicit lazy `type` is the workaround `ProductDto` records.
   @ApiProperty({ type: () => OrderItemDto, isArray: true })
   items!: OrderItemDto[];
 

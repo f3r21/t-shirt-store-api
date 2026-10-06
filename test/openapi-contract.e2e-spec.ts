@@ -11,7 +11,8 @@ import { createTestApp } from './app-factory';
  * Compared: the operations, their names, who may call them, the status codes,
  * whether every failure and success describes its body, request body
  * properties and required names, required query parameters, response headers,
- * and every bound. Not compared: types, formats, examples and descriptions.
+ * every bound, the servers, and that no number is typed `number`. Not
+ * compared: other types, formats, examples and descriptions.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
@@ -230,6 +231,47 @@ describe('OpenAPI document against the contract (e2e)', () => {
 
     expect(cited).toBeDefined();
     expect(existsSync(join(__dirname, '..', cited as string))).toBe(true);
+  });
+
+  /**
+   * Swagger UI sends "Try it out" to the first server. The deployed page
+   * listed only `http://localhost:3000/v1`, so it called the reader's own
+   * machine, and the page's `default-src 'self'` policy blocked even that. A
+   * relative `/v1` is the host that serves the page, and it is same-origin.
+   */
+  it('lists the servers the contract lists, this host first', () => {
+    const urls = (doc: OpenAPIObject) => (doc.servers ?? []).map((s) => s.url);
+
+    expect(urls(generated)).toEqual(urls(contract));
+    expect(urls(generated)[0]).toBe('/v1');
+  });
+
+  /** Every place a document says `type: number`, as a JSON pointer. */
+  function numberTypes(node: unknown, at = '#'): string[] {
+    if (Array.isArray(node)) {
+      return node.flatMap((value, i) => numberTypes(value, `${at}/${i}`));
+    }
+    if (node === null || typeof node !== 'object') return [];
+
+    const record = node as Record<string, unknown>;
+    return [
+      ...(record.type === 'number' ? [at] : []),
+      ...Object.entries(record).flatMap(([key, value]) =>
+        numberTypes(value, `${at}/${key}`),
+      ),
+    ];
+  }
+
+  /**
+   * The contract types every id, count and amount `integer`. The plugin reads
+   * a TypeScript `number` as `type: number`, so Swagger typed `variantId` as
+   * any number and the 400 then said "must be an integer". The first assertion
+   * is the tripwire: the day the contract types a field `number`, the served
+   * document can no longer call every number an integer.
+   */
+  it('types every number as an integer, as the contract does', () => {
+    expect(numberTypes(contract)).toEqual([]);
+    expect(numberTypes(generated)).toEqual([]);
   });
 
   it('describes only operations the contract declares', () => {
