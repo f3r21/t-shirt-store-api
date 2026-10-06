@@ -1,11 +1,11 @@
 # Architecture
 
-Everything drawn is running.
+Everything drawn is built, and deployed only for reviews.
 
 ```mermaid
 flowchart TB
     code["Commit<br/>pre-commit hook"]
-    ci["CI, every push<br/>typecheck, lint, format,<br/>unit, e2e, image, deploy"]
+    ci["CI, every push<br/>typecheck, lint, format,<br/>unit, e2e, image"]
     citest[("Postgres,<br/>e2e service container")]
     deploy["Deploy<br/>registry, migrate,<br/>roll the tag"]
 
@@ -21,7 +21,7 @@ flowchart TB
 
     code --> ci
     ci --> citest
-    ci -.-> deploy
+    ci -.->|"main, if<br/>DEPLOY_ENABLED"| deploy
     deploy -.->|"migrations"| pg
     deploy -.->|"then the tag"| api
 
@@ -66,8 +66,8 @@ build: a transactional outbox.
 One CloudFormation stack in `infra/`: the image on one arm64 ECS instance behind CloudFront
 for HTTPS, managed Postgres and Valkey, and an object store. Not serverless: a pool per
 invocation multiplies connections by concurrency until the database refuses them. The release,
-registry then `prisma migrate deploy` as a one-off task then the tag rolled, is a job per push
-to `main`, assuming a role through GitHub's OIDC token, storing no key.
+registry then `prisma migrate deploy` as a one-off task then the tag rolled, runs on `main`
+only while `DEPLOY_ENABLED` is true, assuming a role through GitHub's OIDC token, storing no key.
 
 **Switch:** a pooler in front of Postgres removes that objection.
 

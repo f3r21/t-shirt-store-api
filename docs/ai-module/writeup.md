@@ -14,8 +14,9 @@ The test supplies both row orders the database can return. Before the fix, the o
 database produces fails. After it, both pass.
 
 No improvement had been suggested when the branch was cut, so this one came from a survey of the
-repository. The brief then asks for an alternative of the same size agreed with the mentor, and
-the review request on the pull request is where that agreement is asked for.
+repository. The brief then asks for an alternative of the same size agreed with the mentor. The
+mentor reviewed it in [issue #16](https://github.com/f3r21/t-shirt-store-api/issues/16) and wrote
+"LGTM at `7dfbb4a`" on 2026-10-05. That head is the one #15 merged.
 
 ## Skills
 

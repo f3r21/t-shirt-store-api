@@ -1,5 +1,7 @@
 # T-Shirt Store API
 
+[![CI](https://github.com/f3r21/t-shirt-store-api/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/f3r21/t-shirt-store-api/actions/workflows/ci.yml?query=branch%3Amain)
+
 A store API on NestJS, Prisma and PostgreSQL, built to a hand-written OpenAPI contract.
 
 It is the capstone of RAVN's NodeJS programme. The contract at `contract/openapi.yaml` is
