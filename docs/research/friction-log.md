@@ -28,8 +28,7 @@ content of the cohort's PM week and Design week Tuesday. A line with no id is lo
   that interviews test [PERSONA-test].
 - **What left with the usability test.** The Single Ease Question, task timings, success rates,
   milestones, cognitive-dimensions questions, the word check, reaction words, and a session with
-  the moderator playing the storefront are not in the course sources. This file no longer uses
-  them.
+  the moderator playing the storefront. This file no longer uses them.
 
 ## Research goals
 
@@ -56,9 +55,9 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
 - **Recording.** OBS Studio records locally on the moderator's Mac: one macOS Screen Capture
   source on the entire display, plus the microphone and the system audio, to a Hybrid MP4 that
   survives a crash. The fallback is Zoom's local recording, which moves the calls to Zoom. Wispr
-  Flow Notetaker writes the transcript, which stands in for a note-taker [JTBD-notes]; it starts
-  with the call, because it cannot import a recording later. Files are named by P number and stay
-  out of this repository ("What this repository holds").
+  Flow Notetaker writes the transcript, which stands in for a note-taker; it starts with the call,
+  because it cannot import a recording later. Files are named by P number and stay out of this
+  repository ("What this repository holds").
 - **Privacy.** No consent step: the participants are friends of the moderator, and the project is
   internal. Every file and note uses the P number only: no name, email or employer. Before a clip
   is used, names, emails, notifications and open tabs are cut from it. Quotes and clips go only to
@@ -215,7 +214,9 @@ stay in the session notes and on the unlisted page [STORY-words].
 | Triggering event or struggling moment [JTBD-patterns] | | |
 | Criteria they used [JTBD-patterns] | | |
 | Anxieties or hesitations [JTBD-patterns] | | |
-| Language they repeated, as a theme [JTBD-patterns] | | |
+
+The language they repeated stays in the session notes, so no participant's phrasing reaches this
+repository.
 
 ### The problem statement [PS-validate]
 
@@ -289,14 +290,15 @@ patterns.
 
 ## What changes because of this
 
-The results reach the product page, which links this file [PRD-link].
+The results reach the product page, which links this file [PRD-link]. Each feedback weighed as a
+core problem becomes a "Next" item, not code; one that names a missing README line is fixed in
+the README instead. A preference is recorded in "Feedback, weighed", not scheduled
+[MVP-filter].
 
 - In `docs/product.md`: the verdicts on D1, the problem and the product, in paraphrase; the
-  refined problem statement, where a verdict says it changes; and a "Next" item for each feedback
-  weighed as a core problem.
+  refined problem statement, where a verdict says it changes; and the "Next" items.
 - In `docs/qa/risk-register.md`: any new risk, from R10 onward.
-- In the README: the line a finding says was missing. No code changes come from these findings
-  in the week of the interviews.
+- In the README: the missing lines.
 
 ## Sources
 
@@ -328,8 +330,6 @@ outside it. Each id names its document by its prefix.
 
 - **[JTBD-objectives]** "consider what key assumptions you want to validate or invalidate about
   your customers' motivations and challenges."
-- **[JTBD-notes]** "it's great to record the session as long as the person you're interviewing is
-  comfortable with it."
 - **[JTBD-intro]** "a warm introduction, explaining the purpose of the interview, and assuring the
   participant that there are no right or wrong answers."
 - **[JTBD-guide]** "starting with background questions, diving into the specific purchase story,
