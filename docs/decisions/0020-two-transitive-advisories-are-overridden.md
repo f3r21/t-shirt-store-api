@@ -25,8 +25,8 @@ Verify job is the one assertion that fails when this stops being true.
 
 ## Consequences
 
-**Gives up:** a future advisory in either package is accepted silently until the audit says
-otherwise.
+**Gives up:** a future advisory in any of the three packages is accepted silently until the
+audit says otherwise.
 
 **Revised 2026-09-10 (`86ce4a5`):** a third floor, `multer >=2.3.0`, closes high advisories in
 the production tree. The same audit step guards it.

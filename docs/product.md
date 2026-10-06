@@ -85,7 +85,7 @@ Each row is one test in `test/checkout.e2e-spec.ts`, named by its line.
 
 **No for real money. Yes for a test-mode pilot.**
 
-What holds: CI is green on `main`, with 39 unit suites (681 tests) and 16 end-to-end suites (294
+What holds: CI is green on `main`, with 39 unit suites (681 tests) and 16 end-to-end suites (296
 tests) against a real Postgres and Valkey. The webhook signature check is the production code
 path in the tests. A rollback was rehearsed on 2026-09-03, about three minutes each way.
 

@@ -2252,9 +2252,9 @@ components:
           # `$ref`.
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The lowest price among the variants of this product. It is
-            absent when the product has no variant, which is the state `createProduct`
-            leaves it in.
+          description: The lowest price among the variants of this product, in minor units
+            of USD. It is absent when the product has no variant, which is the state
+            `createProduct` leaves it in.
         primaryImageUrl:
           type: string
           description: The primary image of the product. It is absent when the product
@@ -2456,17 +2456,17 @@ components:
         subtotal:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The sum of the lines, before any discount.
+          description: The sum of the lines, before any discount, in minor units of USD.
         discount:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: What the promo code took off the subtotal. It is 0 when the order
-            used no code.
+          description: What the promo code took off the subtotal, in minor units of USD. It
+            is 0 when the order used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges. It is the subtotal less the
-            discount.
+          description: The amount the store charges, in minor units of USD. It is the
+            subtotal less the discount.
         promoCode:
           type: string
           description: The promo code this order used, in the case the manager typed. It
@@ -2503,17 +2503,17 @@ components:
         subtotal:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The sum of the lines, before any discount.
+          description: The sum of the lines, before any discount, in minor units of USD.
         discount:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: What the promo code took off the subtotal. It is 0 when the order
-            used no code.
+          description: What the promo code took off the subtotal, in minor units of USD. It
+            is 0 when the order used no code.
         total:
           allOf:
             - $ref: '#/components/schemas/Money'
-          description: The amount the store charges. It is the subtotal less the
-            discount.
+          description: The amount the store charges, in minor units of USD. It is the
+            subtotal less the discount.
         promoCode:
           type: string
           description: The promo code this order used, in the case the manager typed. It
