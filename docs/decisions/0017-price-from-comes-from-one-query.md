@@ -15,8 +15,8 @@ per-row version passes every review.
 
 ## Decision
 
-A test asserts that the call count is one. A product with no variants is absent from the
-response, because zero would read as free.
+A test asserts that the call count is one. A product with no variants carries no
+`priceFrom`, because zero would read as free.
 
 ## Consequences
 

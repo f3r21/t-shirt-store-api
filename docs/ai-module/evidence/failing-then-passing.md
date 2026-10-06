@@ -42,6 +42,6 @@ The fix is tested against a mock. `auth.service.spec.ts` stubs
 with no Postgres, no query and no `ORDER BY`. A mock returns rows in the order it is given, so the
 cases supply both orders.
 
-The real services cover the rest. `npm run test:e2e` runs 294 tests against Postgres, Valkey and
-Mailpit from `docker-compose.yml`. `npx prisma migrate deploy` and `npx prisma migrate diff` read
-the real schema. None of them covers this behaviour. The write-up lists that as a limitation.
+The real services cover the rest. `npm run test:e2e` runs 294 tests against Postgres and Valkey
+from `docker-compose.yml`, with the mailer replaced by a spy. `npx prisma migrate deploy` and
+`npx prisma migrate diff` read the real schema. None of them covers this behaviour. The write-up lists that as a limitation.

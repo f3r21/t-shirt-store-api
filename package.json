@@ -3,6 +3,11 @@
   "version": "0.0.1",
   "description": "T-shirt store API: catalog, cart, orders, Stripe payments and low-stock mail on NestJS and Prisma",
   "author": "Fernando Ramirez",
+  "homepage": "https://github.com/f3r21/t-shirt-store-api#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/f3r21/t-shirt-store-api.git"
+  },
   "private": true,
   "license": "UNLICENSED",
   "engines": {

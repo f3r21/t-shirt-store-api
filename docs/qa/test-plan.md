@@ -55,7 +55,8 @@ A commit passes when, on that commit:
 1. The type checker, the linter and the formatter report nothing.
 2. All 39 unit suites pass. Today: 681 tests.
 3. All 16 end-to-end suites pass, the contract test among them. Today: 294 tests.
-4. `npm audit --omit=dev --audit-level=high` reports nothing.
+4. `npm audit --omit=dev --audit-level=high` exits 0: no high or critical advisory. (On
+   2026-10-06 it lists 2 moderate ones, `js-yaml` through `@nestjs/swagger`.)
 5. The image builds, and Vale reports no error.
 6. Every risk in `risk-register.md` scored 6 or more has a mitigation, or a line that accepts it.
 

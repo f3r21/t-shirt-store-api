@@ -1,6 +1,6 @@
-# 20. Two transitive advisories are overridden, not accepted
+# 20. Transitive advisories are overridden, not accepted
 
-Status: accepted
+Status: accepted, revised 2026-09-10
 Date: 2026-09-01
 
 ## Context
@@ -27,6 +27,9 @@ Verify job is the one assertion that fails when this stops being true.
 
 **Gives up:** a future advisory in either package is accepted silently until the audit says
 otherwise.
+
+**Revised 2026-09-10 (`86ce4a5`):** a third floor, `multer >=2.3.0`, closes high advisories in
+the production tree. The same audit step guards it.
 
 **Switch:** delete the block when `npm view prisma@<version> dependencies.mysql2` answers a
 fixed range, or when Prisma 8 lands. On 2026-09-02, 7.10.0 still ships 3.15.3.
