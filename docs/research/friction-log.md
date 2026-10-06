@@ -59,14 +59,16 @@ session is still a friction log, and links point here.
   its microphone track comes out flat, OBS Studio 32.2.2 records instead, and if that fails too,
   Zoom's local recording, which moves the calls to Zoom. Wispr Flow Notetaker writes the
   transcript; it starts with the call, because it cannot import a recording later. Files are
-  named by P number and kept outside every repository.
+  named by P number and stay out of this repository ("What this repository holds").
 - **Consent.** In writing on 2026-10-06, and confirmed on the recording before the task. It
   covers taking part, recording screen and voice with a transcript, and clips of 60 seconds or
   less and quotes shown to RAVN evaluators on an unlisted page. Without clip consent, that page
-  quotes words only. Every file and note uses the P number: no name, email or employer, and a
-  frame that shows one is cut. The full recordings and transcripts are deleted by 2026-10-23.
-  A participant may withdraw at any time, which deletes their recording, transcript and notes.
-  Clips they agreed to stay until they ask for them to be removed.
+  quotes words only. Participants also agree that de-identified results (task times, ratings and
+  paraphrased notes, with no name and no quotes) are published in this public repository. Every
+  file and note uses the P number: no name, email or employer, and a frame that shows one is
+  cut. The full recordings and transcripts are deleted by 2026-10-23. A participant may withdraw
+  at any time, which deletes their recording, transcript and notes. Clips they agreed to stay
+  until they ask for them to be removed.
 - **Order.** P3 before P4, 15 minutes or more apart, so a store problem shows up first with the
   developer, and the stock check between them catches a variant P3 bought.
 - **Accounts.** Every account in either session uses a made-up email ending in `@example.com`.
@@ -252,16 +254,24 @@ still run.
 - **Individual values only.** "P3: success, 12:40, SEQ 5". Never an average, a percentage or
   "100%". Under the results, once: "Times are think-aloud times. One participant per lens, so
   each result is a single observation."
-- **Quotes and clips stay on the unlisted page for RAVN evaluators, never in this repository.**
-  That page shows one clip of 60 seconds or less with captions, only from a P who agreed to
-  clips, or else one quote, with the P number.
+- **Quotes and clips** go to the unlisted page only ("What this repository holds").
 - **Every finding ends in a Next item** on the list in `docs/product.md`. No code changes come
   from these findings in the week of the interviews; a fix to the README or another doc may.
 
+## What this repository holds
+
+Only de-identified results, each under a P number: outcomes, times, the SEQ, milestone status,
+scores, and findings in paraphrase. A free answer, such as what a word means, is paraphrased. A
+pick from a fixed list, such as the five reaction words, may be listed, but never the reason
+spoken for it. Recordings, transcripts and session notes stay outside this repository, because
+the notes hold quotes and reasons, and a withdrawal has to delete them. Quotes and clips go only
+to the unlisted page for RAVN evaluators: one clip of 60 seconds or less with captions, from a P
+who agreed to clips, or else one quote with the P number.
+
 ## Results
 
-Blank until the sessions on 2026-10-07. Filled after each one with outcomes, times, the SEQ,
-milestone status and paraphrased findings only. No participant's words go here.
+Blank until the sessions on 2026-10-07, and filled after each one within "What this repository
+holds".
 
 ### Context
 
@@ -322,8 +332,6 @@ P3 on the run clock. P4 in wizard time; M1 and M2 are the moderator's calls.
 
 ### Debrief
 
-Answers are paraphrased, never quoted.
-
 | Question | P3 | P4 |
 |---|---|---|
 | Domain correspondence | | n/a |
@@ -333,7 +341,7 @@ Answers are paraphrased, never quoted.
 | Currency picked on Stripe's page, and any pause | | |
 | Asked about the order unprompted: yes / no | n/a | |
 | The worry P4 would have running this shop | n/a | |
-| Reaction words: how many of the five are positive, and the theme of the reason | n/a | |
+| Reaction words: the five picked from the list of 25 | n/a | |
 
 ### Pros and cons
 
