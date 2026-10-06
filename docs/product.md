@@ -1,9 +1,9 @@
 # Product
 
-**Call: not ready for real money today. Ready for a Stripe test-mode pilot with P3, a developer,
-and P4, a non-developer.**
+**Call: not ready for real money today. Ready for a Stripe test-mode pilot with P3 and P4, two
+developers.**
 The evidence is in "Go or no-go" below. Written on 2026-10-06, after the build, from sources
-dated in this repository. The user and the likelihoods are assumptions until P3 and P4 are
+dated in this repository. The user and the problem are assumptions until P3 and P4 are
 interviewed on 2026-10-07.
 
 ## Who it is for (assumption)
@@ -24,10 +24,10 @@ reasoning written while the API was built:
 The brief's users, the manager, the client and the delivery person, reach the API only through
 D1's software. So D1 is the user these documents serve.
 
-That stays an assumption. The interview with P3, a developer, tests it on 2026-10-07. The one
-with P4, a non-developer, tests the shopper behind D1's software: with a person playing that
-software, do the API's answers carry a shopper's intent to a paid order? The protocol is
-`docs/research/friction-log.md`.
+That stays an assumption. Two developers, P3 and P4, test it on 2026-10-07. Each tells the
+story of the last time they connected an app to an API someone else built, hears the problem
+statement below read aloud, and then tries this API from the README and Swagger UI. The protocol
+is `docs/research/friction-log.md`.
 
 ## The problem
 
@@ -59,8 +59,8 @@ implemented". The MoSCoW labels below are applied after the fact.
 | Won't | Live Stripe | Payments run in test mode (README, "Stripe") |
 
 There is no RICE table. Reach and effort were never measured, and a score built on guessed
-numbers is a guessed decision. The interviews with P3 and P4 are the first measurement. Once
-they report, RICE ranks the "Next" list, with confidence capped at 70%.
+numbers is a guessed decision. The interviews with P3 and P4 measure neither. Once they report,
+RICE ranks the "Next" list, and what they said informs each item's confidence, capped at 70%.
 
 ## Three risks
 
@@ -68,7 +68,7 @@ Likelihood and impact are judged on a 1 to 3 scale, not measured.
 
 | Risk | L | I | L × I | What limits it |
 |---|---|---|---|---|
-| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Dependencies" in `docs/research/friction-log.md`; README "Deploy", step 4 |
+| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the sessions" in `docs/research/friction-log.md`; README "Deploy", step 4 |
 | A shopper pays for a unit that is gone. A pending order holds no stock, so two orders can pay for the last unit; the stock floors at zero and logs `stock.oversold` | 2 | 3 | 6 | The intent checks stock before Stripe is asked. A refund is done by hand in Stripe |
 | Mail does not arrive. SES is in its sandbox and the mail lands in spam (README, "Known gaps") | 3 | 2 | 6 | A domain with DKIM |
 
@@ -105,24 +105,29 @@ What stops it:
 - The rate limit counter lives in one process (README, "Known gaps").
 
 **Ship criteria:** live Stripe keys and a refund path; Multi-AZ, deletion protection and longer
-backups; the four business metrics `ARCHITECTURE.md` names; the API interviews, with P3 a success
-(M5 without help) and P4 a success or a partial.
+backups; the four business metrics `ARCHITECTURE.md` names; the API interviews, with their
+verdicts on D1, the problem and the product written into this page, and every feedback weighed as
+a core problem fixed.
 **Owner:** Fernando Ramirez. **Rollback trigger:** after a release, a signed success that does not
 turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<previous sha>`.
 **Watch:** paid orders per week, and the `payment.*` and `stock.oversold` log events.
 
 ## Now, next and later
 
-- **Now:** interview P3 and P4 on the deployed store on 2026-10-07. Fix the README where P3 got
-  stuck. Every other finding from either interview goes on the "Next" list, not into the code.
-- **Next:** the checkout metrics; split the two causes of `payment.orphan`; a DKIM domain for mail.
+- **Now:** interview P3 and P4, two developers, on 2026-10-07, each ending with a few minutes on
+  the deployed store. Each feedback weighed as a core problem becomes a "Next" item, not code;
+  one that names a missing README line is fixed in the README instead. A preference is recorded
+  in `docs/research/friction-log.md`, not scheduled.
+- **Next:** R1's condition to fall, a developer reaching a paid order without help on a store that
+  holds a product and a manager (`docs/qa/risk-register.md`); the checkout metrics; split the two
+  causes of `payment.orphan`; a DKIM domain for mail.
 - **Later:** live Stripe with refunds; a shared rate-limit counter before a second task; the
   outbox; Multi-AZ.
 
 ## Validated by
 
 Planned for 2026-10-07, results pending. The protocol is `docs/research/friction-log.md`, two
-interviews on the deployed store. P3, a developer who has never seen the repository, uses the
-README and Swagger only, timed to the first call and to a paid order. P4, a non-developer, shops
-through the API while the moderator sends each request, and says what its answers mean. Neither
-has run. Until they do, D1, the problem and the likelihoods above are assumptions.
+interviews with developers, P3 and P4. Each tells the story of the last time they connected an
+app to an API someone else built, says whether the problem statement above matches their
+experience, and then tries this API from the README and Swagger UI and says whether it is right
+for that problem. Neither has run. Until they do, D1 and the problem above are assumptions.

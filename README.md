@@ -318,8 +318,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
   criteria, the [risk register](docs/qa/risk-register.md), and a [map](docs/qa/test-map.md)
   of what each suite proves and does not prove.
 - [`docs/research/friction-log.md`](docs/research/friction-log.md): the protocol for the two
-  interviews on 2026-10-07 that test the user assumption, with P3, a developer, and P4, a
-  non-developer.
+  interviews on 2026-10-07 that test the user assumption, with P3 and P4, two developers.
 
 ## Where the reasoning lives
 
