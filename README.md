@@ -142,7 +142,9 @@ aws ssm put-parameter --profile tshirt --region us-east-2 --type SecureString --
 The five names are `JWT_SECRET`, `REFRESH_TOKEN_PEPPER`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET` and `SMTP_PASS`, which only the `smtp` transport reads.
 
-Every push to `main` is a release, once the checks pass. The `deploy` job in
+Every push to `main` is a release, once the checks pass and the repository variable
+`DEPLOY_ENABLED` is `true`. With the variable unset, a push runs the checks and deploys nothing,
+which keeps a torn-down stack down. The `deploy` job in
 `.github/workflows/ci.yml` builds both images, pushes them tagged with the commit, runs the
 migrations, rolls the service, and proves the running task carries that tag. No key is stored
 in GitHub: the run's OIDC token assumes `tshirt-deploy`, and the stack is changed through
@@ -235,7 +237,7 @@ records, and the account's credits carry that for the review.
 | End-to-end tests | Done, sixteen suites against a real database and a real Valkey |
 | CASL authorization | Done. Deny by default, and the ownership conditions become the where clauses the services read with. ADR 25 |
 | Stock notifications | Done. One queued job per liker on a crossing to 3 or fewer, mailed by a worker in its own process. ADR 27 |
-| Deploy | Done. One CloudFormation stack, and every push to `main` releases by OIDC with no key stored. ADR 29 and 30 |
+| Deploy | Done. One CloudFormation stack, and every push to `main` releases by OIDC with no key stored, while `DEPLOY_ENABLED` is `true`. ADR 29 and 30 |
 
 The unit suite covers the authentication, user and catalog surfaces, and the end-to-end suite
 runs against a real database. Neither has a placeholder entry left. What is untested is what
