@@ -16,3 +16,7 @@
 
 *.log
 .DS_Store
+
+# Machine-local editor approvals. The repository carries committed files under
+# .claude/, so without this line every clone offers its own copy of this file.
+.claude/settings.local.json

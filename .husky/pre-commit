@@ -1,3 +1,19 @@
 npx lint-staged
 npm run typecheck
 npm test -- --bail --silent
+
+# Reject an em dash (U+2014) or en dash (U+2013) in anything staged. This is the only
+# guard that sees every write path: an editor, a shell redirect and an agent all pass
+# through here, which is why the rule no longer asks anyone to sweep by hand.
+# rg, not grep -P: /usr/bin/grep exits 2 on -P.
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -n "$staged" ]; then
+  hits=$(printf '%s\n' "$staged" | tr '\n' '\0' \
+    | xargs -0 rg -n --no-messages '[\x{2014}\x{2013}]' 2>/dev/null || true)
+  if [ -n "$hits" ]; then
+    echo "Blocked: em dash or en dash in a staged file."
+    echo "$hits"
+    echo "Use a comma, a colon, a full stop or parentheses."
+    exit 1
+  fi
+fi

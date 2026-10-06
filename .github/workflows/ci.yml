@@ -95,39 +95,24 @@ jobs:
 
       - run: npm ci
 
-      # The closure the Dockerfile ships is `npm ci --omit=dev`, so that is the
-      # tree audited here. High and critical fail the job. The two `overrides`
-      # in package.json exist because of this step; DECISIONS 20 says why.
-      - name: Audit the production dependency tree
-        run: npm audit --omit=dev --audit-level=high
-
       # src/generated is not in version control, and 15 files import from it, so
       # nothing below this step compiles without it.
       - name: Generate the Prisma client
         run: npx prisma generate
 
-      - name: Type check
-        run: npm run typecheck
+      # The checks live in package.json, so a person at a terminal runs the
+      # same commands this job does. check:unit audits the closure the
+      # Dockerfile ships (`npm ci --omit=dev`; DECISIONS 20 says why the two
+      # `overrides` exist), then type checks, lints, checks formatting and runs
+      # the unit suite.
+      - name: Checks that need no services
+        run: npm run check:unit
 
-      - name: Lint
-        run: npm run lint:ci
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Unit tests
-        run: npm test -- --ci
-
-      - name: Apply the migrations
-        run: npx prisma migrate deploy
-
-      # Catches a schema edit that was never turned into a migration. Exit code 2
-      # means the two disagree.
-      - name: Schema matches the migrated database
-        run: npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
-
-      - name: End to end tests
-        run: npm run test:e2e
+      # check:db applies the migrations, fails when the schema holds an edit
+      # that was never turned into a migration, and runs the end to end suite
+      # against the two service containers above.
+      - name: Checks that need the database and the queue
+        run: npm run check:db
 
   image:
     name: Image
@@ -139,7 +124,7 @@ jobs:
           persist-credentials: false
 
       - name: Build the runtime image
-        run: docker build --tag t-shirt-store-api:${{ github.sha }} .
+        run: npm run check:image
 
   # Vale over the pages and the decision records, with the rules .vale.ini names;
   # the action downloads the packages. `checks: write` is what the check reporter
@@ -156,8 +141,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The action installs the latest Vale unless told otherwise, and 3.22.0
+      # started failing a file nothing had touched. The version is pinned to the
+      # one `npm run check:prose` runs locally, so the two cannot disagree.
       - uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3.0.0
         with:
+          version: 3.19.0
           files: README.md,ARCHITECTURE.md,contract/README.md,docs/decisions
           separator: ','
           reporter: github-check
@@ -167,7 +156,7 @@ jobs:
       # One page is the constraint the week page states, and the count includes
       # the diagram. Vale reads the prose and nothing measured its length.
       - name: The architecture page is one page
-        run: test "$(wc -w < ARCHITECTURE.md)" -lt 650
+        run: npm run docs:length
 
   # The release, on every push to the two refs, once the checks above are green:
   # build on an arm runner (the instance is arm64), push both images, point the

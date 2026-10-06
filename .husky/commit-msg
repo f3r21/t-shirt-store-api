@@ -1,0 +1,7 @@
+# The commit message carries the user's name and a mentor reads it, so it holds the
+# authorship stake the pre-commit hook covers for files. Nothing checked it before.
+if rg -q '[\x{2014}\x{2013}]' "$1"; then
+  echo "Blocked: em dash or en dash in the commit message."
+  echo "Use a comma, a colon, a full stop or parentheses."
+  exit 1
+fi

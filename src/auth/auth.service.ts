@@ -333,14 +333,24 @@ export class AuthService {
     });
 
     // The grace path adds rows to an existing device, so rows are not devices.
-    const newest = new Map<number, (typeof rows)[number]>();
+    // The entry carries the family's latest `expires_at`, which is the date
+    // the device stops working. Neither the id nor `created_at` finds it: a
+    // rotation rewrites `expires_at` in place and leaves the id alone, and
+    // every row the grace path writes copies the founder's `created_at`. So a
+    // second tab used once and abandoned holds the highest id and the soonest
+    // date, and reporting that date sends the caller to sign in for nothing.
+    //
+    // `set` on a key the map already holds keeps that key's position, so the
+    // entries stay in the order the rows arrived and the page stays stable.
+    const longest = new Map<number, (typeof rows)[number]>();
     for (const row of rows) {
       const family = row.familyId ?? row.id;
-      if (!newest.has(family)) {
-        newest.set(family, row);
+      const held = longest.get(family);
+      if (held === undefined || row.expiresAt > held.expiresAt) {
+        longest.set(family, row);
       }
     }
-    const devices = [...newest.values()];
+    const devices = [...longest.values()];
 
     // Grouped here and not in SQL: a founder names its family by its own id
     // with `family_id` null, so no GROUP BY can see it. The set is every live
