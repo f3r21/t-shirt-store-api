@@ -259,6 +259,18 @@ docker compose exec -T postgres psql -U postgres -c 'CREATE DATABASE tshirt_stor
 DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx prisma migrate deploy
 ```
 
+## Product, design and QA
+
+- [`docs/product.md`](docs/product.md): who the API is for, what was built and cut, and
+  whether it is ready for production.
+- [`docs/design.md`](docs/design.md): what a client shows for each status and problem type,
+  the order's states, and two flows drawn step by step.
+- [`docs/qa/`](docs/qa/): the [test plan](docs/qa/test-plan.md) with its entry and exit
+  criteria, the [risk register](docs/qa/risk-register.md), and a [map](docs/qa/test-map.md)
+  of what each suite proves and does not prove.
+- [`docs/research/friction-log.md`](docs/research/friction-log.md): the planned run that
+  tests the user assumption.
+
 ## Where the reasoning lives
 
 - `ARCHITECTURE.md`, in this repository, is the production shape: the diagram, why the
