@@ -60,17 +60,18 @@ session is still a friction log, and links point here.
   Flow Notetaker writes the transcript; it starts with the call, because it cannot import a
   recording later. Files are named by P number and stay out of this repository ("What this
   repository holds").
-- **Consent.** In writing on 2026-10-06, and confirmed on the recording before the task. It
-  covers taking part, recording screen and voice with a transcript, and clips of 60 seconds or
-  less and quotes shown to RAVN evaluators on an unlisted page. Without clip consent, that page
-  quotes words only. Publishing is a separate box: a participant's de-identified results (task
-  times, ratings and paraphrased notes, with no name and no quotes) go into this public
-  repository only if they ticked "Publish my de-identified results". Every file and note uses
-  the P number: no name, email or employer, and a frame that shows one is cut. The full
-  recordings and transcripts are deleted by 2026-10-23. A participant may withdraw at any time,
-  which deletes their recording, transcript and notes and removes their results from this
-  repository; earlier versions stay in its history, de-identified. Clips they agreed to stay
-  until they ask for them to be removed.
+- **Consent.** In writing on 2026-10-06, and, when the session is recorded, confirmed at the start
+  of the recording. A participant who declines recording is not recorded; their written reply
+  stands, and only quotes are used. It covers taking part, recording screen and voice with a
+  transcript, and clips of 60 seconds or less and quotes shown to RAVN evaluators on an unlisted
+  page. Without clip consent, that page quotes words only. Publishing is a separate box: a
+  participant's de-identified results (task times, ratings and paraphrased notes, with no name and
+  no quotes) go into this public repository only if they ticked "Publish my de-identified results".
+  Every file and note uses the P number: no name, email or employer, and a frame that shows one is
+  cut. The full recordings and transcripts are deleted by 2026-10-23. A participant may withdraw at
+  any time, which deletes their recording, transcript and notes and removes their results from this
+  repository; earlier versions stay in its history, de-identified. Clips they agreed to stay until
+  they ask for them to be removed.
 - **Order.** P3 before P4, 15 minutes or more apart, so a store problem shows up first with the
   developer, and the stock check between them catches a variant P3 bought.
 - **Accounts.** Every account in either session uses a made-up email ending in `@example.com`.
@@ -266,8 +267,8 @@ still run.
 ## What this repository holds
 
 Only de-identified results, each under a P number, and only from a participant who ticked the
-"Publish my de-identified results" box; any other participant's column reads "not published", and
-their results stay on the unlisted page. Those results are outcomes, times, the SEQ, milestone
+"Publish my de-identified results" box; any other participant's column and findings are left out,
+and their results stay on the unlisted page. Those results are outcomes, times, the SEQ, milestone
 status, scores, findings in paraphrase, context answers (experience band, prior tools), and the
 session's setup (Swagger "Servers", the fallback, whether clips were agreed). A free answer, such as
 what a word means, is paraphrased. A pick from a fixed list, such as the five reaction words, may be
@@ -280,7 +281,9 @@ seconds or less with captions, from a P who agreed to clips, or else one quote w
 ## Results
 
 Blank until the sessions on 2026-10-07, and filled after each one within "What this repository
-holds".
+holds". Leave a participant's column and findings out unless they ticked the publish box. Timestamps
+(mm:ss) exist only for recorded sessions; for a session that was not recorded, those cells read "not
+recorded".
 
 ### Context
 
