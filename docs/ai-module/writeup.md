@@ -1,7 +1,7 @@
 # AI Module write-up
 
 **Repository / PR:** https://github.com/f3r21/t-shirt-store-api,
-[pull request #15](https://github.com/f3r21/t-shirt-store-api/pull/15), open and unmerged.
+[pull request #15](https://github.com/f3r21/t-shirt-store-api/pull/15), merged on 2026-10-06.
 
 **Starting commit:** [`7139980`](https://github.com/f3r21/t-shirt-store-api/commit/7139980),
 "docs: name both non-additive migrations in the architecture page". Confirmed as the base with
