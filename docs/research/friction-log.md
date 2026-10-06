@@ -54,20 +54,22 @@ session is still a friction log, and links point here.
 - **Call.** Google Meet in Chrome, not Safari: Safari's voice processing can leave a local
   recorder's microphone track silent. P3 shares the entire screen for the whole run. P4 watches
   the moderator's shared Swagger window, and shares their own screen only to pay.
-- **Recording.** Cap 0.6.0 in Studio mode records the entire screen, the microphone and the
-  system audio, locally on the moderator's Mac. Cap is pending confirmation by a test call. If
-  its microphone track comes out flat, OBS Studio 32.2.2 records instead, and if that fails too,
-  Zoom's local recording, which moves the calls to Zoom. Wispr Flow Notetaker writes the
-  transcript; it starts with the call, because it cannot import a recording later. Files are
-  named by P number and stay out of this repository ("What this repository holds").
+- **Recording.** OBS Studio records locally on the moderator's Mac: one macOS Screen Capture
+  source on the entire display, plus the microphone and the system audio, to a Hybrid MP4 that
+  survives a crash. The fallback is Zoom's local recording, which moves the calls to Zoom. Wispr
+  Flow Notetaker writes the transcript; it starts with the call, because it cannot import a
+  recording later. Files are named by P number and stay out of this repository ("What this
+  repository holds").
 - **Consent.** In writing on 2026-10-06, and confirmed on the recording before the task. It
   covers taking part, recording screen and voice with a transcript, and clips of 60 seconds or
   less and quotes shown to RAVN evaluators on an unlisted page. Without clip consent, that page
-  quotes words only. Participants also agree that de-identified results (task times, ratings and
-  paraphrased notes, with no name and no quotes) are published in this public repository. Every
-  file and note uses the P number: no name, email or employer, and a frame that shows one is
-  cut. The full recordings and transcripts are deleted by 2026-10-23. A participant may withdraw
-  at any time, which deletes their recording, transcript and notes. Clips they agreed to stay
+  quotes words only. Publishing is a separate box: a participant's de-identified results (task
+  times, ratings and paraphrased notes, with no name and no quotes) go into this public
+  repository only if they ticked "Publish my de-identified results". Every file and note uses
+  the P number: no name, email or employer, and a frame that shows one is cut. The full
+  recordings and transcripts are deleted by 2026-10-23. A participant may withdraw at any time,
+  which deletes their recording, transcript and notes and removes their results from this
+  repository; earlier versions stay in its history, de-identified. Clips they agreed to stay
   until they ask for them to be removed.
 - **Order.** P3 before P4, 15 minutes or more apart, so a store problem shows up first with the
   developer, and the stock check between them catches a variant P3 bought.
@@ -94,9 +96,9 @@ watching.
 - **A storefront account for P4.** The moderator creates it on 2026-10-06 with `POST /v1/users`
   and signs in with it during P4's session. Its password lives in a password manager, never in a
   file. A second made-up account rehearses P4's session once, end to end.
-- **The recording works.** A test call puts both voices in Cap's video and in Wispr's transcript,
-  and the microphone track in Cap is not flat. Otherwise the test call repeats with OBS, then
-  Zoom.
+- **The recording works.** A test call puts both voices in the OBS recording and in Wispr's
+  transcript, and both of OBS's audio meters moved. Otherwise the test call repeats with Zoom's
+  local recording.
 
 ## P3: the developer's friction log (30 minutes)
 
@@ -263,14 +265,17 @@ still run.
 
 ## What this repository holds
 
-Only de-identified results, each under a P number: outcomes, times, the SEQ, milestone status,
-scores, findings in paraphrase, context answers (experience band, prior tools), and the session's
-setup (Swagger "Servers", the fallback, whether clips were agreed). A free answer, such as what a
-word means, is paraphrased. A pick from a fixed list, such as the five reaction words, may be
+Only de-identified results, each under a P number, and only from a participant who ticked the
+"Publish my de-identified results" box; any other participant's column reads "not published", and
+their results stay on the unlisted page. Those results are outcomes, times, the SEQ, milestone
+status, scores, findings in paraphrase, context answers (experience band, prior tools), and the
+session's setup (Swagger "Servers", the fallback, whether clips were agreed). A free answer, such as
+what a word means, is paraphrased. A pick from a fixed list, such as the five reaction words, may be
 listed, but never the reason spoken for it. Recordings, transcripts and session notes stay outside
-this repository, because the notes hold quotes and reasons, and a withdrawal has to delete them.
-Quotes and clips go only to the unlisted page for RAVN evaluators: one clip of 60 seconds or less
-with captions, from a P who agreed to clips, or else one quote with the P number.
+this repository, because the notes hold quotes and reasons, and a withdrawal deletes them. It also
+removes the participant's results from this repository; earlier versions stay in its history,
+de-identified. Quotes and clips go only to the unlisted page for RAVN evaluators: one clip of 60
+seconds or less with captions, from a P who agreed to clips, or else one quote with the P number.
 
 ## Results
 
