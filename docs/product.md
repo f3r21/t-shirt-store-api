@@ -78,7 +78,7 @@ Likelihood and impact are judged on a 1 to 3 scale, not measured.
 
 | Risk | L | I | L × I | What limits it |
 |---|---|---|---|---|
-| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the sessions" in `docs/research/friction-log.md`; README "Deploy", step 4 |
+| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the session" in `docs/research/friction-log.md`; README "Deploy", step 4 |
 | A shopper pays for a unit that is gone. A pending order holds no stock, so two orders can pay for the last unit; the stock floors at zero and logs `stock.oversold` | 2 | 3 | 6 | The intent checks stock before Stripe is asked. A refund is done by hand in Stripe |
 | Mail does not arrive. SES is in its sandbox and the mail lands in spam (README, "Known gaps") | 3 | 2 | 6 | A domain with DKIM |
 
