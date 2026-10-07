@@ -4,7 +4,7 @@
 developers.**
 The evidence is in "Go or no-go" below. Written on 2026-10-06, after the build, from sources
 dated in this repository. The user and the problem are assumptions until P3 and P4 are
-interviewed on 2026-10-07.
+interviewed.
 
 ## Who it is for (assumption)
 
@@ -24,16 +24,16 @@ reasoning written while the API was built:
 The brief's users, the manager, the client and the delivery person, reach the API only through
 D1's software. So D1 is the user these documents serve.
 
-That stays an assumption. Two developers, P3 and P4, test it on 2026-10-07. Each tells the
-story of the last time they connected an app to an API someone else built, hears the problem
-statement below read aloud, and then tries this API from the README and Swagger UI. The protocol
-is `docs/research/friction-log.md`.
+That stays an assumption until two developers, P3 and P4, test it. Each tells the story of the
+last time they connected an app to an API someone else built, hears the problem statement below
+read aloud, and then tries this API, starting from Swagger UI. They get the README only if they
+ask for it. The protocol is `docs/research/friction-log.md`.
 
 ## The problem
 
-D1 has to answer two questions on every failed call: what does the shopper see, and did money
-move. When the answers are ambiguous, the app loops on sign-in or shows the wrong message. When a
-payment's truth lives in two places, the order and the charge drift apart.
+Developers who build an online store struggle to tell what the shopper should see when an API
+call fails, and, if it was a payment, whether the shopper was charged. This leads to wrong
+messages, and to orders that do not match the charge.
 
 **North Star: paid orders per week.** Each one is a row in `order_status_history` with status
 `paid`, and only the signed Stripe webhook writes that status (ADR 24). No dashboard counts it
