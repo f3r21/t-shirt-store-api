@@ -239,7 +239,7 @@ repository.
 
 | Feedback | P3, P4 or both | Core problem or preference |
 |---|---|---|
-| | | |
+| Not at ease in Swagger UI; named Postman as another tool | P3 | Preference, not scheduled |
 
 ### Across P3 and P4 [TUE-synth]
 
