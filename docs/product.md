@@ -114,8 +114,8 @@ turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<prev
 
 ## Now, next and later
 
-- **Now:** interview P3 and P4, two developers, on 2026-10-07, each ending with a few minutes on
-  the deployed store. Each feedback weighed as a core problem becomes a "Next" item, not code;
+- **Now:** interview P3 and P4, two developers, each ending with a few minutes on the deployed
+  store. Each feedback weighed as a core problem becomes a "Next" item, not code;
   one that names a missing README line is fixed in the README instead. A preference is recorded
   in `docs/research/friction-log.md`, not scheduled.
 - **Next:** R1's condition to fall, a developer reaching a paid order without help on a store that
@@ -126,8 +126,9 @@ turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<prev
 
 ## Validated by
 
-Planned for 2026-10-07, results pending. The protocol is `docs/research/friction-log.md`, two
-interviews with developers, P3 and P4. Each tells the story of the last time they connected an
-app to an API someone else built, says whether the problem statement above matches their
-experience, and then tries this API from the README and Swagger UI and says whether it is right
-for that problem. Neither has run. Until they do, D1 and the problem above are assumptions.
+Planned, results pending. The protocol is `docs/research/friction-log.md`, two interviews with
+developers, P3 and P4. Each tells the story of the last time they connected an app to an API
+someone else built, says whether the problem statement above matches their experience, and then
+tries this API, starting from Swagger UI. They get the README only if they ask for it. Each says
+whether the API is right for that problem. Neither has run. Until they do, D1 and the problem
+above are assumptions.
