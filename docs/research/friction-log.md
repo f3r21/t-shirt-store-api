@@ -1,13 +1,13 @@
 # API interview: one developer
 
 One remote interview on 2026-10-07 tests who this API serves and the problem it names. P3 is a
-developer. The session is a story-based interview ("Tell me about the last time..."), then the
-problem statement from `docs/product.md` read aloud ("Does this statement match your
-experience?"), then a few minutes trying this API from the README and Swagger UI ("Is this
-right?"). Written on 2026-10-06.
+front-end developer. The session is a story-based interview ("Tell me about the last time..."),
+then the problem statement from `docs/product.md` read aloud ("Does this statement match your
+experience?"), then a few minutes trying this API from Swagger UI ("Is this right?"). The README
+comes only if asked. Written on 2026-10-06.
 
 It is one of three interviews that day: the front app gets P1 and P2. P4 was dropped because P3
-gave enough material. One person, a friend of the moderator, gives an anecdote, not a pattern
+gave enough material. One person, a colleague of the moderator, gives an anecdote, not a pattern
 ("Limits"). This protocol replaces the usability test this file held before. The file keeps its
 name so links survive.
 
@@ -58,11 +58,11 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
   Flow Notetaker writes the transcript, which stands in for a note-taker; it starts with the call,
   because it cannot import a recording later. Files are named by P number and stay out of this
   repository ("What this repository holds").
-- **Privacy.** No consent step: the participant is a friend of the moderator, and the project is
-  internal. Every file and note uses the P number only: no name, email or employer. Before a clip
-  is used, names, emails, notifications and open tabs are cut from it. Quotes and clips go only to
-  the unlisted page for RAVN evaluators. This repository holds only de-identified results, such as
-  paraphrased stories, verdicts and findings ("What this repository holds" lists them all).
+- **Privacy.** No consent step: the participant is a colleague of the moderator, and the project
+  is internal. Every file and note uses the P number only: no name, email or employer. No clip of
+  P3 is used, because the video is not published. Quotes go only to the unlisted page for RAVN
+  evaluators. This repository holds only de-identified results, such as paraphrased stories,
+  verdicts and findings ("What this repository holds" lists them all).
   Recordings, transcripts and session notes stay outside it, and the full recordings and
   transcripts are deleted by 2026-10-23.
 
@@ -134,11 +134,8 @@ that?" "Why is that important to you?" "What alternatives did you consider?"
 
 ### 4. The problem statement [PS-validate]
 
-Read it aloud, then paste it in the chat. It is the statement in `docs/product.md`, "The
-problem", with "D1" spelled out:
-
-> A developer who builds a shop's app has to answer two questions on every failed call: what does
-> the shopper see, and did money move.
+Read aloud the problem statement from "The problem" in `docs/product.md`, then paste it in the
+chat.
 
 > Does this statement match your experience?
 
@@ -146,12 +143,13 @@ Whatever they answer: "Tell me more about that." [UI101-6]
 
 ### 5. Try the API [MVP-beta] [MVP-right] [CHEAT-thinkaloud]
 
-Paste both links in the chat:
+Paste the Swagger link in the chat:
 
 ```
-README: https://github.com/f3r21/t-shirt-store-api
 Swagger: https://d1hfx5i8kcs8ag.cloudfront.net/docs
 ```
+
+Give the README, `https://github.com/f3r21/t-shirt-store-api`, only if they ask for it.
 
 > This is a store API I built. It runs in Stripe's test mode, so no real money moves. Please look
 > around the docs and try any call you like, and say what you think as you go. If you create an
@@ -186,8 +184,8 @@ statement, what the participant did and said while trying the API, the feedback 
 themes, insights, job stories and verdicts, all in paraphrase. Recordings and transcripts stay
 outside this repository, and so do the session notes, because the notes hold the participant's own
 words. If the participant later asks, the results are removed from this repository; earlier versions
-stay in its history, de-identified. Quotes and clips go only to the unlisted page for RAVN
-evaluators, each under the P number: one clip of 60 seconds or less, with captions.
+stay in its history, de-identified. Quotes go only to the unlisted page for RAVN
+evaluators, under the P number. No clip goes there, because the video is not published.
 
 ## Results
 
@@ -196,97 +194,19 @@ are complicated, and the product is unclear. They come from one participant, P3,
 anecdote, not a pattern [TUE-anecdote]. Every cell is a paraphrase; the participant's own words
 stay in the session notes and on the unlisted page [STORY-words].
 
-### Sessions [VELLO-shape]
-
-| Field | P3 |
-|---|---|
-| Role | |
-| Context: work and team, nothing that identifies them | |
-| Date | 2026-10-07 |
-| Length | |
-| Interviewer | Fernando |
-
-### The story [TUE-past]
-
-| | P3 |
-|---|---|
-| What happened, in order | |
-| Triggering event or struggling moment [JTBD-patterns] | |
-| Criteria they used [JTBD-patterns] | |
-| Anxieties or hesitations [JTBD-patterns] | |
-
-The language they repeated stays in the session notes, so no participant's phrasing reaches this
-repository.
-
-### The problem statement [PS-validate]
-
-| | P3 |
-|---|---|
-| Resonates, partly or no | |
-| Why | |
-
-### Trying the API [MVP-beta]
-
-| | P3 |
-|---|---|
-| What they did | |
-| What they said, and where it differs from what they did [TUE-saydo] | |
-| "Is this right?" [MVP-right] | |
-| Better than expected [JTBD-reflect] | |
-| Worse than expected [JTBD-reflect] | |
-
 ### Feedback, weighed [MVP-filter]
 
 | Feedback | Participant | Core problem or preference |
 |---|---|---|
 | Not at ease in Swagger UI; named Postman as another tool | P3 | Preference, not scheduled |
 
-### Synthesis [TUE-synth]
-
-**Themes** [VELLO-theme]. The course's "Verbatim quotes" column stays on the unlisted page. With
-one session, every theme is an anecdote: label it that way [TUE-anecdote].
-
-| Theme | Participant count and IDs | What users said | What we infer | Contradicting evidence |
-|---|---|---|---|---|
-| | | | | |
-
-**Insights** [TUE-synth]: statements about what is true for this user.
-
-- 
-
-**Job stories** [JTBD-story]: "When [situation], I want to [motivation], so I can [expected
-outcome]." Write the job, not this API [JTBD-job].
-
-- 
-
-**Verdicts**
-
-| Assumption | Holds, changes or unclear | Evidence (P numbers) |
-|---|---|---|
-| Persona: D1 [PERSONA-test] | | |
-| Problem statement [PS-validate] | | |
-| The README and Swagger UI help with the pain [MVP-beta] | | |
-
-Refined problem statement, as Who, What, Why [VELLO-ps] [PS-refine]:
-
-- Who:
-- What:
-- Why:
-
-**Audit** [TUE-audit]. Every claim above is checked against the transcript before it goes in.
-Each correction is logged:
-
-| The synthesis said | The transcript shows | Correction |
-|---|---|---|
-| | | |
-
 ### Limits
 
-One developer in a 30-minute session, a friend of the moderator. The course asks for five to
+One developer in a 23-minute session, a colleague of the moderator. The course asks for five to
 eight users per user group [QQ-n], three to four stories before mapping the opportunities
-[OST-count], and 60 to 90 minutes per interview [JTBD-length]. A friend raises
-social-desirability bias [TUE-saydo]. The shopper behind D1's software is not interviewed. One
-interview is an anecdote, not a pattern [TUE-anecdote].
+[OST-count], and 60 to 90 minutes per interview [JTBD-length]. Because P3 is a colleague,
+social-desirability bias is likely [TUE-saydo]. The shopper behind D1's software is not
+interviewed. One interview is an anecdote, not a pattern [TUE-anecdote].
 
 ## What changes because of this
 

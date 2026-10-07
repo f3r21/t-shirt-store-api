@@ -2,7 +2,7 @@
 
 **Call: not ready for real money today. Ready for a Stripe test-mode pilot.**
 The evidence is in "Go or no-go" below. Written on 2026-10-06, after the build, from sources
-dated in this repository. One developer, P3, was interviewed on 2026-10-07. One interview is an
+dated in this repository. Updated 2026-10-07 with the P3 interview. One interview is an
 anecdote, not a pattern, so the user and the problem are still assumptions.
 
 ## Who it is for (assumption)
@@ -42,8 +42,9 @@ messages, and to orders that do not match the charge.
 answered with a status the code did not expect, and the app showed the user the wrong message. The
 story mentioned no payment, and P3 did not link it to this statement. In P3's view, the cause
 is the contract with the backend team and vague errors. The second half, whether the shopper was
-charged, is untested: nobody spoke to it, and nobody tried a payment. This is an anecdote from
-one participant, not a pattern, so the statement stays as written.
+charged, is untested. P3 named a failed payment only as a case for the right message; nobody
+spoke to the charge, and nobody tried a payment. This is an anecdote from one participant, not a
+pattern, so the statement stays as written.
 
 **North Star: paid orders per week.** Each one is a row in `order_status_history` with status
 `paid`, and only the signed Stripe webhook writes that status (ADR 24). No dashboard counts it
