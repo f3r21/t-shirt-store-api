@@ -23,7 +23,7 @@ runs, on what, and when a result counts.
 | Dependencies | `npm audit --omit=dev --audit-level=high` | The tree the image ships |
 | Image | `npm run check:image` | `docker build` of the runtime image |
 | Prose | `npm run check:prose` | Vale on the README, the architecture page, the contract README and the ADRs |
-| Pilot | `docs/research/friction-log.md` | Two interviews with developers, P3 and P4, by hand: a story, the problem statement, then a few minutes on the deployed store |
+| Pilot | `docs/research/friction-log.md` | One interview with a developer, P3, on 2026-10-07, by hand: a story, the problem statement, then a few minutes on the deployed store |
 
 ## Environments and data
 
