@@ -1,7 +1,12 @@
-import request from 'supertest';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import type { TestApp } from './app-factory';
 import { createTestApp } from './app-factory';
+import {
+  EMAIL_TAKEN,
+  fetchServedDocument,
+  operationAt,
+  operationsOf,
+} from './openapi-documents';
 
 /**
  * The problems each failure lists in the served document, read over HTTP the
@@ -9,10 +14,9 @@ import { createTestApp } from './app-factory';
  *
  * Every failure pointed at the bare `Problem` schema, and the contract lists
  * its examples per status, so a reader could not tell which problems one
- * operation returns (issue 34). The served document lists, per operation,
- * what that operation throws, typed or not (issue 40). Whether each listed
- * type is one the contract allows at that status is the contract test's
- * check.
+ * operation returns. The served document lists, per operation, what that
+ * operation throws, typed or not. ADR 38. Whether each listed type is one
+ * the contract allows at that status is the contract test's check.
  */
 describe('Problems each operation lists in the served document (e2e)', () => {
   let ctx: TestApp;
@@ -22,24 +26,19 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     schema?: unknown;
     examples?: Record<string, { value?: Record<string, unknown> }>;
   };
-  type Operation = {
-    security?: Record<string, unknown>[];
-    requestBody?: unknown;
-    parameters?: { in?: string }[];
-    responses?: Record<string, { content?: Record<string, ProblemContent> }>;
-  };
+  type ProblemResponse = { content?: Record<string, ProblemContent> };
+  /** The parts of an operation that say whether it takes input. */
+  type Inputs = { requestBody?: unknown; parameters?: { in?: string }[] };
   /** A typed problem as a client tells it apart: by type, shown by title. */
   type Typed = { type: string; title: string };
 
-  const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
-
   const PROBLEM_BASE = 'https://tshirt.store/problems';
-  const EMAIL_TAKEN = `${PROBLEM_BASE}/email-taken`;
 
   const typed = (name: string, title: string): Typed => ({
     type: `${PROBLEM_BASE}/${name}`,
     title,
   });
+  const EMAIL: Typed = { type: EMAIL_TAKEN, title: 'Email already registered' };
   const EXPIRED = typed('access-token-expired', 'Access token expired');
   const CREDENTIALS = typed('invalid-credentials', 'Invalid credentials');
   const REFRESH = typed('refresh-token-unknown', 'Refresh token unknown');
@@ -69,43 +68,22 @@ describe('Problems each operation lists in the served document (e2e)', () => {
 
   beforeAll(async () => {
     ctx = await createTestApp();
-    const res = await request(ctx.app.getHttpServer())
-      .get('/docs-json')
-      .expect(200);
-    served = res.body as OpenAPIObject;
+    served = await fetchServedDocument(ctx);
   });
 
   afterAll(async () => {
     await ctx.app.close();
   });
 
-  /** The operation behind "POST /users" in the served document. */
-  function operationAt(op: string): Operation | undefined {
-    const [method, path] = op.split(' ');
-    const item = served.paths[path] as Record<string, unknown> | undefined;
-    return item?.[method.toLowerCase()] as Operation | undefined;
-  }
-
-  /** Every operation the served document lists, as "POST /users". */
-  function operations(): string[] {
-    return Object.entries(served.paths)
-      .flatMap(([path, item]) => {
-        const record = item as Record<string, unknown>;
-        return METHODS.filter((m) => record[m]).map(
-          (m) => `${m.toUpperCase()} ${path}`,
-        );
-      })
-      .sort();
-  }
-
   /** Whether the operation takes a token: its `security` names `bearerAuth`. */
   function takesToken(op: string): boolean {
-    return (operationAt(op)?.security ?? []).some((r) => 'bearerAuth' in r);
+    const security = operationAt(served, op)?.security ?? [];
+    return security.some((r) => 'bearerAuth' in r);
   }
 
   /** Whether the operation takes a request body or a query parameter. */
   function takesInput(op: string): boolean {
-    const operation = operationAt(op);
+    const operation = operationAt(served, op) as Inputs | undefined;
     return (
       operation?.requestBody !== undefined ||
       (operation?.parameters ?? []).some((p) => p.in === 'query')
@@ -117,8 +95,9 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     op: string,
     status: string,
   ): ProblemContent | undefined {
-    const content = operationAt(op)?.responses?.[status]?.content;
-    return content?.['application/problem+json'];
+    const responses = operationAt(served, op)?.responses ?? {};
+    const response = responses[status] as ProblemResponse | undefined;
+    return response?.content?.['application/problem+json'];
   }
 
   /** The example values one failure lists, in the order it lists them. */
@@ -147,7 +126,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
 
   /** `typedAt` at every failure status one operation declares. */
   function typedByStatus(op: string): Record<string, Typed[]> {
-    const statuses = Object.keys(operationAt(op)?.responses ?? {});
+    const statuses = Object.keys(operationAt(served, op)?.responses ?? {});
     return Object.fromEntries(
       statuses
         .filter((status) => Number(status) >= 400)
@@ -201,9 +180,8 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   });
 
   /**
-   * A failure with no traced problem shows its status's default, the title
-   * and detail of the contract's own 404 example, while the owner decides
-   * between that and exempting it (the switch in `operation-problems.ts`).
+   * A failure the code reaches only with its status's default title and
+   * detail shows that default, here the contract's own 404 example. ADR 38.
    * One example on the schema it always had: not another operation's
    * problems, which one shared object would leak, and not an empty
    * `examples`.
@@ -221,6 +199,29 @@ describe('Problems each operation lists in the served document (e2e)', () => {
         },
       },
     });
+  });
+
+  /**
+   * A path id that is not an integer gets the 400 default, no specific
+   * detail, so the map does not list it: it shows only through the status
+   * default, where the 400 has no specific problem. ADR 38. The delete is
+   * the control: its only 400 is the path id, so the default shows there.
+   */
+  it('shows the path-id 400 only where no specific 400 is listed', () => {
+    const pathId = {
+      title: 'Validation failed',
+      status: 400,
+      detail: 'One or more fields did not pass validation.',
+    };
+
+    const onDelete = problemsAt('DELETE /products/{id}', '400');
+    const onUpdate = problemsAt('PATCH /products/{id}', '400');
+
+    expect(onDelete).toEqual([pathId]);
+    // The validation example and the empty body, so the check below reads a
+    // list that is not empty.
+    expect(onUpdate).toHaveLength(2);
+    expect(onUpdate).not.toContainEqual(pathId);
   });
 
   /**
@@ -291,9 +292,19 @@ describe('Problems each operation lists in the served document (e2e)', () => {
 
   /**
    * Exactly the typed problems at each status, because a type listed at the
-   * wrong status misleads as much as a missing one. The cart add and checkout
-   * are where a client needs the stock and promo-code messages.
+   * wrong status misleads as much as a missing one. Sign-up, the cart add and
+   * checkout are where a client needs the email-taken, stock and promo-code
+   * messages.
    */
+  it('lists exactly the typed problems of sign-up at each status', () => {
+    expect(typedByStatus('POST /users')).toEqual({
+      '400': [],
+      '409': [EMAIL],
+      '429': [],
+      '500': [],
+    });
+  });
+
   it('lists exactly the typed problems of a cart add at each status', () => {
     expect(typedByStatus('POST /users/me/cart/items')).toEqual({
       '400': [],
@@ -322,7 +333,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
    * is never about the access token.
    */
   it('lists access-token-expired at 401 wherever a token is taken', () => {
-    const takingToken = operations().filter(takesToken);
+    const takingToken = operationsOf(served).filter(takesToken);
     // The control: the `security` reader finds both optional reads and a
     // required operation, and leaves out sign-in, which is public.
     expect(takingToken).toEqual(
@@ -334,7 +345,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     );
     expect(takingToken).not.toContain('POST /auth/sessions');
 
-    const listing = operations().filter((op) =>
+    const listing = operationsOf(served).filter((op) =>
       typedAt(op, '401').some((p) => p.type === EXPIRED.type),
     );
     expect(listing).toEqual(takingToken);
@@ -343,13 +354,18 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   /**
    * The other 401 of the token guards has no type and one detail, for a
    * token that is absent, malformed or revoked, so the same operations list
-   * it. The test above is the `security` reader's control.
+   * it.
    */
   it('lists the missing-token 401 wherever a token is taken', () => {
-    const listing = operations().filter((op) =>
+    const takingToken = operationsOf(served).filter(takesToken);
+    // The control: two empty lists compare equal, so the `security` reader
+    // must find an operation that takes a token.
+    expect(takingToken).toContain('POST /orders');
+
+    const listing = operationsOf(served).filter((op) =>
       untypedAt(op, '401').some((p) => p.detail === NEEDS_TOKEN_DETAIL),
     );
-    expect(listing).toEqual(operations().filter(takesToken));
+    expect(listing).toEqual(takingToken);
   });
 
   /**
@@ -370,13 +386,21 @@ describe('Problems each operation lists in the served document (e2e)', () => {
 
   /**
    * Every failure of every operation names at least one example, so no
-   * status leaves a reader with the bare schema (issue 40). The two
-   * `toContainEqual` lines are the control: the walk reaches a failure with
-   * traced problems and one that shows its status default.
+   * status leaves a reader with the bare schema. ADR 38. About half the
+   * failures show their status default, so the walk mostly checks that rule.
+   * It still fails on a 401, 409 or 422 the map does not list, because those
+   * statuses have no default. The two `toContainEqual` lines are the
+   * control: the walk reaches a failure with traced problems and one that
+   * shows its status default.
+   *
+   * Checkout's 403 is the one failure exempted, and it must stay bare: the
+   * policy guard can refuse checkout, but every signed-in role may place an
+   * order and apply a promo code, so no caller reaches it today. A default
+   * there would name a problem the API never sends.
    */
   it('names an example at every failure of every operation', () => {
-    const failures = operations().flatMap((op) =>
-      Object.keys(operationAt(op)?.responses ?? {})
+    const failures = operationsOf(served).flatMap((op) =>
+      Object.keys(operationAt(served, op)?.responses ?? {})
         .filter((status) => Number(status) >= 400)
         .map((status): [string, string] => [op, status]),
     );
@@ -386,7 +410,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     const bare = failures
       .filter(([op, status]) => problemsAt(op, status).length === 0)
       .map(([op, status]) => `${op} ${status}`);
-    expect(bare).toEqual([]);
+    expect(bare).toEqual(['POST /orders 403']);
   });
 
   /**
@@ -397,7 +421,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
    * validates its fields. Sign-up's 400 is the contract's own example.
    */
   it('shows a validation 400 wherever a body or a query is validated', () => {
-    const validated = operations().filter(
+    const validated = operationsOf(served).filter(
       (op) => op !== 'POST /webhooks/stripe' && takesInput(op),
     );
     // The control: the input reader finds a body and a query.
@@ -487,14 +511,6 @@ describe('Problems each operation lists in the served document (e2e)', () => {
       '400',
       'Validation failed',
       'Send at least one field.',
-    ],
-    // With no `errors`, so the validation example beside it does not match.
-    [
-      'malformed path id',
-      'PATCH /products/{id}',
-      '400',
-      'Validation failed',
-      'One or more fields did not pass validation.',
     ],
     // Its title is the handler's own, not the table's "Validation failed".
     [

@@ -40,12 +40,26 @@ returns.** Each entry carries the problem type when it has one, the title and an
 detail. The served document is narrower than the contract by design: it is per operation, and
 the contract stays per status.
 
-**Every entry is traced to the code that throws it.** A problem with no traced throw site is
-not listed. A typed problem carries the title its throw site sets. A problem with no type
-carries its status's title from the table in ADR 11, and its detail tells it apart. Where the
-code differs from the table or from the contract, the map lists what the code sends. For
-example, the image upload sends a 400 titled "Bad request" for a request with no file. Every
-other 400 carries "Validation failed" from the table.
+**Every entry is traced to the code that throws it.** A typed problem carries the title its
+throw site sets. A problem with no type carries its status's title from the table in ADR 11,
+and its detail tells it apart. Where the code differs from the table or from the contract, the
+map lists what the code sends. For example, the image upload sends a 400 titled "Bad request"
+for a request with no file. Every other 400 carries "Validation failed" from the table.
+
+**Each declared status shows one of three things:**
+
+- A status whose problems carry a specific detail lists those problems.
+- A status the code reaches only with its default title and detail shows that default as its
+  one example. A missing row is a 404, an unexpected error is a 500, and a path id that is not
+  an integer is a 400. These are real answers, so the page shows them.
+- A status that no caller can reach today shows no example. Today that is the 403 of
+  POST /orders only. The policy guard can send it, but every signed-in role may place an order
+  and apply a promo code. A default there would name a problem the API never sends.
+
+**The default is a recommendation.** The owner has still to choose between it and the other
+option: no default, and the walk below exempts every status that has only a default. That
+option is one deletion away, `statusDefault` in `src/openapi/operation-problems.ts` and its
+call.
 
 ## Consequences
 
@@ -57,6 +71,10 @@ per operation.
 fails when an operation lists, at a status, a problem type that the contract does not list for
 that status. The check is a subset, not an equality, because the contract shares its examples
 across every operation with that status.
+
+**A walk keeps every failure named.** `test/openapi-problems.e2e-spec.ts` fails when a failure
+shows no example. It exempts one failure, named by operation and status: the 403 of
+POST /orders. A 401, 409 or 422 has no default, so a missing entry there fails the walk.
 
 **A new throw site has one place to be documented:** the map, not each controller whose
 operation reaches it.

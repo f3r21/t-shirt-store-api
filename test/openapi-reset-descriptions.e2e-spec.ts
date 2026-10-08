@@ -1,19 +1,20 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import request from 'supertest';
-import { parse as parseYaml } from 'yaml';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import type { TestApp } from './app-factory';
 import { createTestApp } from './app-factory';
+import {
+  fetchServedDocument,
+  loadContract,
+  operationAt,
+} from './openapi-documents';
 
 /**
  * The password reset flow as the served document tells it, read over HTTP the
  * way a client reads `/docs-json`, against the contract's own text.
  *
  * A front-end developer who read only the deployed Swagger page could not tell
- * what follows forgot-password (issue 34). The contract said it and the served
- * document did not. Whitespace is normalized on both sides, because the
- * contract wraps its lines and the controller joins strings.
+ * what follows forgot-password. The contract said it and the served document
+ * did not. Whitespace is normalized on both sides, because the contract wraps
+ * its lines and the controller joins strings.
  */
 describe('Password reset descriptions in the served document (e2e)', () => {
   let ctx: TestApp;
@@ -21,17 +22,14 @@ describe('Password reset descriptions in the served document (e2e)', () => {
   let contract: OpenAPIObject;
 
   type Described = { description?: string };
-  type Operation = Described & { responses?: Record<string, Described> };
+  type DescribedOperation = Described & {
+    responses?: Record<string, Described>;
+  };
 
   beforeAll(async () => {
     ctx = await createTestApp();
-    const res = await request(ctx.app.getHttpServer())
-      .get('/docs-json')
-      .expect(200);
-    served = res.body as OpenAPIObject;
-    contract = parseYaml(
-      readFileSync(join(__dirname, '../contract/openapi.yaml'), 'utf8'),
-    ) as OpenAPIObject;
+    served = await fetchServedDocument(ctx);
+    contract = loadContract();
   });
 
   afterAll(async () => {
@@ -48,9 +46,7 @@ describe('Password reset descriptions in the served document (e2e)', () => {
     op: string,
     status?: string,
   ): string {
-    const [method, path] = op.split(' ');
-    const item = doc.paths[path] as Record<string, unknown> | undefined;
-    const operation = item?.[method.toLowerCase()] as Operation | undefined;
+    const operation = operationAt(doc, op) as DescribedOperation | undefined;
     const target =
       status === undefined ? operation : operation?.responses?.[status];
     return (target?.description ?? '').replace(/\s+/g, ' ').trim();

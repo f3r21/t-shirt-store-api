@@ -98,17 +98,12 @@ const CODE_TAKEN: OperationProblem = {
 
 /**
  * The global `ThrottlerGuard`, past the tier `@SignInTier` or `@PasswordTier`
- * sets, on the six operations that declare a 429. It equals the status
- * default, and is listed so that dropping the switch below keeps it.
+ * sets, on the six operations that declare a 429. Its text is the status
+ * default. It is an entry all the same, and does not rest on the default:
+ * its throw site is traced, and a client of a throttled operation needs the
+ * 429 listed to know when to back off.
  */
 const TOO_MANY_REQUESTS = fromTable('tooManyRequests', 429);
-
-/**
- * `ParseIdPipe`, for a path id that is not an integer. Listed where the 400
- * has other causes; where it is the only one, the status default shows the
- * same problem.
- */
-const PATH_ID = fromTable('pathId', 400);
 
 /** `NonEmptyBodyPipe`, on the partial updates. No `errors`: no field failed. */
 const EMPTY_BODY: OperationProblem = {
@@ -136,7 +131,9 @@ function invalid(field: string, message: string): OperationProblem {
  * status. Every entry is traced to the code that throws it, so the served
  * document lists no problem the API never sends. The contract shares one set
  * of examples per status, so this is narrower on purpose: POST /promo-codes
- * does not list email-taken. A status with no entry falls to `statusDefault`.
+ * does not list email-taken. ADR 38. A status with no entry falls to
+ * `statusDefault`, and an empty list, for a status no caller reaches, shows
+ * no example.
  *
  * A problem that several operations return is a constant above, so its text
  * is written once, and each operation still names it here, so this map alone
@@ -218,7 +215,7 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
   },
   getProduct: { '401': TOKEN_GUARD_401 },
   updateProduct: {
-    '400': [invalid('isActive', 'must be a boolean'), EMPTY_BODY, PATH_ID],
+    '400': [invalid('isActive', 'must be a boolean'), EMPTY_BODY],
     '401': TOKEN_GUARD_401,
     '422': [MISSING_CATEGORY],
   },
@@ -241,7 +238,6 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
         title: 'Bad request',
         detail: 'The request carries no file. Send one in the `file` part.',
       },
-      PATH_ID,
     ],
     '401': TOKEN_GUARD_401,
     // `ImagesService.upload`, for bytes that are no image type it knows.
@@ -255,16 +251,12 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
   },
   deleteProductImage: { '401': TOKEN_GUARD_401 },
   createVariant: {
-    '400': [invalid('price', 'must be at least 0'), PATH_ID],
+    '400': [invalid('price', 'must be at least 0')],
     '401': TOKEN_GUARD_401,
     '409': [PAIR_TAKEN],
   },
   updateVariant: {
-    '400': [
-      invalid('size', 'must be at most 20 characters'),
-      EMPTY_BODY,
-      PATH_ID,
-    ],
+    '400': [invalid('size', 'must be at most 20 characters'), EMPTY_BODY],
     '401': TOKEN_GUARD_401,
     '409': [PAIR_TAKEN],
   },
@@ -282,7 +274,7 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
   },
   // Its 409 for a count that raced another stock write is undeclared (#33).
   setVariantStock: {
-    '400': [invalid('stock', 'must be at least 0'), PATH_ID],
+    '400': [invalid('stock', 'must be at least 0')],
     '401': TOKEN_GUARD_401,
   },
   getCart: { '401': TOKEN_GUARD_401 },
@@ -294,7 +286,7 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
     '409': [INSUFFICIENT_STOCK],
   },
   setCartItem: {
-    '400': [invalid('quantity', 'must be at least 1'), PATH_ID],
+    '400': [invalid('quantity', 'must be at least 1')],
     '401': TOKEN_GUARD_401,
     // `CartService.setCartItem`, for a quantity above stock.
     '409': [INSUFFICIENT_STOCK],
@@ -303,6 +295,11 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
   createOrder: {
     '400': [invalid('promoCode', 'must be at most 40 characters')],
     '401': TOKEN_GUARD_401,
+    // The `placeOrder` policy can refuse checkout, but every signed-in role
+    // may create an order and apply a promo code, so no caller reaches this
+    // 403 today. It lists nothing, so it shows no example and not the status
+    // default. ADR 38.
+    '403': [],
     // `OrdersService.createOrder`, in the order it checks the cart: no line,
     // a line above stock, then a cart another checkout emptied first.
     '409': [
@@ -362,7 +359,6 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
         'status',
         'must be one of processing, shipped, delivered, cancelled',
       ),
-      PATH_ID,
     ],
     '401': TOKEN_GUARD_401,
     // `OrdersService.setOrderStatus`, in the order it checks the move: a
@@ -441,25 +437,25 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
     '401': TOKEN_GUARD_401,
   },
   updatePromoCode: {
-    '400': [invalid('usageLimit', 'must be at least 1'), EMPTY_BODY, PATH_ID],
+    '400': [invalid('usageLimit', 'must be at least 1'), EMPTY_BODY],
     '401': TOKEN_GUARD_401,
     '409': [CODE_TAKEN],
   },
 };
 
 /**
- * The generic switch, which awaits the owner's call. 89 declared failures
- * have no traced problem: every 403, 404, 413 and 500, and the 400 of the
- * ten operations whose only 400 is a malformed path id. `createOrder`'s 403
- * is among them, and no role reaches it today.
+ * The status default, for a failure the map does not list: every 403 but
+ * checkout's, every 404, 413 and 500, and the 400 of the operations whose
+ * only 400 is a malformed path id. The code reaches these only with the
+ * default title and detail, so that default is their one example. ADR 38.
+ * A status the table gives no detail (401, 409, 422) has no default, so a
+ * missing entry there leaves its failure bare, and the walk in
+ * `test/openapi-problems.e2e-spec.ts` fails.
  *
- * In force: each shows its status's default problem, so every failure names
- * an example. A status the table gives no detail (401, 409, 422) has no
- * default, so a traced entry missing there still leaves its failure bare.
- *
- * The other option: the walk in `test/openapi-problems.e2e-spec.ts` exempts
- * these failures. Taking it is deleting this function and its call in
- * `problemExamples`, and giving the walk the exemption.
+ * This is the recommended option of a decision the owner has still to make.
+ * The other is that the walk exempts every generic status: deleting this
+ * function and its call in `problemExamples`, and giving the walk that
+ * exemption.
  */
 function statusDefault(status: string): OperationProblem[] | undefined {
   if (STATUS_DETAILS[Number(status)] === undefined) return undefined;
@@ -469,8 +465,8 @@ function statusDefault(status: string): OperationProblem[] | undefined {
 /**
  * The named examples one operation's failure at one status carries, each
  * value in the shape of the contract's own examples, or undefined when
- * neither the map nor the status default gives one. The builder reads the
- * map through this alone.
+ * neither the map nor the status default gives one, or the map lists none.
+ * The builder reads the map through this alone.
  */
 export function problemExamples(
   operationId: string | undefined,
@@ -479,7 +475,7 @@ export function problemExamples(
   if (operationId === undefined) return undefined;
   const problems =
     OPERATION_PROBLEMS[operationId]?.[status] ?? statusDefault(status);
-  if (problems === undefined) return undefined;
+  if (problems === undefined || problems.length === 0) return undefined;
 
   const examples: ExamplesObject = {};
   for (const { name, type, title, detail, errors } of problems) {

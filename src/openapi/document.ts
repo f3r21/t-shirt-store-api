@@ -31,7 +31,8 @@ function forEachOperation(
  * Give every failure the `Problem` body, in one place: `ProblemFilter` is
  * global, so this is one rule and not a decorator per response. It only fills;
  * a response that names its content keeps it. The body names as examples
- * what `problemExamples` gives for the operation at that status.
+ * what `problemExamples` gives for the operation at that status, so each
+ * failure lists its own operation's problems. ADR 38.
  */
 function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
   forEachOperation(document, (_path, responses, operation) => {
@@ -153,12 +154,16 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
         '[`contract/openapi.yaml`](https://github.com/f3r21/t-shirt-store-api/blob/main/contract/openapi.yaml), ' +
         'is authoritative where the two disagree. Each failure here lists ' +
         'only the problems its own operation returns, where the contract ' +
-        'shares one set of examples per status. ' +
+        'shares one set of examples per status. A status with no specific ' +
+        'problem shows the default problem for that status, and one that ' +
+        'no caller reaches today shows none. ' +
         '`test/openapi-contract.e2e-spec.ts` fails when this document drifts ' +
         'from the contract in operations, status codes, request bodies, ' +
         'parameters, headers or bounds, or when a failure lists a problem ' +
-        'type the contract does not list for that status. It does not ' +
-        'compare descriptions.\n\n' +
+        'type the contract does not list for that status. ' +
+        '`test/openapi-reset-descriptions.e2e-spec.ts` compares the ' +
+        'descriptions of the two reset operations with the contract. ' +
+        'Other descriptions are not compared.\n\n' +
         'Every amount is an integer in minor units of USD, so 2400 is 24.00 USD.',
     )
     // First, because Swagger UI sends "Try it out" to the first server: a

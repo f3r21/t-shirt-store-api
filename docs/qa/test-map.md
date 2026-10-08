@@ -63,7 +63,7 @@ Each test is in `openapi-problems.e2e-spec.ts`, unless the row names a criterion
 | Negative | No public operation, sign-in among them, lists `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
 | Negative | A type the contract does not give a status fails the suite | AC5 |
 | Boundary | The two reads where the token is optional list `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
-| Boundary | A failure with no traced problem shows its status default, so no failure is left bare | "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
+| Boundary | A failure with no traced problem shows its status default; only the 403 of `POST /orders`, which no caller reaches, is left bare | "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
 | Boundary | The Stripe webhook is the one body with no validation example | "shows a validation 400 wherever a body or a query is validated" |
 
 ## Unit suites (39 suites, 681 tests)

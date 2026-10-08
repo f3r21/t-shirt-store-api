@@ -1,11 +1,17 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import request from 'supertest';
-import { parse as parseYaml } from 'yaml';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import { buildOpenApiDocument } from '../src/openapi/document';
 import type { TestApp } from './app-factory';
 import { createTestApp } from './app-factory';
+import type { Operation } from './openapi-documents';
+import {
+  EMAIL_TAKEN,
+  fetchServedDocument,
+  loadContract,
+  operationAt,
+  operationsOf,
+} from './openapi-documents';
 
 /**
  * The generated document against the hand-written contract, which wins.
@@ -16,15 +22,16 @@ import { createTestApp } from './app-factory';
  * examples are compared by type, on the document `/docs-json` serves: the
  * types one operation lists at a status must be among the contract's types
  * for that status, a subset because the contract shares its examples across
- * every operation with that status. Not compared: other types, formats, the
- * titles and details of examples, and descriptions, apart from the two reset
- * operations, which `openapi-reset-descriptions.e2e-spec.ts` compares.
+ * every operation with that status. ADR 38. Not compared: other types,
+ * formats, the titles and details of examples, and descriptions, apart from
+ * the two reset operations, which `openapi-reset-descriptions.e2e-spec.ts`
+ * compares.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
   let generated: OpenAPIObject;
   /** The same document as a client reads it, from `/docs-json`. */
-  let docsJson: OpenAPIObject;
+  let served: OpenAPIObject;
   let contract: OpenAPIObject;
 
   /**
@@ -125,13 +132,6 @@ describe('OpenAPI document against the contract (e2e)', () => {
     ],
   };
 
-  type Operation = {
-    operationId?: string;
-    security?: Record<string, unknown>[];
-    responses?: Record<string, unknown>;
-    requestBody?: { content?: Record<string, { schema?: unknown }> };
-  };
-
   /** A media type's examples, as either document spells them. */
   type MediaExamples = {
     example?: { type?: unknown };
@@ -145,44 +145,16 @@ describe('OpenAPI document against the contract (e2e)', () => {
     content?: Record<string, MediaExamples>;
   };
 
-  const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
-
-  const EMAIL_TAKEN = 'https://tshirt.store/problems/email-taken';
-
   beforeAll(async () => {
     ctx = await createTestApp();
     generated = buildOpenApiDocument(ctx.app);
-    const res = await request(ctx.app.getHttpServer())
-      .get('/docs-json')
-      .expect(200);
-    docsJson = res.body as OpenAPIObject;
-    contract = parseYaml(
-      readFileSync(join(__dirname, '../contract/openapi.yaml'), 'utf8'),
-    ) as OpenAPIObject;
+    served = await fetchServedDocument(ctx);
+    contract = loadContract();
   });
 
   afterAll(async () => {
     await ctx.app.close();
   });
-
-  /** "POST /products", for both documents, so they compare as sets. */
-  function operationsOf(doc: OpenAPIObject): string[] {
-    return Object.entries(doc.paths)
-      .flatMap(([path, item]) => {
-        const record = item as Record<string, unknown>;
-        return METHODS.filter((m) => record[m]).map(
-          (m) => `${m.toUpperCase()} ${path}`,
-        );
-      })
-      .sort();
-  }
-
-  /** The operation object behind "POST /products", or undefined. */
-  function operationAt(doc: OpenAPIObject, op: string): Operation | undefined {
-    const [method, path] = op.split(' ');
-    const item = doc.paths[path] as Record<string, unknown> | undefined;
-    return item?.[method.toLowerCase()] as Operation | undefined;
-  }
 
   /** Follow a `$ref` one hop, inside the document it came from. */
   function deref(doc: OpenAPIObject, schema: unknown): Record<string, unknown> {
@@ -554,10 +526,10 @@ describe('OpenAPI document against the contract (e2e)', () => {
       )) {
         const expected = responseHeaders(contract, op, code);
         if (expected.length === 0) continue;
-        const served = responseHeaders(generated, op, code);
-        if (served.join(' ') !== expected.join(' ')) {
+        const headers = responseHeaders(generated, op, code);
+        if (headers.join(' ') !== expected.join(' ')) {
           wrong.push(
-            `${op} ${code}: contract [${expected.join(' ')}] served [${served.join(' ')}]`,
+            `${op} ${code}: contract [${expected.join(' ')}] served [${headers.join(' ')}]`,
           );
         }
       }
@@ -578,14 +550,14 @@ describe('OpenAPI document against the contract (e2e)', () => {
   it('lists only problem types the contract gives each status', () => {
     const signUp = 'POST /users';
     expect(problemTypes(contract, signUp, '409')).toContain(EMAIL_TAKEN);
-    expect(problemTypes(docsJson, signUp, '409')).toContain(EMAIL_TAKEN);
+    expect(problemTypes(served, signUp, '409')).toContain(EMAIL_TAKEN);
 
     const wrong: string[] = [];
-    for (const op of operationsOf(docsJson)) {
-      const codes = Object.keys(operationAt(docsJson, op)?.responses ?? {});
+    for (const op of operationsOf(served)) {
+      const codes = Object.keys(operationAt(served, op)?.responses ?? {});
       for (const code of codes) {
         const allowed = problemTypes(contract, op, code);
-        for (const type of problemTypes(docsJson, op, code)) {
+        for (const type of problemTypes(served, op, code)) {
           if (!allowed.includes(type)) wrong.push(`${op} ${code}: ${type}`);
         }
       }

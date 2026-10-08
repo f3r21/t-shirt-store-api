@@ -153,13 +153,15 @@ Each row is one test in `test/checkout.e2e-spec.ts`, named by its line.
 ## B1 + B2: what it must do
 
 - **Functional, B1:** `forgot-password` and `reset-password` carry the contract's own description
-  in Swagger UI: what happens next, which call follows, and when 422 and 429 come back.
+  in Swagger UI: the 202 for any address, the mail with the reset token only for a known one,
+  the token in the body of `reset-password`, and when 422 and 429 come back.
 - **Functional, B2:** for each operation, each error status lists the specific problems that
   operation can return, and only those. Each one shows its type when it has one, its title and an
   example detail.
-- **Non-functional:** 100% of the error statuses of the 41 operations have at least one named
-  example, and 0 of them show a problem type the contract does not allow for that status. The end
-  to end suite checks every operation.
+- **Non-functional:** 175 of the 176 error statuses of the 41 operations have at least one named
+  example, and 0 of them show a problem type the contract does not allow for that status. The one
+  left bare is the 403 of `POST /orders`, which no caller can reach today (ADR 38). The end to end
+  suite checks every operation.
 
 ## B1 + B2, as acceptance criteria
 
