@@ -158,6 +158,11 @@ jobs:
       - name: The architecture page is one page
         run: npm run docs:length
 
+      # The docs name tests by their exact title. A renamed test leaves its
+      # quote pointing at nothing, and no suite reads the docs.
+      - name: Every test title the docs quote exists
+        run: npm run docs:tests
+
   # The release, on every push to main while the repository variable
   # DEPLOY_ENABLED is 'true', once the checks above are green. The variable is
   # the switch for a stack that is not always up: with it unset, a green main
