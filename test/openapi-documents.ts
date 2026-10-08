@@ -8,7 +8,7 @@ import type { TestApp } from './app-factory';
 /**
  * The two documents the OpenAPI suites read, and the lookups they share: the
  * document this service serves, the hand-written contract, and an operation
- * in either, named the way both suites name it, as "POST /products".
+ * in either, named the way the OpenAPI suites name it, as "POST /products".
  */
 
 /** The parts of one operation the suites read. */
