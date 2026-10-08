@@ -141,6 +141,12 @@ jobs:
         with:
           persist-credentials: false
 
+      # The quoted-title check runs on the Node that .nvmrc names, as Verify
+      # does. The job installs no package, so there is no npm cache.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
       # The action installs the latest Vale unless told otherwise, and 3.22.0
       # started failing a file nothing had touched. The version is pinned to the
       # one `npm run check:prose` runs locally, so the two cannot disagree.
@@ -159,8 +165,11 @@ jobs:
         run: npm run docs:length
 
       # The docs name tests by their exact title. A renamed test leaves its
-      # quote pointing at nothing, and no suite reads the docs.
+      # quote pointing at nothing, and no suite reads the docs. The step runs
+      # after a Vale or length failure too, so that failure cannot hide a stale
+      # title.
       - name: Every test title the docs quote exists
+        if: ${{ !cancelled() }}
         run: npm run docs:tests
 
   # The release, on every push to main while the repository variable
