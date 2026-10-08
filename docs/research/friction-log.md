@@ -219,6 +219,26 @@ the README instead. A preference is recorded in "Feedback, weighed", not schedul
 - In `docs/qa/risk-register.md`: any new risk, from R10 onward.
 - In the README: the missing lines.
 
+On 2026-10-07, two of those items moved from "Next" to "Now" as one change, B1 + B2: the reset
+flow and the specific errors in the served Swagger. The product page holds its scores and
+acceptance criteria.
+
+### The blind check before the change
+
+The success measure of B1 + B2 (spec #34). A rehearsal by an agent, not a user. On 2026-10-07 at
+20:29 local time (01:29 UTC on 2026-10-08), an agent that had never seen the code read only the README on GitHub and
+the deployed `/docs` and `/docs-json`. The deployed image was `d442968`, deployed on 2026-10-06.
+It sent five GET requests and nothing that writes. Each answer is quoted as the agent gave it.
+
+| Question | Answer, verbatim | Source | Time |
+|---|---|---|---|
+| What happens after forgot-password, and which call comes next? | "The call answers 202 and the docs say only 'The request is accepted.' The summary says it requests a password reset link, so I expect a mail with a link that carries a reset token. The next call is POST /auth/reset-password with `token` and a new `password` of 8 to 128 characters. It answers 204 when the password is changed and 422 when the token is not valid. The docs do not say how the token reaches you, where it sits in the link, or how long it lasts." | Guess: no text links the two operations | 35 s |
+| Which specific errors can POST /orders return, and what is the title for too little stock? | "The docs list status codes, not specific errors. [...] The title for too little stock is not stated. Too little stock is a 409, and it shares that status with an empty cart, so the docs give no way to tell the two apart." | Page for the statuses; the title is not stated | 24 s |
+| Can POST /promo-codes answer 'Email already registered'? | "Not stated. [...] The words 'Email already registered' appear nowhere in the README or the API reference [...] So I would expect no, but that is my inference." | Guess | 13 s |
+
+Result before: none of the three is answered from the page alone. The pass rule for the check
+after the deploy is all three answered correctly from the page, with no guess.
+
 ## Sources
 
 The course content of the cohort's PM week and Design week Tuesday, read on 2026-10-06. Nothing
