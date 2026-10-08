@@ -1,7 +1,7 @@
 # Coding standards
 
-The `code-review` skill reads this file when it reviews a diff. Each rule is a judgement that no
-tool makes, and each one carries its reason.
+A reviewer reads this file for each diff. Each rule is a judgement that no tool makes, and each
+one carries its reason.
 
 ## A participant is an id
 
@@ -20,9 +20,9 @@ Older comments write `DECISIONS n` for the same file.
 ## An issue number marks a kept defect
 
 Put an issue number in a `src/` or `test/` comment only for a tracked defect that the code keeps on
-purpose. Today those are `#33` and `#43`. The number tells a reader the odd behaviour is known and
-where its fix is tracked, and the comment goes when the fix lands. Any other link between code and
-an issue belongs in the commit message or the pull request.
+purpose. Write it as `(#n)`, so `rg -n '\(#[0-9]+\)' src test` lists every one. The number tells a
+reader the odd behaviour is known and where its fix is tracked, and the comment goes when the fix
+lands. Any other link between code and an issue belongs in the commit message or the pull request.
 
 ## The contract is right
 
