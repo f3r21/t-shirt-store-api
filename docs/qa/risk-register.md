@@ -24,5 +24,5 @@ measured. The score is P × I, out of 9. Reviewed on 2026-10-06.
 - R2 rises to P 3 if a launch sells limited stock. Holding stock at order time would lower it.
 - R3 falls to P 1 with a verified domain and SES production access.
 - R8 rises to P 3 the day the template allows a second task. A shared counter in Valkey closes it.
-- The interviews with P3 and P4 may add risks for the integrating developer or the shopper. They
-  go here as R10 onward.
+- The interview with P3, or a later one, may add risks for the integrating developer or the
+  shopper. They go here as R10 onward.

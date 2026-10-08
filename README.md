@@ -317,8 +317,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
 - [`docs/qa/`](docs/qa/): the [test plan](docs/qa/test-plan.md) with its entry and exit
   criteria, the [risk register](docs/qa/risk-register.md), and a [map](docs/qa/test-map.md)
   of what each suite proves and does not prove.
-- [`docs/research/friction-log.md`](docs/research/friction-log.md): the protocol for the two
-  interviews on 2026-10-07 that test the user assumption, with P3 and P4, two developers.
+- [`docs/research/friction-log.md`](docs/research/friction-log.md): the protocol for one
+  interview on 2026-10-07 that tested the user assumption, with P3, a front-end developer. The
+  results are in "Validated by" in [`docs/product.md`](docs/product.md).
 
 ## Where the reasoning lives
 

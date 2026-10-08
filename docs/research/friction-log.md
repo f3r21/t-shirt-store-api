@@ -1,14 +1,15 @@
-# API interviews: two developers
+# API interview: one developer
 
-Two remote interviews on 2026-10-07 test who this API serves and the problem it names. P3 and P4
-are both developers. Each session is a story-based interview ("Tell me about the last time..."),
+One remote interview on 2026-10-07 tests who this API serves and the problem it names. P3 is a
+front-end developer. The session is a story-based interview ("Tell me about the last time..."),
 then the problem statement from `docs/product.md` read aloud ("Does this statement match your
-experience?"), then a few minutes trying this API from the README and Swagger UI ("Is this
-right?"). Written on 2026-10-06; results pending.
+experience?"), then a few minutes trying this API from Swagger UI ("Is this right?"). The README
+comes only if asked. Written on 2026-10-06.
 
-They are two of four interviews that day, two per product: the front app gets P1 and P2. Two
-people, both friends of the moderator, give first signals, not patterns ("Limits"). This protocol
-replaces the usability test this file held before. The file keeps its name so links survive.
+It is one of three interviews that day: the front app gets P1 and P2. P4 was dropped because P3
+gave enough material. One person, a colleague of the moderator, gives an anecdote, not a pattern
+("Limits"). This protocol replaces the usability test this file held before. The file keeps its
+name so links survive.
 
 Every method line carries, in brackets, the id of its rule in "Sources", which quotes the course
 content of the cohort's PM week and Design week Tuesday. A line with no id is logistics.
@@ -16,7 +17,7 @@ content of the cohort's PM week and Design week Tuesday. A line with no id is lo
 ## Why this shape
 
 - **A story about a past event, not a task.** An interview generates knowledge about users; a
-  usability test assesses a design [UI101-vs]. So each session asks about the last time the
+  usability test assesses a design [UI101-vs]. So the session asks about the last time the
   participant did the job, not about a hypothetical [TUE-past] [OST-story].
 - **The problem statement, read aloud.** A problem statement is checked with the people who have
   the problem [PS-validate], and their answers tighten it [PS-refine].
@@ -24,7 +25,7 @@ content of the cohort's PM week and Design week Tuesday. A line with no id is lo
   solves the pain [MVP-beta], are asked "Is this right?" [MVP-right], and think aloud
   [CHEAT-thinkaloud]. The interview comes first and does not name the API, so it does not prime
   them [UI101-mix].
-- **Two developers.** The persona under test is D1, a developer, and a persona starts as a guess
+- **A developer.** The persona under test is D1, a developer, and a persona starts as a guess
   that interviews test [PERSONA-test].
 - **What left with the usability test.** The Single Ease Question, task timings, success rates,
   milestones, cognitive-dimensions questions, the word check, reaction words, and a session with
@@ -38,14 +39,12 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
 1. **Persona** [PERSONA-test], from "Who it is for": D1, the developer who integrates the store.
    D1 reads the contract and Swagger UI, not the code, and decides what the shopper sees from the
    status code and the problem type.
-2. **Problem** [PS-validate], from "The problem": "D1 has to answer two questions on every failed
-   call: what does the shopper see, and did money move."
-3. **Product** [MVP-beta]: do the README and Swagger UI answer those two questions?
+2. **Problem** [PS-validate]: the problem statement under "The problem" in `docs/product.md`.
+3. **Product** [MVP-beta]: whether Swagger UI, with the README if asked, answers it.
 
 ## Setup
 
-- **When.** P3 at 09:40 and P4 at 10:30 on 2026-10-07, UTC-5, 30 minutes each, remote, in
-  English.
+- **When.** P3 on 2026-10-07, 30 minutes, remote, in English.
 - **Target.** The deployed store at `https://d1hfx5i8kcs8ag.cloudfront.net/v1`, with Swagger UI
   at `https://d1hfx5i8kcs8ag.cloudfront.net/docs`. Stripe runs in test mode, so no real money
   moves. Every account a participant creates uses a made-up email ending in `@example.com`.
@@ -58,15 +57,15 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
   Flow Notetaker writes the transcript, which stands in for a note-taker; it starts with the call,
   because it cannot import a recording later. Files are named by P number and stay out of this
   repository ("What this repository holds").
-- **Privacy.** No consent step: the participants are friends of the moderator, and the project is
-  internal. Every file and note uses the P number only: no name, email or employer. Before a clip
-  is used, names, emails, notifications and open tabs are cut from it. Quotes and clips go only to
-  the unlisted page for RAVN evaluators. This repository holds only de-identified results, such as
-  paraphrased stories, verdicts and findings ("What this repository holds" lists them all).
+- **Privacy.** No consent step: the participant is a colleague of the moderator, and the project
+  is internal. Every file and note uses the P number only: no name, email or employer. No clip of
+  P3 is used, because the video is not published. Quotes go only to the unlisted page for RAVN
+  evaluators. This repository holds only de-identified results, such as paraphrased stories,
+  verdicts and findings ("What this repository holds" lists them all).
   Recordings, transcripts and session notes stay outside it, and the full recordings and
   transcripts are deleted by 2026-10-23.
 
-## Before the sessions
+## Before the session
 
 - **On 2026-10-06:** pilot this guide once and fix what confused [UI101-3]. Make one test call
   that puts both voices in the OBS recording and in Wispr's transcript, with both of OBS's audio
@@ -77,7 +76,7 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
     manager can create one (README, "Deploy", step 4).
   - The "Servers" box in `/docs` lists `/v1`. If it lists only `http://localhost:3000/v1`, "Try it
     out" fails with "Failed to fetch".
-- **Before each session:** Do Not Disturb on; mail, Slack and private tabs closed; the guide
+- **Before the call:** Do Not Disturb on; mail, Slack and private tabs closed; the guide
   open, with the probes on an index card beside the screen [UI101-6]. Start OBS, then Wispr.
 
 ## The session (30 minutes)
@@ -134,11 +133,8 @@ that?" "Why is that important to you?" "What alternatives did you consider?"
 
 ### 4. The problem statement [PS-validate]
 
-Read it aloud, then paste it in the chat. It is the statement in `docs/product.md`, "The
-problem", with "D1" spelled out:
-
-> A developer who builds a shop's app has to answer two questions on every failed call: what does
-> the shopper see, and did money move.
+Read aloud the problem statement from "The problem" in `docs/product.md`, then paste it in the
+chat.
 
 > Does this statement match your experience?
 
@@ -146,12 +142,13 @@ Whatever they answer: "Tell me more about that." [UI101-6]
 
 ### 5. Try the API [MVP-beta] [MVP-right] [CHEAT-thinkaloud]
 
-Paste both links in the chat:
+Paste the Swagger link in the chat:
 
 ```
-README: https://github.com/f3r21/t-shirt-store-api
 Swagger: https://d1hfx5i8kcs8ag.cloudfront.net/docs
 ```
+
+Give the README, `https://github.com/f3r21/t-shirt-store-api`, only if they ask for it.
 
 > This is a store API I built. It runs in Stripe's test mode, so no real money moves. Please look
 > around the docs and try any call you like, and say what you think as you go. If you create an
@@ -171,122 +168,44 @@ Then: "Tell me more about that." [UI101-6]
 
 > That's everything. Thank you, this really helps.
 
-## After each session
+## After the session
 
-1. Stop OBS and Wispr. Name the files `P3-2026-10-07` or `P4-2026-10-07`, outside every
-   repository.
+1. Stop OBS and Wispr. Name the files `P3-2026-10-07`, outside every repository.
 2. Within 15 minutes, fill the session notes in the participant's words [STORY-words]. The notes
    stay outside this repository.
-3. After both sessions, paraphrase the notes into "Results", within "What this repository holds".
+3. Paraphrase the notes into "Results", within "What this repository holds".
 
 ## What this repository holds
 
-Only de-identified results, each under a P number; every participant's results may go in. Those
+Only de-identified results, under the P number; all of the participant's results may go in. Those
 results are the role and context answers, the story and its patterns, the answer to the problem
 statement, what the participant did and said while trying the API, the feedback weighed, and the
-themes, insights, job stories and verdicts across both sessions, all in paraphrase. Recordings,
-transcripts and session notes stay outside this repository, because the notes hold the
-participants' own words. If a participant later asks, their results are removed from this
-repository; earlier versions stay in its history, de-identified. Quotes and clips go only to the
-unlisted page for RAVN evaluators, each under the P number: one clip of 60 seconds or less, with
-captions.
+themes, insights, job stories and verdicts, all in paraphrase. Recordings and transcripts stay
+outside this repository, and so do the session notes, because the notes hold the participant's own
+words. If the participant later asks, the results are removed from this repository; earlier versions
+stay in its history, de-identified. Quotes go only to the unlisted page for RAVN
+evaluators, under the P number. No clip goes there, because the video is not published.
 
 ## Results
 
-Blank until the sessions on 2026-10-07. Every cell is a paraphrase; the participant's own words
+The verdicts are in "Validated by" in `docs/product.md`: the persona and the problem statement
+are complicated, and the product is unclear. They come from one participant, P3, so each is an
+anecdote, not a pattern [TUE-anecdote]. Every cell is a paraphrase; the participant's own words
 stay in the session notes and on the unlisted page [STORY-words].
-
-### Sessions [VELLO-shape]
-
-| Field | P3 | P4 |
-|---|---|---|
-| Role | | |
-| Context: work and team, nothing that identifies them | | |
-| Date | 2026-10-07 | 2026-10-07 |
-| Length | | |
-| Interviewer | Fernando | Fernando |
-
-### The story [TUE-past]
-
-| | P3 | P4 |
-|---|---|---|
-| What happened, in order | | |
-| Triggering event or struggling moment [JTBD-patterns] | | |
-| Criteria they used [JTBD-patterns] | | |
-| Anxieties or hesitations [JTBD-patterns] | | |
-
-The language they repeated stays in the session notes, so no participant's phrasing reaches this
-repository.
-
-### The problem statement [PS-validate]
-
-| | P3 | P4 |
-|---|---|---|
-| Resonates, partly or no | | |
-| Why | | |
-
-### Trying the API [MVP-beta]
-
-| | P3 | P4 |
-|---|---|---|
-| What they did | | |
-| What they said, and where it differs from what they did [TUE-saydo] | | |
-| "Is this right?" [MVP-right] | | |
-| Better than expected [JTBD-reflect] | | |
-| Worse than expected [JTBD-reflect] | | |
 
 ### Feedback, weighed [MVP-filter]
 
-| Feedback | P3, P4 or both | Core problem or preference |
+| Feedback | Participant | Core problem or preference |
 |---|---|---|
-| | | |
-
-### Across P3 and P4 [TUE-synth]
-
-**Themes** [VELLO-theme]. The course's "Verbatim quotes" column stays on the unlisted page. A
-theme seen in one session only is an anecdote: label it that way [TUE-anecdote].
-
-| Theme | Participant count and IDs | What users said | What we infer | Contradicting evidence |
-|---|---|---|---|---|
-| | | | | |
-
-**Insights** [TUE-synth]: statements about what is true for these users.
-
-- 
-
-**Job stories** [JTBD-story]: "When [situation], I want to [motivation], so I can [expected
-outcome]." Write the job, not this API [JTBD-job].
-
-- 
-
-**Verdicts**
-
-| Assumption | Holds, changes or unclear | Evidence (P numbers) |
-|---|---|---|
-| Persona: D1 [PERSONA-test] | | |
-| Problem statement [PS-validate] | | |
-| The README and Swagger UI help with the pain [MVP-beta] | | |
-
-Refined problem statement, as Who, What, Why [VELLO-ps] [PS-refine]:
-
-- Who:
-- What:
-- Why:
-
-**Audit** [TUE-audit]. Every claim above is checked against the transcript before it goes in.
-Each correction is logged:
-
-| The synthesis said | The transcript shows | Correction |
-|---|---|---|
-| | | |
+| Not at ease in Swagger UI; named Postman as another tool | P3 | Preference, not scheduled |
 
 ### Limits
 
-Two developers, 30 minutes each, friends of the moderator. The course asks for five to eight
-users per user group [QQ-n], three to four stories before mapping the opportunities [OST-count],
-and 60 to 90 minutes per interview [JTBD-length]. Friends raise social-desirability bias
-[TUE-saydo]. The shopper behind D1's software is not interviewed. These are first signals, not
-patterns.
+One developer in a 23-minute session, a colleague of the moderator. The course asks for five to
+eight users per user group [QQ-n], three to four stories before mapping the opportunities
+[OST-count], and 60 to 90 minutes per interview [JTBD-length]. Because P3 is a colleague,
+social-desirability bias is likely [TUE-saydo]. The shopper behind D1's software is not
+interviewed. One interview is an anecdote, not a pattern [TUE-anecdote].
 
 ## What changes because of this
 
@@ -338,11 +257,6 @@ outside it. Each id names its document by its prefix.
   consider".
 - **[JTBD-listen]** "avoid leading or yes/no questions that can bias the response."
 - **[JTBD-reflect]** "What has been better than expected, and what has been worse?"
-- **[JTBD-patterns]** "Similar triggering events or struggling moments", "Common criteria or
-  considerations", "Shared anxieties or hesitations", "Recurring language or phrases".
-- **[JTBD-story]** "When [situation], I want to [motivation], so I can [expected outcome]."
-- **[JTBD-job]** "One of the most common pitfalls in JTBD is confusing the customer's job with your
-  own solution."
 - **[JTBD-length]** "JTBD interviews typically last 60-90 minutes".
 
 **"The Product Management Problem Statement: How to Get it Right"** (PM week, Monday)
@@ -388,10 +302,7 @@ Wednesday)
   you hired a dog walker'), not hypotheticals".
 - **[TUE-saydo]** "people report what they believe about themselves, which often differs from what
   they actually do." "User Interviews 101" adds "Social-desirability bias".
-- **[TUE-synth]** "find the themes that recur, and distill them into insights - statements about
-  what's true for users".
 - **[TUE-anecdote]** "One vivid interview is an anecdote until you see the pattern repeat".
-- **[TUE-audit]** "audit it against the source. The audit is not optional polish".
 
 **"UX Research Cheat Sheet", NN/g** (Design week, Tuesday)
 
@@ -408,6 +319,3 @@ Wednesday)
 - **[VELLO-shape]** The interview `Vello_Interview_P01.md` asks "And how did you solve it?" and
   closes with "Last thing. If a service like this existed and worked perfectly, what would it
   do?" Its header records Participant, Role, Context, Date, Length, Interviewer and Notes.
-- **[VELLO-theme]** In `thematic-synthesis.md`, each theme lists "Participant Count & IDs",
-  "Verbatim Quotes", "What Users Said", "What We Infer" and "Contradicting Evidence".
-- **[VELLO-ps]** In `DELIVERABLE.md`, problem statements are written as Who, What, Why.
