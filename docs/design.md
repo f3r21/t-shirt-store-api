@@ -11,19 +11,26 @@ Every failure is an RFC 9457 problem document (ADR 11). The problem types are th
 closed list, `ProblemType` in `contract/openapi.yaml`. The last column is the recommended
 client behaviour.
 
+The served `/docs` shows, for each operation and status, the specific problems that operation
+returns: the type when it has one, the title and an example detail (ADR 38). The contract's
+examples stay per status, so they also show problems an operation never returns. The table
+below is the summary across all operations.
+
 | Status | Problem type | Means | The client shows |
 |---|---|---|---|
 | 400 | none | A field failed validation; `errors` names each one | The message next to each named field |
+| 400 | none | No `errors`: a path id that is not an integer, an update with no field, or an upload with no file, which is titled "Bad request" | "Choose an image" for the upload; the rest is a bug in the client |
 | 401 | `access-token-expired` | The access token expired | Nothing: refresh with `POST /v1/auth/refresh`, retry once |
 | 401 | `refresh-token-unknown` | The refresh token is unknown or already used | The sign-in screen |
 | 401 | `invalid-credentials` | Wrong email or password, or a wrong current password | "Wrong email or password", without saying which |
 | 401 | none | No token, a bad token, or a signed-out session | The sign-in screen |
-| 403 | none | This role may not call the operation | Nothing: hide the action for this role |
+| 403 | none | This role may not make this request, such as a client moving an order to `processing` | Nothing: hide the action for this role |
 | 404 | none | The row does not exist, or belongs to someone else | "Not found", the same for both causes |
 | 409 | `insufficient-stock` | Fewer units on hand than asked for | The stock now, and a lower quantity to pick |
 | 409 | `order-not-cancellable` | The order has shipped | The order's status, with no cancel button |
 | 409 | `email-taken` | The address already has an account | Sign in, or reset the password |
 | 409 | none | Another state conflict, such as an empty cart or an order that is not `pending` | A reload of the resource |
+| 409 | none | A value is taken: a variant's size and color on its product, or a promo code | The field, to change the value |
 | 413 | none | A file above 5 MiB, or a body above the parser limit | The size limit |
 | 415 | none | The file is not an image | "Choose an image" |
 | 422 | `promo-code-unknown` | No such code, or a manager disabled it | The field, to retype the code |
@@ -32,6 +39,10 @@ client behaviour.
 | 422 | none | A reset token that is unknown or expired, or a category id that names nothing | A new reset mail, or the field |
 | 429 | none | The rate limit, with a `Retry-After` header | Wait that many seconds |
 | 500 | none | The server failed | Try again |
+
+`/docs` lists only the statuses the contract declares. So it does not show the 429 of the
+default rate tier on the 35 operations without a tier of their own, the 413 of the body
+parser, or the 409 of `PATCH /variants/{id}/stock` (#33).
 
 ## The order's states
 
