@@ -149,8 +149,26 @@ export class AuthController {
    */
   @Public()
   @PasswordTier()
-  @ApiOperation({ summary: 'Request a password reset link' })
-  @ApiResponse({ status: 202, description: 'The request is accepted.' })
+  // The contract's text, here and on the 202, so a reader of `/docs` learns
+  // the reset flow. `test/openapi-reset-descriptions.e2e-spec.ts` compares
+  // them with the contract.
+  @ApiOperation({
+    summary: 'Request a password reset link',
+    description:
+      'This operation is public. It does not need a token.\n\n' +
+      'Send the email address. ' +
+      'The server sends a reset link to that address.\n\n' +
+      'The server answers 202 whether or not the address has an account. ' +
+      'A different answer would tell the caller ' +
+      'which addresses are registered.\n\n' +
+      'The server limits the request rate. Too many requests return 429.',
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'The server accepted the request. ' +
+      'It sends the mail only if the address has an account.',
+  })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -160,7 +178,21 @@ export class AuthController {
 
   @Public()
   @PasswordTier()
-  @ApiOperation({ summary: 'Set a new password with a reset token' })
+  // The contract's text, compared by the same test as forgot-password's.
+  @ApiOperation({
+    summary: 'Set a new password with a reset token',
+    description:
+      'This operation is public. It does not need a token.\n\n' +
+      'Send the token from the reset mail and the new password. ' +
+      'The server sets the new password.\n\n' +
+      'The token travels in the body and never in the path. ' +
+      'A path segment reaches the access log and the `Referer` header.\n\n' +
+      'A token that is unknown or expired returns 422. ' +
+      'The body is well formed and the server rejects it on its content.\n\n' +
+      'On success the server deletes every refresh row for this user. ' +
+      'Each device must sign in again. ' +
+      'The server also sends an email to the account address.',
+  })
   @ApiResponse({ status: 204, description: 'The password is changed.' })
   @ApiResponse({ status: 400, description: 'The request is not valid.' })
   @ApiResponse({ status: 422, description: 'The reset token is not valid.' })

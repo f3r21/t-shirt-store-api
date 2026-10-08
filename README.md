@@ -404,7 +404,8 @@ The deployed store:
   type, so a slow session needs `POST /v1/auth/refresh` with `{"refreshToken": "<token>"}`,
   which returns a new pair.
 - SES is in its sandbox with one verified sender, so mail reaches verified addresses only,
-  and lands in spam there. A reset link sent to your address does not arrive.
+  and lands in spam there. `POST /v1/auth/forgot-password` answers 202, but its reset mail
+  never reaches your address, so a password reset cannot be finished here.
 - No browser origin is allowed (`CORS_ORIGINS` is not set in `infra/stack.yml`), so a front
   end on another origin is refused.
 - The rate limit is per address: 100 requests a minute on most routes, 10 sign-ins, sign-ups
