@@ -64,14 +64,14 @@ fails.
 
 **North Star: paid orders per week.** Each one is a row in `order_status_history` with status
 `paid`, and only the signed Stripe webhook writes that status (ADR 24). No dashboard counts it
-yet: `ARCHITECTURE.md` says "None of these exists yet."
+yet: `ARCHITECTURE.md` says "None of these exists yet".
 **Supporting signal that B1 + B2 moves:** the questions a first-time integrator answers from
 Swagger UI alone, without asking the backend team. The blind check in "Go or no-go" counts them.
 
 ## What was built, and what was cut
 
-What was built is the MVP: everything on `main`, listed under "What is implemented" in the
-README. The MoSCoW labels below are applied after the fact.
+What was built is the MVP: everything on `main`, listed in the README under "What is
+implemented". The MoSCoW labels below are applied after the fact.
 
 | MoSCoW | Item | Why |
 |---|---|---|
@@ -122,7 +122,7 @@ Likelihood and impact are judged on a 1 to 3 scale, not measured.
 
 | Risk | L | I | L × I | What limits it |
 |---|---|---|---|---|
-| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the session" in `docs/research/friction-log.md`; step 4 of "Deploy" in the README |
+| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the session" in `docs/research/friction-log.md`; README "Deploy", step 4 |
 | A shopper pays for a unit that is gone. A pending order holds no stock, so two orders can pay for the last unit; the stock floors at zero and logs `stock.oversold` | 2 | 3 | 6 | The intent checks stock before Stripe is asked. A refund is done by hand in Stripe |
 | Mail does not arrive. SES is in its sandbox and the mail lands in spam (README, "Known gaps") | 3 | 2 | 6 | A domain with DKIM |
 
@@ -184,7 +184,7 @@ reset mail (AC2).
 
 **No for real money. Yes for a test-mode pilot.**
 
-What holds: CI is green on `main`, with 39 unit suites (681 tests) and 16 end-to-end suites (296
+What holds: CI is green on `main`, with 39 unit suites (681 tests) and 18 end-to-end suites (333
 tests) against a real Postgres and Valkey. The webhook signature check is the production code
 path in the tests. A rollback was rehearsed on 2026-09-03, about three minutes each way.
 

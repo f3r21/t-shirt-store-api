@@ -7,6 +7,7 @@ import { createTestApp } from './app-factory';
 import type { Operation } from './openapi-documents';
 import {
   EMAIL_TAKEN,
+  failureStatusesOf,
   fetchServedDocument,
   loadContract,
   operationAt,
@@ -394,14 +395,14 @@ describe('OpenAPI document against the contract (e2e)', () => {
    */
   function untypedFailures(op: string): string[] {
     const responses = operationAt(generated, op)?.responses ?? {};
-    return Object.entries(responses)
-      .filter(([status]) => Number(status) >= 400)
-      .filter(([, response]) => {
-        const content = (response as { content?: Record<string, unknown> })
-          .content;
+    return failureStatusesOf(generated, op)
+      .filter((status) => {
+        const content = (
+          responses[status] as { content?: Record<string, unknown> }
+        ).content;
         return content === undefined || Object.keys(content).length === 0;
       })
-      .map(([status]) => `${op} ${status}`);
+      .map((status) => `${op} ${status}`);
   }
 
   it('gives every failure a body schema', () => {

@@ -227,7 +227,8 @@ became "Now" as one change, B1 + B2. The product page holds its scores and accep
 The success measure of B1 + B2 (spec #34). A rehearsal by an agent, not a user. On 2026-10-07 at
 20:29 local time (01:29 UTC on 2026-10-08), an agent that had never seen the code read only the README on GitHub and
 the deployed `/docs` and `/docs-json`. The deployed image was `d442968`, deployed on 2026-10-06.
-It sent five GET requests and nothing that writes. Each answer is quoted as the agent gave it.
+It sent five GET requests and nothing that writes. The answers are quoted as the agent gave
+them, shortened where marked "[...]".
 
 | Question | Answer, verbatim | Source | Time |
 |---|---|---|---|

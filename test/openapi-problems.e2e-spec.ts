@@ -3,6 +3,7 @@ import type { TestApp } from './app-factory';
 import { createTestApp } from './app-factory';
 import {
   EMAIL_TAKEN,
+  failureStatusesOf,
   fetchServedDocument,
   operationAt,
   operationsOf,
@@ -38,8 +39,8 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     type: `${PROBLEM_BASE}/${name}`,
     title,
   });
-  const EMAIL: Typed = { type: EMAIL_TAKEN, title: 'Email already registered' };
-  const EXPIRED = typed('access-token-expired', 'Access token expired');
+  const EMAIL_TAKEN_PROBLEM = typed('email-taken', 'Email already registered');
+  const TOKEN_EXPIRED = typed('access-token-expired', 'Access token expired');
   const CREDENTIALS = typed('invalid-credentials', 'Invalid credentials');
   const REFRESH = typed('refresh-token-unknown', 'Refresh token unknown');
   const STOCK = typed('insufficient-stock', 'Not enough stock');
@@ -61,7 +62,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   // The details the code fills from the request, matched by shape.
   const STOCK_DETAIL =
     /^This variant has \d+ units on hand and the request asks for \d+\.$/;
-  const EXPIRED_DETAIL =
+  const PROMO_EXPIRED_DETAIL =
     /^This promo code expired on \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\.$/;
   const MINIMUM_DETAIL =
     /^This promo code applies to a subtotal of \d+ or more, and this order is \d+\.$/;
@@ -126,11 +127,11 @@ describe('Problems each operation lists in the served document (e2e)', () => {
 
   /** `typedAt` at every failure status one operation declares. */
   function typedByStatus(op: string): Record<string, Typed[]> {
-    const statuses = Object.keys(operationAt(served, op)?.responses ?? {});
     return Object.fromEntries(
-      statuses
-        .filter((status) => Number(status) >= 400)
-        .map((status): [string, Typed[]] => [status, typedAt(op, status)]),
+      failureStatusesOf(served, op).map((status): [string, Typed[]] => [
+        status,
+        typedAt(op, status),
+      ]),
     );
   }
 
@@ -227,14 +228,16 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   /**
    * Checkout refuses a promo code for one of four reasons, and a client shows
    * a different message for each, so the 422 lists all four, each with the
-   * title and an example detail that `promo-code-rules.ts` builds.
+   * title and an example detail that `promo-code-rules.ts` builds. The length
+   * counts the problems with no type too, so a fifth 422 of any kind fails.
    */
   it('lists the four promo-code problems on the checkout 422', () => {
+    expect(problemsAt('POST /orders', '422')).toHaveLength(4);
     expect(typedAt('POST /orders', '422')).toEqual(sorted(PROMO));
     expect(detailsAt('POST /orders', '422')).toEqual({
       [PROMO_UNKNOWN.type]:
         'This promo code does not exist, or it is disabled.',
-      [PROMO_EXPIRED.type]: expect.stringMatching(EXPIRED_DETAIL),
+      [PROMO_EXPIRED.type]: expect.stringMatching(PROMO_EXPIRED_DETAIL),
       [PROMO_MINIMUM.type]: expect.stringMatching(MINIMUM_DETAIL),
       [PROMO_EXHAUSTED.type]: 'This promo code reached its usage limit.',
     });
@@ -299,7 +302,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   it('lists exactly the typed problems of sign-up at each status', () => {
     expect(typedByStatus('POST /users')).toEqual({
       '400': [],
-      '409': [EMAIL],
+      '409': [EMAIL_TAKEN_PROBLEM],
       '429': [],
       '500': [],
     });
@@ -308,7 +311,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   it('lists exactly the typed problems of a cart add at each status', () => {
     expect(typedByStatus('POST /users/me/cart/items')).toEqual({
       '400': [],
-      '401': [EXPIRED],
+      '401': [TOKEN_EXPIRED],
       '404': [],
       '409': [STOCK],
       '500': [],
@@ -318,7 +321,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   it('lists exactly the typed problems of checkout at each status', () => {
     expect(typedByStatus('POST /orders')).toEqual({
       '400': [],
-      '401': [EXPIRED],
+      '401': [TOKEN_EXPIRED],
       '403': [],
       '409': [STOCK],
       '422': sorted(PROMO),
@@ -346,7 +349,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     expect(takingToken).not.toContain('POST /auth/sessions');
 
     const listing = operationsOf(served).filter((op) =>
-      typedAt(op, '401').some((p) => p.type === EXPIRED.type),
+      typedAt(op, '401').some((p) => p.type === TOKEN_EXPIRED.type),
     );
     expect(listing).toEqual(takingToken);
   });
@@ -375,7 +378,7 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   it.each([
     ['POST /auth/sessions', '401', [CREDENTIALS]],
     ['POST /auth/refresh', '401', [REFRESH]],
-    ['PATCH /users/me/password', '401', [EXPIRED, CREDENTIALS]],
+    ['PATCH /users/me/password', '401', [TOKEN_EXPIRED, CREDENTIALS]],
     ['PUT /users/me/cart/items/{variantId}', '409', [STOCK]],
     ['POST /payment-links', '409', [STOCK]],
     ['POST /orders/{id}/payments', '409', [STOCK]],
@@ -400,9 +403,10 @@ describe('Problems each operation lists in the served document (e2e)', () => {
    */
   it('names an example at every failure of every operation', () => {
     const failures = operationsOf(served).flatMap((op) =>
-      Object.keys(operationAt(served, op)?.responses ?? {})
-        .filter((status) => Number(status) >= 400)
-        .map((status): [string, string] => [op, status]),
+      failureStatusesOf(served, op).map((status): [string, string] => [
+        op,
+        status,
+      ]),
     );
     expect(failures).toContainEqual(['POST /orders', '409']);
     expect(failures).toContainEqual(['DELETE /products/{id}', '404']);
@@ -512,7 +516,8 @@ describe('Problems each operation lists in the served document (e2e)', () => {
       'Validation failed',
       'Send at least one field.',
     ],
-    // Its title is the handler's own, not the table's "Validation failed".
+    // Its title is the handler's own, not the contract's "Validation
+    // failed": a defect, so this row changes with its fix (#43).
     [
       'missing file',
       'POST /products/{id}/images',

@@ -16,7 +16,7 @@ a real Postgres and a real Valkey. It replaces four things:
 | The object store | an in-memory store | that S3 accepts or serves the file |
 | The rate-limit counter | a counter that never blocks, except in `rate-limit.e2e-spec.ts` | the limits, outside that one suite |
 
-## End-to-end suites (16 suites, 296 tests)
+## End-to-end suites (18 suites, 333 tests)
 
 | Suite | Proves | Does not prove |
 |---|---|---|
@@ -48,7 +48,7 @@ reads `/docs-json` over HTTP, as a client does, so it compares documents, not re
 |---|---|---|
 | AC1, `openapi-reset-descriptions` | `forgot-password` and its 202 carry the contract's text | That the text names the next call: the contract's does not. That the API does what the text says, which `auth` covers |
 | AC2, `openapi-reset-descriptions` | `reset-password` carries the contract's text | That the reset mail arrives (risk R10) |
-| AC3, `openapi-problems` | Checkout lists the four promo-code problems at 422, and `insufficient-stock`, the empty cart and the changed cart at 409, each with its title and an example detail | That checkout throws them: each entry is traced to its throw site in the code (ADR 38). That no problem without a type joins the four at 422 |
+| AC3, `openapi-problems` | Checkout lists exactly the four promo-code problems at 422, and `insufficient-stock`, the empty cart and the changed cart at 409, each with its title and an example detail | That checkout throws them: each entry is traced to its throw site in the code (ADR 38) |
 | AC4, `openapi-problems` | `POST /promo-codes` lists no `email-taken` at 409 | That an operation without an exact list in `openapi-problems` leaves it out. The contract gives `email-taken` to every 409, so AC5 cannot catch it |
 | AC5, `openapi-contract` | Each problem type an operation lists at a status is one the contract gives that status | Titles, details, problems without a type, and a throw site the map leaves out (risk R12) |
 

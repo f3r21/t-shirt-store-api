@@ -68,3 +68,13 @@ export function operationAt(
   const item = doc.paths[path] as Record<string, unknown> | undefined;
   return item?.[method.toLowerCase()] as Operation | undefined;
 }
+
+/**
+ * The failure statuses "POST /products" declares, 400 and above, as the
+ * response keys spell them, in the order the document lists them.
+ */
+export function failureStatusesOf(doc: OpenAPIObject, op: string): string[] {
+  return Object.keys(operationAt(doc, op)?.responses ?? {}).filter(
+    (status) => Number(status) >= 400,
+  );
+}

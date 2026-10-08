@@ -37,9 +37,9 @@ describe('Password reset descriptions in the served document (e2e)', () => {
   });
 
   /**
-   * The description of "POST /auth/forgot-password", or of one of its
-   * responses when a status is given, with each run of whitespace made one
-   * space. Empty when the document has none.
+   * One operation's description, or the description of one of its responses
+   * when a status is given, with each run of whitespace made one space. Empty
+   * when the document has none.
    */
   function descriptionOf(
     doc: OpenAPIObject,
@@ -60,12 +60,12 @@ describe('Password reset descriptions in the served document (e2e)', () => {
    */
   it('gives forgot-password and its 202 the contract description', () => {
     const op = 'POST /auth/forgot-password';
-    const operation = descriptionOf(contract, op);
+    const expected = descriptionOf(contract, op);
     const accepted = descriptionOf(contract, op, '202');
 
-    expect(operation).toContain('429');
+    expect(expected).toContain('429');
     expect(accepted).toContain('only if the address has an account');
-    expect(descriptionOf(served, op)).toBe(operation);
+    expect(descriptionOf(served, op)).toBe(expected);
     expect(descriptionOf(served, op, '202')).toBe(accepted);
   });
 
@@ -75,9 +75,9 @@ describe('Password reset descriptions in the served document (e2e)', () => {
    */
   it('gives reset-password the contract description', () => {
     const op = 'POST /auth/reset-password';
-    const operation = descriptionOf(contract, op);
+    const expected = descriptionOf(contract, op);
 
-    expect(operation).toContain('422');
-    expect(descriptionOf(served, op)).toBe(operation);
+    expect(expected).toContain('422');
+    expect(descriptionOf(served, op)).toBe(expected);
   });
 });

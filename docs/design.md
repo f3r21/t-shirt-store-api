@@ -19,7 +19,7 @@ below is the summary across all operations.
 | Status | Problem type | Means | The client shows |
 |---|---|---|---|
 | 400 | none | A field failed validation; `errors` names each one | The message next to each named field |
-| 400 | none | No `errors`: a path id that is not an integer, an update with no field, or an upload with no file, which is titled "Bad request" | "Choose an image" for the upload; the rest is a bug in the client |
+| 400 | none | No `errors`: a path id that is not an integer, an update with no field, or an upload with no file, which is titled "Bad request", a defect (#43) | "Choose an image" for the upload; the rest is a bug in the client |
 | 401 | `access-token-expired` | The access token expired | Nothing: refresh with `POST /v1/auth/refresh`, retry once |
 | 401 | `refresh-token-unknown` | The refresh token is unknown or already used | The sign-in screen |
 | 401 | `invalid-credentials` | Wrong email or password, or a wrong current password | "Wrong email or password", without saying which |

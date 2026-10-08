@@ -6,8 +6,9 @@ import { ProblemType } from '../common/problem/problem-type';
 /**
  * One problem an operation can return, as its throw site builds it. A typed
  * problem carries the throw site's own title; an untyped one has no `type`
- * and carries its status's title from the table (ADR 11), the image upload's
- * "Bad request" aside, so its detail is what tells it apart.
+ * and carries its status's title from the table (ADR 11), so its detail is
+ * what tells it apart. The one exception is the image upload's "Bad request",
+ * a defect (#43).
  */
 type OperationProblem = {
   /** Its name in the served document, the contract's if it has one. */
@@ -231,8 +232,9 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
     '400': [
       invalid('isPrimary', 'must be a boolean'),
       // `ProductImagesController.uploadProductImage`, for a request with no
-      // file. Its title, "Bad request", is not the table's "Validation
-      // failed"; it is listed as found.
+      // file. Its title, "Bad request", differs from the contract's
+      // "Validation failed". The contract is right, and this lists what the
+      // code sends until the code is fixed (#43). ADR 38.
       {
         name: 'noFile',
         title: 'Bad request',
@@ -452,13 +454,13 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
  * missing entry there leaves its failure bare, and the walk in
  * `test/openapi-problems.e2e-spec.ts` fails.
  *
- * The owner decided this rule on 2026-10-07. The other option was that the
- * walk exempts every generic status: deleting this function and its call in
- * `problemExamples`, and giving the walk that exemption.
+ * ADR 38 also weighs the other option, no default: delete this function and
+ * its call in `problemExamples`, and let the walk exempt every status that
+ * has only a default.
  */
-function statusDefault(status: string): OperationProblem[] | undefined {
-  if (STATUS_DETAILS[Number(status)] === undefined) return undefined;
-  return [fromTable('default', Number(status))];
+function statusDefault(status: number): OperationProblem[] | undefined {
+  if (STATUS_DETAILS[status] === undefined) return undefined;
+  return [fromTable('default', status)];
 }
 
 /**
@@ -472,8 +474,11 @@ export function problemExamples(
   status: string,
 ): ExamplesObject | undefined {
   if (operationId === undefined) return undefined;
+  // The map's keys are the response keys, strings; the problem's status is
+  // a number, as the throw site sends it.
+  const code = Number(status);
   const problems =
-    OPERATION_PROBLEMS[operationId]?.[status] ?? statusDefault(status);
+    OPERATION_PROBLEMS[operationId]?.[status] ?? statusDefault(code);
   if (problems === undefined || problems.length === 0) return undefined;
 
   const examples: ExamplesObject = {};
@@ -482,7 +487,7 @@ export function problemExamples(
       value: {
         ...(type === undefined ? {} : { type }),
         title,
-        status: Number(status),
+        status: code,
         detail,
         ...(errors === undefined ? {} : { errors }),
       },

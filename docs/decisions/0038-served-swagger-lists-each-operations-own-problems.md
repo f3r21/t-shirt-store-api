@@ -11,10 +11,10 @@ say which problems an operation returns. The contract lists examples, but per st
 response. So every 409 shows `email-taken`, `insufficient-stock` and `order-not-cancellable`,
 and POST /promo-codes shows "Email already registered" even though only sign-up returns it.
 
-The evidence is one back interview, with P3, so it is low data (spec #34). P3 integrated the
-API from the served page alone. A precise title was the one thing that told him what had
-happened. His wish for specific errors came after a question about his team, so it is a stated
-wish, not seen behaviour.
+The evidence is one API interview, with P3, so it is low data (spec #34). P3 integrated the
+API from the served page alone. A precise title was the one thing that told P3 what had
+happened. P3's wish for specific errors came after a question about P3's team, so it is a
+stated wish, not seen behaviour.
 
 The contract does not change (spec #34). So the list for each operation has to live in the
 served document, and the open question is where its source sits.
@@ -33,6 +33,15 @@ served document, and the open question is where its source sits.
   `describeFailuresAsProblems` in `src/openapi/document.ts` reads it where it already attaches
   the `Problem` schema. The controllers do not change.
 
+For a declared status the map does not list:
+
+- **Its status default as its one example** (chosen). A missing row, an unexpected error, and a
+  path id that is not an integer are real answers, so the page shows them.
+- **No example, and the walk exempts every status that has only a default.** One function
+  less, but the page then shows the bare `Problem` schema for those answers, as it did before
+  this record, and the walk checks only the statuses the map lists. This option stays one deletion
+  away: `statusDefault` in `src/openapi/operation-problems.ts` and its call.
+
 ## Decision
 
 **The served document lists, for each operation and status, the problems that operation
@@ -42,9 +51,11 @@ the contract stays per status.
 
 **Every entry is traced to the code that throws it.** A typed problem carries the title its
 throw site sets. A problem with no type carries its status's title from the table in ADR 11,
-and its detail tells it apart. Where the code differs from the table or from the contract, the
-map lists what the code sends. For example, the image upload sends a 400 titled "Bad request"
-for a request with no file. Every other 400 carries "Validation failed" from the table.
+and its detail tells it apart. Where the code differs from the contract, the contract is right
+and the code is the defect. Until the code is fixed, the map lists what the code sends, so the
+page shows the answer a client gets today. One such defect is open: the image upload sends a 400
+titled "Bad request" for a request with no file, where the contract and every other 400 say
+"Validation failed" (#43).
 
 **Each declared status shows one of three things:**
 
@@ -55,10 +66,6 @@ for a request with no file. Every other 400 carries "Validation failed" from the
 - A status that no caller can reach today shows no example. Today that is the 403 of
   POST /orders only. The policy guard can send it, but every signed-in role may place an order
   and apply a promo code. A default there would name a problem the API never sends.
-
-**The owner decided this rule on 2026-10-07.** The other option was no default, with the walk
-below exempting every status that has only a default. That option stays one deletion away:
-`statusDefault` in `src/openapi/operation-problems.ts` and its call.
 
 ## Consequences
 
