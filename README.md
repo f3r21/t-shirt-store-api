@@ -285,7 +285,7 @@ records, and the account's credits carry it while the stack is up.
 | Promo codes, Optional Feature 13 | Done, unit tested. Both halves, with a `citext` code and the use counted inside the checkout transaction. ADR 37 |
 | Likes | Done, unit tested. Three operations, idempotent on the primary key. ADR 26 |
 | Images | Done, unit tested. Sniffed by their bytes, stored in S3 under a random key, served through CloudFront |
-| End-to-end tests | Done, eighteen suites against a real database and a real Valkey |
+| End-to-end tests | Done. They run against a real database and a real Valkey |
 | CASL authorization | Done. Deny by default, and the ownership conditions become the where clauses the services read with. ADR 25 |
 | Stock notifications | Done, unit tested. One queued job per liker on a crossing to 3 or fewer, mailed by a worker in its own process. ADR 27 |
 | Deploy | Done. One CloudFormation stack, and every push to `main` releases by OIDC with no key stored, while `DEPLOY_ENABLED` is `true`. ADR 29 and 30 |

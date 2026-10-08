@@ -16,7 +16,7 @@ a real Postgres and a real Valkey. It replaces four things:
 | The object store | an in-memory store | that S3 accepts or serves the file |
 | The rate-limit counter | a counter that never blocks, except in `rate-limit.e2e-spec.ts` | the limits, outside that one suite |
 
-## End-to-end suites (18 suites, 333 tests)
+## End-to-end suites
 
 | Suite | Proves | Does not prove |
 |---|---|---|
@@ -68,7 +68,7 @@ Each test is in `openapi-problems.e2e-spec.ts`, unless the row names a criterion
 | Boundary | A failure with no traced problem shows its status default; only the 403 of `POST /orders`, which no caller reaches, is left bare | "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
 | Boundary | The Stripe webhook is the one body with no validation example | "shows a validation 400 wherever a body or a query is validated" |
 
-## Unit suites (39 suites, 681 tests)
+## Unit suites
 
 They run without a database. Thirteen of them replace Prisma with
 `src/prisma/prisma.service.mock.ts`. The argon2 hashing is real, and so is token signing in
