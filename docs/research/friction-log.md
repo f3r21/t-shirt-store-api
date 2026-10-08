@@ -6,10 +6,9 @@ then the problem statement from `docs/product.md` read aloud ("Does this stateme
 experience?"), then a few minutes trying this API from Swagger UI ("Is this right?"). The README
 comes only if asked. Written on 2026-10-06.
 
-It is one of three interviews that day: the front app gets P1 and P2. P4 was dropped because P3
-gave enough material. One person, a colleague of the moderator, gives an anecdote, not a pattern
-("Limits"). This protocol replaces the usability test this file held before. The file keeps its
-name so links survive.
+It is the one API interview. One person gives an anecdote, not a pattern ("Limits"). This
+protocol replaces the usability test this file held before. The file keeps its name so links
+survive.
 
 Every method line carries, in brackets, the id of its rule in "Sources", which quotes the course
 content of the cohort's PM week and Design week Tuesday. A line with no id is logistics.
@@ -216,7 +215,7 @@ the README instead. A preference is recorded in "Feedback, weighed", not schedul
 
 - In `docs/product.md`: the verdicts on D1, the problem and the product, in paraphrase; the
   refined problem statement, where a verdict says it changes; and the "Next" items.
-- In `docs/qa/risk-register.md`: any new risk, from R10 onward.
+- In `docs/qa/risk-register.md`: any new risk, from R13 onward.
 - In the README: the missing lines.
 
 On 2026-10-07, the reset item left the "Next" list in `docs/product.md`. It was a Swagger UI
@@ -226,11 +225,11 @@ acceptance criteria.
 
 ### The blind check before the change
 
-The success measure of B1 + B2 (spec #34). A rehearsal by an agent, not a user. On 2026-10-07 at
-20:29 local time (01:29 UTC on 2026-10-08), an agent that had never seen the code read only the
-README on GitHub and the deployed `/docs` and `/docs-json`. The deployed image was `d442968`,
-deployed on 2026-10-06. It sent five GET requests and nothing that writes. The answers are
-quoted as the agent gave them, shortened where marked "[...]".
+The success measure of B1 + B2 (spec #34). A blind rehearsal, not a user session: it starts with
+no knowledge of the code. On 2026-10-07 at 20:29 local time (01:29 UTC on 2026-10-08), it read
+only the README on GitHub and the deployed `/docs` and `/docs-json`. The deployed image was
+`d442968`, deployed on 2026-10-06. It sent five GET requests and nothing that writes. The
+answers are quoted as given, shortened where marked "[...]".
 
 | Question | Answer, verbatim | Source | Time |
 |---|---|---|---|
@@ -243,13 +242,13 @@ after the deploy is all three answered correctly from the page, with no guess.
 
 ### The blind check after the change
 
-The same check, after the B1 + B2 deploy. A rehearsal by an agent, not a user. On 2026-10-08
-at 05:07 local time (10:07 UTC), an agent that had never seen the code read only the README on
-GitHub and the deployed `/docs` and `/docs-json`. The deployed image was `010aeba`, deployed on 2026-10-08. The
-agent could not see that from its sources: none of them names the image, and the README still
-gave 2026-10-06. It sent twelve GET requests and nothing that writes. Seven of them came from a
-browser that showed Swagger UI. The answers are quoted as the agent gave them, shortened where
-marked "[...]".
+The same check, after the B1 + B2 deploy. Again a blind rehearsal, not a user session, with no
+knowledge of the code. On 2026-10-08 at 05:07 local time (10:07 UTC), it read only the README on
+GitHub and the deployed `/docs` and `/docs-json`. The deployed image was `010aeba`, deployed on
+2026-10-08. The rehearsal could not see that from its sources: none of them names the image, and
+the README still gave 2026-10-06. It sent twelve GET requests and nothing that writes. Seven of
+them came from a browser that showed Swagger UI. The answers are quoted as given, shortened
+where marked "[...]".
 
 | Question | Answer, verbatim | Source | Time |
 |---|---|---|---|
@@ -264,9 +263,9 @@ Two caveats:
 
 - The answer to question 1 joins two stated sentences: the README text "its reset mail" and the
   reset-password text "Send the token from the reset mail". No single sentence names the next
-  call. That is the risk `docs/product.md` records. The agent kept the label "page", because
-  the join needs no fact the sources leave out.
-- This time the agent downloaded the sources before the clocks started, so its times cover
+  call. That is the risk `docs/product.md` records. Its source stays "Page", because the join
+  needs no fact the sources leave out.
+- This time the rehearsal downloaded the sources before the clocks started, so its times cover
   reading and answering only. They are not comparable one to one with the times before, where
   the README read fell inside question 1.
 
@@ -367,6 +366,6 @@ Wednesday)
 
 **The course's Vello project** (Design week, Tuesday)
 
-- **[VELLO-shape]** The interview `Vello_Interview_P01.md` asks "And how did you solve it?" and
+- **[VELLO-shape]** The course's sample interview asks "And how did you solve it?" and
   closes with "Last thing. If a service like this existed and worked perfectly, what would it
   do?" Its header records Participant, Role, Context, Date, Length, Interviewer and Notes.

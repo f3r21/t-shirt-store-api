@@ -2,8 +2,9 @@
 
 **Call: not ready for real money today. Ready for a Stripe test-mode pilot.**
 The evidence is in "Go or no-go" below. Written on 2026-10-06, after the build, from sources
-dated in this repository. Updated 2026-10-07 with the P3 interview. One interview is an
-anecdote, not a pattern, so the user and the problem are still assumptions.
+dated in this repository. Updated 2026-10-07 with the P3 interview, and 2026-10-08 with B1 + B2
+and its blind check. One interview is an anecdote, not a pattern, so the user and the problem
+are still assumptions.
 
 ## Who it is for (assumption)
 
@@ -123,7 +124,7 @@ Likelihood and impact are judged on a 1 to 3 scale, not measured.
 
 | Risk | L | I | L × I | What limits it |
 |---|---|---|---|---|
-| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the session" in `docs/research/friction-log.md`; README "Deploy", step 4 |
+| D1 cannot reach a paid order alone: a fresh store has no product, and the API cannot create a manager | 3 | 3 | 9 | "Before the session" in `docs/research/friction-log.md`; README "Deploy", step 4, for the manager; the product through `POST /v1/products` |
 | A shopper pays for a unit that is gone. A pending order holds no stock, so two orders can pay for the last unit; the stock floors at zero and logs `stock.oversold` | 2 | 3 | 6 | The intent checks stock before Stripe is asked. A refund is done by hand in Stripe |
 | Mail does not arrive. SES is in its sandbox and the mail lands in spam (README, "Known gaps") | 3 | 2 | 6 | A domain with DKIM |
 
@@ -185,7 +186,7 @@ reset mail (AC2).
 
 **No for real money. Yes for a test-mode pilot.**
 
-What holds: CI is green on `main`. On the branch of spec #34, a local run on 2026-10-07 passes
+What holds: CI is green on `main`. Run 37808852275 on `main`, on 2026-10-08, passes
 every unit suite, and every end-to-end suite against a real Postgres and Valkey. The webhook signature check is the production code path in the tests. A rollback was
 rehearsed on 2026-09-03, about three minutes each way.
 
@@ -213,8 +214,8 @@ questions from the README on GitHub and the deployed Swagger UI alone. What happ
 and what is the title for too little stock? Can "Email already registered" come back from
 `POST /promo-codes`? The check runs once before any deploy, on the deployment of image
 `d442968` (deployed on 2026-10-06), and again once the change is deployed. It passes when all
-three are answered correctly from the page, with no guess. This is a rehearsal by an agent, not
-a user. The contract's `forgot-password` text names no next call, so the check after may still
+three are answered correctly from the page, with no guess. This is a blind rehearsal, not a user
+session. The contract's `forgot-password` text names no next call, so the check after may still
 read "which call comes next" as an inference. One contract sentence would close that.
 
 - **Recommendation:** go. It changes the served document and the text of the docs and the
@@ -224,19 +225,22 @@ read "which call comes next" as an inference. One contract sentence would close 
 - **Rollback trigger:** the live `/docs-json` lists a problem type the contract does not allow for
   its status.
 - **Watch:** the blind check, before and after; then paid orders per week. Before, on
-  2026-10-07, a rehearsal by an agent, not a user: none of the three questions was answered from
+  2026-10-07, a blind rehearsal, not a user session: none of the three questions was answered from
   the page alone. The next call after `forgot-password` and the promo-code answer were guesses,
   and for `POST /orders` the page gave the statuses but not the title for too little stock
-  (`docs/research/friction-log.md`). After, on 2026-10-08, again a rehearsal by an agent, not a
-  user: all three were answered correctly from the page, with no guess, so the pass rule holds.
-  For the next call after `forgot-password`, the agent joined two stated sentences, because no
+  (`docs/research/friction-log.md`). After, on 2026-10-08, again a blind rehearsal, not a user
+  session: all three were answered correctly from the page, with no guess, so the pass rule holds.
+  For the next call after `forgot-password`, the answer joined two stated sentences, because no
   single sentence names that call (`docs/research/friction-log.md`).
 
 ## Now, next and later
 
-- **Now:** B1 + B2, from P3's interview: Swagger UI says what happens after `forgot-password` and
-  lists each operation's specific errors. P3's remark on Swagger UI is a preference, recorded in
-  `docs/research/friction-log.md`, not scheduled.
+- **Shipped 2026-10-08:** B1 + B2 (#45, image `010aeba`), and the blind check after passed.
+  P3's remark on Swagger UI is a preference, recorded in `docs/research/friction-log.md`, not
+  scheduled.
+- **Now:** #43, an image upload with no file answers a 400 titled "Bad request", where the
+  contract says "Validation failed". #44, the 403 detail says "a manager only", also where
+  another role may call.
 - **Next:** R1's condition to fall, a developer reaching a paid order without help on a store that
   holds a product and a manager (`docs/qa/risk-register.md`); the checkout metrics; split the two
   causes of `payment.orphan`; a DKIM domain for mail.

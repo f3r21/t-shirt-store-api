@@ -24,7 +24,7 @@ below is the summary across all operations.
 | 401 | `refresh-token-unknown` | The refresh token is unknown or already used | The sign-in screen |
 | 401 | `invalid-credentials` | Wrong email or password, or a wrong current password | "Wrong email or password", without saying which |
 | 401 | none | No token, a bad token, or a signed-out session | The sign-in screen |
-| 403 | none | This role may not make this request, such as a client moving an order to `processing` | Nothing: hide the action for this role |
+| 403 | none | This role may not make this request, such as a client moving an order to `processing`. The served detail says "a manager only" on every 403, also where another role may call, a defect (#44) | Nothing: hide the action for this role |
 | 404 | none | The row does not exist, or belongs to someone else | "Not found", the same for both causes |
 | 409 | `insufficient-stock` | Fewer units on hand than asked for | The stock now, and a lower quantity to pick |
 | 409 | `order-not-cancellable` | The order has shipped | The order's status, with no cancel button |

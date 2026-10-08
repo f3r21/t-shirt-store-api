@@ -243,9 +243,9 @@ Mail and Stripe, once, after the first release:
    two new secrets.
 
 The API answers at the `ApiUrl` stack output. The deployed instance,
-`https://d1hfx5i8kcs8ag.cloudfront.net/v1`, runs the image of the last merge to `main` released
-while `DEPLOY_ENABLED` was set, on 2026-10-08. The variable is unset again, so later merges
-change nothing that runs, and the instance comes down on 2026-10-23. The first review
+`https://d1hfx5i8kcs8ag.cloudfront.net/v1`, runs `010aeba`, the merge of #45, released on
+2026-10-08 by CI run 37759693523. `DEPLOY_ENABLED` is unset again, so later merges change
+nothing that runs, and the instance comes down on 2026-10-23. The first review
 instance, `https://daat4q77vztp7.cloudfront.net`, was torn down on 2026-09-14.
 
 Tear everything down in four commands. Empty the images bucket first, because CloudFormation
@@ -383,8 +383,8 @@ The deployed store:
 
 - It answers until 2026-10-23, then the stack is deleted and only "Run it" reaches the API.
   The bare host answers 404, so start at `/docs` or `/v1`.
-- It runs the image of the last merge to `main` released while `DEPLOY_ENABLED` was set, on
-  2026-10-08. The variable is unset again, so later merges change nothing that runs.
+- It runs `010aeba`, the merge of #45, released on 2026-10-08 by CI run 37759693523.
+  `DEPLOY_ENABLED` is unset again, so later merges change nothing that runs.
 - It holds no demo account, because the seed skips them when `NODE_ENV` is `production`.
   `POST /v1/users` makes you a client. The manager and delivery-person operations need "Run
   it" and the demo accounts.
@@ -426,8 +426,8 @@ On your machine:
   runs the suite in one command.
 - `npm run docs:lint` needs Vale 3.19.0, the version CI pins. `brew install vale` installs a
   later one, and CI records 3.22.0 failing a file that 3.19.0 passes.
-- `ARCHITECTURE.md` is at 648 words against a ceiling of 650, so an edit that adds words
-  fails the `Prose` job.
+- `ARCHITECTURE.md` is at 648 words and the `Prose` job fails at 650, so an edit that adds
+  two words fails it.
 - `npm install` reports moderate advisories, 2 of them in the production tree (`js-yaml`
   through `@nestjs/swagger`). CI fails on high and critical only.
 - The problem `type` identifiers under `https://tshirt.store/problems/` name a problem and do not
