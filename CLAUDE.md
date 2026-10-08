@@ -37,6 +37,9 @@ truncate and reseed their own data, which ADR 33 explains.
 fails when the containers are down. A commit runs the type check and the unit suite only, so a
 commit needs no containers.
 
+On a push, the end to end suite takes `TEST_DATABASE_URL` and `TEST_REDIS_URL` from the shell
+that runs `git push`, so a worktree points both at its own databases before it pushes.
+
 ## Checks
 
 CI defines four jobs: `Verify`, `Image`, `Prose` and `Deploy`. Report all four. Each job runs
@@ -46,7 +49,7 @@ these npm scripts, and a terminal runs the same ones:
 | --- | --- | --- |
 | Verify | `npm run check:unit` | the network, for `npm audit` |
 | Verify | `npm run check:db` | Postgres, Valkey and the `tshirt_store_test` database |
-| Prose | `npm run check:prose` | Vale 3.19.0 on the path, the version CI pins. CI runs Vale through its action, then `docs:length` |
+| Prose | `npm run check:prose` | Vale 3.19.0 on the path, the version CI pins. CI runs Vale through its action, then `docs:length` and `docs:tests` |
 | Image | `npm run check:image` | a running Docker daemon |
 | Deploy | the deploy command in README "Deploy" | AWS credentials. CI runs it only on `main` while `DEPLOY_ENABLED` is `true`; the variable is unset, so every run reports it skipped |
 
