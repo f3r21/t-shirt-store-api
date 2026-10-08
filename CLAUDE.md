@@ -108,4 +108,5 @@ The five default labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready
 ### Domain docs
 
 Single-context: `GLOSSARY.md` at the root, created when first needed, and ADRs in
-`docs/decisions/`. See `docs/agents/domain.md`.
+`docs/decisions/`. See `docs/agents/domain.md`. Its "Writing an ADR" section replaces any
+skill's own ADR template: never `docs/adr/`, and every record keeps the existing shape.

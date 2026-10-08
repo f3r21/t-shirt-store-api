@@ -10,14 +10,14 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
   so Deploy reports skipped. To ship a code change, set it for that one merge and unset it right
   after; each deploy gives a few seconds of 504.
 - **`git push` runs the end to end suite** (`.husky/pre-push`), so start the containers first
-  (`npm run docker:up`). A commit rejects an em dash or an en dash in any staged file.
+  (`npm run docker:up`). A commit rejects an em dash or an en dash in any staged file and in its message.
 - **Read an issue with one command.** `gh issue view <n>` hides the comments and `--comments`
-  hides the body, so read both with `--json body,comments`.
+  hides the body, so read both with `--json title,body,comments`.
 
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --json body,comments,labels`, then print the body and every comment (see the rule above).
+- **Read an issue**: `gh issue view <number> --json title,body,comments,labels`, then print the body and every comment (see the rule above).
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
@@ -31,7 +31,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
+- **Read a PR**: `gh pr view <number> --json title,body,comments` and `gh pr diff <number>` for the diff.
 - **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
 - **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
 
@@ -43,7 +43,7 @@ Create a GitHub issue.
 
 ## When a skill says "fetch the relevant ticket"
 
-Run `gh issue view <number> --json body,comments,labels` and read the body and every comment.
+Run `gh issue view <number> --json title,body,comments,labels` and read the body and every comment.
 
 ## Wayfinding operations
 

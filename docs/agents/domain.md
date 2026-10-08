@@ -6,7 +6,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`GLOSSARY.md`** at the repo root, or
 - **`GLOSSARY-MAP.md`** at the repo root if it exists: it points at one `GLOSSARY.md` per context. Read each one relevant to the topic.
-- **`docs/decisions/`**: this repo's ADR folder (not `docs/adr/`). Read the ADRs that touch the area you're about to work in. Code cites them as `ADR <n>`; resolve a citation to its file before you change the code beside it.
+- **`docs/decisions/`**: this repo's ADR folder (not `docs/adr/`). Read the ADRs that touch the area you're about to work in. Code cites them as `ADR <n>` or `DECISIONS <n>`; resolve a citation to its file before you change the code beside it.
 - **`CLAUDE.md`, "Words this file uses"**: the few terms defined before `GLOSSARY.md` existed.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
@@ -24,22 +24,32 @@ Single-context repo (most repos):
 └── src/
 ```
 
-Multi-context repo (presence of `GLOSSARY-MAP.md` at the root):
+This repo is single-context, so there is no `GLOSSARY-MAP.md`.
 
-```
-/
-├── GLOSSARY-MAP.md
-├── docs/adr/                          ← system-wide decisions
-└── src/
-    ├── ordering/
-    │   ├── GLOSSARY.md
-    │   └── docs/adr/                  ← context-specific decisions
-    └── billing/
-        ├── GLOSSARY.md
-        └── docs/adr/
-```
+## Writing an ADR
 
-A new ADR takes the next free number (never reuse one), keeps the shape of the existing ones (Status, Date, Context, Options, Decision), gets a line under its topic in `docs/decisions/README.md`, and must pass Vale: the `Prose` job runs it over `docs/decisions`.
+These rules replace the `domain-modeling` skill's `ADR-FORMAT.md`, which assumes `docs/adr/`.
+
+- **Folder and name:** `docs/decisions/NNNN-slug.md`, never `docs/adr/`.
+- **Number:** the highest existing number plus one. Numbers are never reused (12 is retired).
+- **Shape:** copy an existing record, for example `0037-promo-codes-count-at-checkout-and-snapshot-on-the-order.md`:
+
+  ```
+  # <n>. <Title as a sentence>
+
+  Status: accepted
+  Date: YYYY-MM-DD
+
+  ## Context
+  ## Options
+  ## Decision
+  ## Consequences
+  ```
+
+  Status and Date are plain lines, not frontmatter, and every section is required.
+
+- **Index:** add a line under its topic in `docs/decisions/README.md`.
+- **Prose:** it must pass Vale; the `Prose` job runs it over `docs/decisions`.
 
 ## Use the glossary's vocabulary
 
