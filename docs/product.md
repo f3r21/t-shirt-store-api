@@ -228,7 +228,10 @@ read "which call comes next" as an inference. One contract sentence would close 
   2026-10-07, a rehearsal by an agent, not a user: none of the three questions was answered from
   the page alone. The next call after `forgot-password` and the promo-code answer were guesses,
   and for `POST /orders` the page gave the statuses but not the title for too little stock
-  (`docs/research/friction-log.md`). After: once the change is deployed.
+  (`docs/research/friction-log.md`). After, on 2026-10-08, again a rehearsal by an agent, not a
+  user: all three were answered correctly from the page, with no guess, so the pass rule holds.
+  For the next call after `forgot-password`, the agent joined two stated sentences, because no
+  single sentence names that call (`docs/research/friction-log.md`).
 
 ## Now, next and later
 

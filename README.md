@@ -244,7 +244,7 @@ Mail and Stripe, once, after the first release:
 
 The API answers at the `ApiUrl` stack output. The deployed instance,
 `https://d1hfx5i8kcs8ag.cloudfront.net/v1`, runs the image of the last merge to `main` released
-while `DEPLOY_ENABLED` was set, on 2026-10-06. The variable is unset again, so later merges
+while `DEPLOY_ENABLED` was set, on 2026-10-08. The variable is unset again, so later merges
 change nothing that runs, and the instance comes down on 2026-10-23. The first review
 instance, `https://daat4q77vztp7.cloudfront.net`, was torn down on 2026-09-14.
 
@@ -384,7 +384,7 @@ The deployed store:
 - It answers until 2026-10-23, then the stack is deleted and only "Run it" reaches the API.
   The bare host answers 404, so start at `/docs` or `/v1`.
 - It runs the image of the last merge to `main` released while `DEPLOY_ENABLED` was set, on
-  2026-10-06. The variable is unset again, so later merges change nothing that runs.
+  2026-10-08. The variable is unset again, so later merges change nothing that runs.
 - It holds no demo account, because the seed skips them when `NODE_ENV` is `production`.
   `POST /v1/users` makes you a client. The manager and delivery-person operations need "Run
   it" and the demo accounts.

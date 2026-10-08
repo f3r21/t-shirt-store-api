@@ -241,6 +241,35 @@ quoted as the agent gave them, shortened where marked "[...]".
 Result before: none of the three is answered from the page alone. The pass rule for the check
 after the deploy is all three answered correctly from the page, with no guess.
 
+### The blind check after the change
+
+The same check, after the B1 + B2 deploy. A rehearsal by an agent, not a user. On 2026-10-08
+at 05:07 local time (10:07 UTC), an agent that had never seen the code read only the README on
+GitHub and the deployed `/docs` and `/docs-json`. The deployed image was `010aeba`, deployed on 2026-10-08. The
+agent could not see that from its sources: none of them names the image, and the README still
+gave 2026-10-06. It sent twelve GET requests and nothing that writes. Seven of them came from a
+browser that showed Swagger UI. The answers are quoted as the agent gave them, shortened where
+marked "[...]".
+
+| Question | Answer, verbatim | Source | Time |
+|---|---|---|---|
+| What happens after forgot-password, and which call comes next? | "`POST /auth/forgot-password` always answers 202, whether or not the address has an account. It sends the reset mail only when the account exists. The next call is `POST /auth/reset-password` with `{"token", "password"}`, where the token comes from that reset mail. Success is 204 with no body. It signs out every device, so the user signs in again, and it sends an email to the account address. An unknown or expired token gives 422. On the deployed instance the mail never arrives, so you cannot finish a reset there." | Page | 50 s |
+| Which specific errors can POST /orders return, and what is the title for too little stock? | "Too little stock is a 409 with title `Not enough stock` and type `https://tshirt.store/problems/insufficient-stock`. The other failures with their own type are the four promo code ones on 422: `Promo code unknown`, `Promo code expired`, `Order below the promo code minimum`, `Promo code exhausted`, and the shared 401 `Access token expired`. The untyped ones are 400 `Validation failed`, 401 `Unauthorized`, 409 `Conflict` for an empty cart or a cart that changed during the order, and 500 `Internal server error`. [...]" | Page | 27 s |
+| Can POST /promo-codes answer 'Email already registered'? | "No. POST /promo-codes has one 409, title `Conflict` with no type, detail 'Another promo code already uses this code.' 'Email already registered' is the 409 of POST /users, type `email-taken`. The docs say each failure lists only the problems its own operation returns." | Page | 9 s |
+
+Result after: all three are answered correctly from the page, with no guess, so the pass rule
+holds.
+
+Two caveats:
+
+- The answer to question 1 joins two stated sentences: the README text "its reset mail" and the
+  reset-password text "Send the token from the reset mail". No single sentence names the next
+  call. That is the risk `docs/product.md` records. The agent kept the label "page", because
+  the join needs no fact the sources leave out.
+- This time the agent downloaded the sources before the clocks started, so its times cover
+  reading and answering only. They are not comparable one to one with the times before, where
+  the README read fell inside question 1.
+
 ## Sources
 
 The course content of the cohort's PM week and Design week Tuesday, read on 2026-10-06. Nothing
