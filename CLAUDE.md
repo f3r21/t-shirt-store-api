@@ -93,3 +93,20 @@ ACCESS EXCLUSIVE lock. A new migration that is not additive needs expand and con
 - **additive**: a migration the previous image can still read. Two of the eleven are not.
 - **control**: a second command, aimed at something known to be present, that proves the first
   command can return a result at all. Give every empty result a control.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues; pull requests target `main`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the root, created when first needed, and ADRs in
+`docs/decisions/`. See `docs/agents/domain.md`. Its "Writing an ADR" section replaces any
+skill's own ADR template: never `docs/adr/`, and every record keeps the existing shape.
