@@ -161,6 +161,23 @@ Each row is one test in `test/checkout.e2e-spec.ts`, named by its line.
   example, and 0 of them show a problem type the contract does not allow for that status. The end
   to end suite checks every operation.
 
+## B1 + B2, as acceptance criteria
+
+Each row is one criterion of spec #34. The Test column names each test by its file in `test/`
+and its title.
+
+| # | Given | When | Then | Test |
+|---|---|---|---|---|
+| AC1 | The served document | a reader opens `POST /auth/forgot-password` | its description and the description of its 202 are the contract's: 202 always, a mail only for an address with an account, 429 on too many requests | `openapi-reset-descriptions.e2e-spec.ts`, "gives forgot-password and its 202 the contract description" |
+| AC2 | The served document | a reader opens `POST /auth/reset-password` | its description is the contract's: the token in the body, 422 for an unknown or expired token, and on success every device signed out and a mail sent | `openapi-reset-descriptions.e2e-spec.ts`, "gives reset-password the contract description" |
+| AC3 | `POST /orders` in the served document | a reader opens its 422 and 409 | the 422 lists exactly the four promo-code problems. The 409 lists `insufficient-stock`, the empty cart and the changed cart. Each shows its title and an example detail | `openapi-problems.e2e-spec.ts`, "lists the four promo-code problems on the checkout 422"; "lists insufficient-stock on the checkout 409"; "lists the empty and changed cart conflicts on the checkout 409" |
+| AC4 | `POST /promo-codes` in the served document | a reader opens its 409 | `email-taken` is not listed | `openapi-problems.e2e-spec.ts`, "lists no email-taken on the promo-code 409" |
+| AC5 | The served document and the contract | the end to end suite runs | each problem type an operation lists at a status is one the contract lists for that status, or the test fails | `openapi-contract.e2e-spec.ts`, "lists only problem types the contract gives each status" |
+
+The contract's `forgot-password` text names no next call, so AC1 leaves out the spec's
+"reset-password next" clause. The next step is on `reset-password`, which asks for the token from the
+reset mail (AC2).
+
 ## Go or no-go: would I ship this to production today?
 
 **No for real money. Yes for a test-mode pilot.**
