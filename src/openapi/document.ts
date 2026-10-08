@@ -30,9 +30,8 @@ function forEachOperation(
 /**
  * Give every failure the `Problem` body, in one place: `ProblemFilter` is
  * global, so this is one rule and not a decorator per response. It only fills;
- * a response that names its content keeps it. Where `operation-problems.ts`
- * lists what the operation returns at that status, the body names those
- * problems as examples.
+ * a response that names its content keeps it. The body names as examples
+ * what `problemExamples` gives for the operation at that status.
  */
 function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
   forEachOperation(document, (_path, responses, operation) => {

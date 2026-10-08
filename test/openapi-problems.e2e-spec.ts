@@ -10,8 +10,9 @@ import { createTestApp } from './app-factory';
  * Every failure pointed at the bare `Problem` schema, and the contract lists
  * its examples per status, so a reader could not tell which problems one
  * operation returns (issue 34). The served document lists, per operation,
- * what that operation throws. Whether each listed type is one the contract
- * allows at that status is the contract test's check.
+ * what that operation throws, typed or not (issue 40). Whether each listed
+ * type is one the contract allows at that status is the contract test's
+ * check.
  */
 describe('Problems each operation lists in the served document (e2e)', () => {
   let ctx: TestApp;
@@ -23,6 +24,8 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   };
   type Operation = {
     security?: Record<string, unknown>[];
+    requestBody?: unknown;
+    parameters?: { in?: string }[];
     responses?: Record<string, { content?: Record<string, ProblemContent> }>;
   };
   /** A typed problem as a client tells it apart: by type, shown by title. */
@@ -53,6 +56,8 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   );
   const PROMO_EXHAUSTED = typed('promo-code-exhausted', 'Promo code exhausted');
   const PROMO = [PROMO_UNKNOWN, PROMO_EXPIRED, PROMO_MINIMUM, PROMO_EXHAUSTED];
+
+  const NEEDS_TOKEN_DETAIL = 'This operation needs a bearer token.';
 
   // The details the code fills from the request, matched by shape.
   const STOCK_DETAIL =
@@ -98,6 +103,15 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     return (operationAt(op)?.security ?? []).some((r) => 'bearerAuth' in r);
   }
 
+  /** Whether the operation takes a request body or a query parameter. */
+  function takesInput(op: string): boolean {
+    const operation = operationAt(op);
+    return (
+      operation?.requestBody !== undefined ||
+      (operation?.parameters ?? []).some((p) => p.in === 'query')
+    );
+  }
+
   /** The problem body of "POST /users" at one status, or undefined. */
   function problemContent(
     op: string,
@@ -141,6 +155,13 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     );
   }
 
+  /** The problems with no type one failure lists, by title and detail. */
+  function untypedAt(op: string, status: string): Record<string, unknown>[] {
+    return problemsAt(op, status)
+      .filter((p) => p.type === undefined)
+      .map((p) => ({ title: p.title, detail: p.detail }));
+  }
+
   /** The example detail of each typed problem one failure lists, by type. */
   function detailsAt(op: string, status: string): Record<string, unknown> {
     return Object.fromEntries(
@@ -180,13 +201,25 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   });
 
   /**
-   * An operation the map does not name, at a status with no specific problem,
-   * serves the body it served before the map: the schema and nothing else, so
-   * not an empty `examples` either.
+   * A failure with no traced problem shows its status's default, the title
+   * and detail of the contract's own 404 example, while the owner decides
+   * between that and exempting it (the switch in `operation-problems.ts`).
+   * One example on the schema it always had: not another operation's
+   * problems, which one shared object would leak, and not an empty
+   * `examples`.
    */
-  it('keeps the bare Problem schema where the map lists nothing', () => {
+  it('shows the status default where no problem is traced', () => {
     expect(problemContent('DELETE /products/{id}', '404')).toEqual({
       schema: { $ref: '#/components/schemas/Problem' },
+      examples: {
+        default: {
+          value: {
+            title: 'Not found',
+            status: 404,
+            detail: 'The server did not find this resource.',
+          },
+        },
+      },
     });
   });
 
@@ -216,6 +249,44 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     expect(detailsAt('POST /orders', '409')).toEqual({
       [STOCK.type]: expect.stringMatching(STOCK_DETAIL),
     });
+  });
+
+  /**
+   * Checkout also refuses an empty cart, and a cart another checkout emptied
+   * first. Neither has a type, so a client tells them apart by the detail
+   * `OrdersService` sends, and they sit next to insufficient-stock: the
+   * three answers a checkout screen maps to a message.
+   */
+  it('lists the empty and changed cart conflicts on the checkout 409', () => {
+    const untyped = untypedAt('POST /orders', '409');
+
+    expect(untyped).toHaveLength(2);
+    expect(untyped).toEqual(
+      expect.arrayContaining([
+        { title: 'Conflict', detail: 'The cart is empty.' },
+        {
+          title: 'Conflict',
+          detail:
+            'The cart changed while the order was created. Read it again.',
+        },
+      ]),
+    );
+    expect(typedAt('POST /orders', '409')).toEqual([STOCK]);
+  });
+
+  /**
+   * An unknown or expired reset token is the one 422 of reset-password, and
+   * a client answers it by asking for a new link. The detail is the
+   * contract's `resetToken` example, which `AuthService` sends as it is.
+   */
+  it('lists the reset-token problem on the reset-password 422', () => {
+    expect(problemsAt('POST /auth/reset-password', '422')).toEqual([
+      {
+        title: 'Unprocessable content',
+        status: 422,
+        detail: 'The reset token is unknown or expired.',
+      },
+    ]);
   });
 
   /**
@@ -270,6 +341,18 @@ describe('Problems each operation lists in the served document (e2e)', () => {
   });
 
   /**
+   * The other 401 of the token guards has no type and one detail, for a
+   * token that is absent, malformed or revoked, so the same operations list
+   * it. The test above is the `security` reader's control.
+   */
+  it('lists the missing-token 401 wherever a token is taken', () => {
+    const listing = operations().filter((op) =>
+      untypedAt(op, '401').some((p) => p.detail === NEEDS_TOKEN_DETAIL),
+    );
+    expect(listing).toEqual(operations().filter(takesToken));
+  });
+
+  /**
    * The other typed problems, each at the operation that throws it. Sign-in
    * and refresh are public, so their 401 lists their own problem alone.
    */
@@ -283,5 +366,163 @@ describe('Problems each operation lists in the served document (e2e)', () => {
     ['PATCH /orders/{id}/status', '409', [NOT_CANCELLABLE]],
   ])('lists the typed problems of %s at %s', (op, status, expected) => {
     expect(typedAt(op, status)).toEqual(sorted(expected));
+  });
+
+  /**
+   * Every failure of every operation names at least one example, so no
+   * status leaves a reader with the bare schema (issue 40). The two
+   * `toContainEqual` lines are the control: the walk reaches a failure with
+   * traced problems and one that shows its status default.
+   */
+  it('names an example at every failure of every operation', () => {
+    const failures = operations().flatMap((op) =>
+      Object.keys(operationAt(op)?.responses ?? {})
+        .filter((status) => Number(status) >= 400)
+        .map((status): [string, string] => [op, status]),
+    );
+    expect(failures).toContainEqual(['POST /orders', '409']);
+    expect(failures).toContainEqual(['DELETE /products/{id}', '404']);
+
+    const bare = failures
+      .filter(([op, status]) => problemsAt(op, status).length === 0)
+      .map(([op, status]) => `${op} ${status}`);
+    expect(bare).toEqual([]);
+  });
+
+  /**
+   * An operation that validates a body or a query shows a 400 with `errors`,
+   * the shape a client maps onto its form. The 400 default has no `errors`,
+   * so the walk above cannot tell the two apart. The Stripe webhook is the
+   * one body left out: the signature check reads its raw bytes, and nothing
+   * validates its fields. Sign-up's 400 is the contract's own example.
+   */
+  it('shows a validation 400 wherever a body or a query is validated', () => {
+    const validated = operations().filter(
+      (op) => op !== 'POST /webhooks/stripe' && takesInput(op),
+    );
+    // The control: the input reader finds a body and a query.
+    expect(validated).toEqual(
+      expect.arrayContaining(['POST /users', 'GET /products']),
+    );
+
+    const missing = validated.filter(
+      (op) => !problemsAt(op, '400').some((p) => Array.isArray(p.errors)),
+    );
+    expect(missing).toEqual([]);
+    expect(problemsAt('POST /users', '400')).toEqual([
+      {
+        title: 'Validation failed',
+        status: 400,
+        detail: 'One or more fields did not pass validation.',
+        errors: [{ field: 'email', message: 'must be a valid email address' }],
+      },
+    ]);
+  });
+
+  /**
+   * The problems with no type, each at an operation that throws it. A client
+   * tells them apart by the detail, so each row holds the whole example. A
+   * detail the code fills from the order's status is matched by shape.
+   */
+  it.each([
+    [
+      'illegal move',
+      'PATCH /orders/{id}/status',
+      '409',
+      'Conflict',
+      expect.stringMatching(/^An order in status \w+ cannot move to \w+\.$/),
+    ],
+    [
+      'order changed',
+      'PATCH /orders/{id}/status',
+      '409',
+      'Conflict',
+      'The order changed while this request ran. Read it again.',
+    ],
+    [
+      'not pending',
+      'POST /orders/{id}/payments',
+      '409',
+      'Conflict',
+      expect.stringMatching(/^An order in status \w+ cannot be paid\.$/),
+    ],
+    [
+      'below the minimum',
+      'POST /orders/{id}/payments',
+      '409',
+      'Conflict',
+      'The total of this order is below the smallest amount the payment provider accepts.',
+    ],
+    [
+      'unknown category',
+      'POST /products',
+      '422',
+      'Unprocessable content',
+      'The request names a category that does not exist.',
+    ],
+    [
+      'variant taken',
+      'POST /products/{id}/variants',
+      '409',
+      'Conflict',
+      'This product already has a variant with this size and color.',
+    ],
+    [
+      'variant ordered',
+      'DELETE /variants/{id}',
+      '409',
+      'Conflict',
+      'This variant appears in an order. Set its stock to zero instead.',
+    ],
+    [
+      'code taken',
+      'POST /promo-codes',
+      '409',
+      'Conflict',
+      'Another promo code already uses this code.',
+    ],
+    [
+      'empty body',
+      'PATCH /products/{id}',
+      '400',
+      'Validation failed',
+      'Send at least one field.',
+    ],
+    // With no `errors`, so the validation example beside it does not match.
+    [
+      'malformed path id',
+      'PATCH /products/{id}',
+      '400',
+      'Validation failed',
+      'One or more fields did not pass validation.',
+    ],
+    // Its title is the handler's own, not the table's "Validation failed".
+    [
+      'missing file',
+      'POST /products/{id}/images',
+      '400',
+      'Bad request',
+      'The request carries no file. Send one in the `file` part.',
+    ],
+    [
+      'unknown image type',
+      'POST /products/{id}/images',
+      '415',
+      'Unsupported media type',
+      'The file is not a PNG, JPEG, GIF or WebP image.',
+    ],
+    [
+      'bad signature',
+      'POST /webhooks/stripe',
+      '400',
+      'Validation failed',
+      'The Stripe-Signature header does not verify against the body.',
+    ],
+  ])('lists the %s on %s at %s', (_kind, op, status, title, detail) => {
+    expect(problemsAt(op, status)).toContainEqual({
+      title,
+      status: Number(status),
+      detail,
+    });
   });
 });
