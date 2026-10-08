@@ -2,21 +2,27 @@ import type { INestApplication } from '@nestjs/common';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Problem } from '../common/problem/problem.dto';
+import { problemExamples } from './operation-problems';
 
 type Responses = Record<string, Record<string, unknown> | undefined>;
+type Operation = { operationId?: string; responses?: Responses };
 
-/** Visit the responses of every operation, with the path template it is keyed on. */
+/**
+ * Visit the responses of every operation, with the path template it is keyed
+ * on and the operation, whose `operationId` names its problems.
+ */
 function forEachOperation(
   document: OpenAPIObject,
-  visit: (path: string, responses: Responses) => void,
+  visit: (path: string, responses: Responses, operation: Operation) => void,
 ): void {
   for (const [path, item] of Object.entries(document.paths)) {
     if (item === null || typeof item !== 'object') continue;
 
-    for (const operation of Object.values(item)) {
-      const responses = (operation as { responses?: Responses } | null)
-        ?.responses;
-      if (responses !== undefined) visit(path, responses);
+    for (const value of Object.values(item)) {
+      const operation = value as Operation | null;
+      if (operation?.responses !== undefined) {
+        visit(path, operation.responses, operation);
+      }
     }
   }
 }
@@ -24,25 +30,27 @@ function forEachOperation(
 /**
  * Give every failure the `Problem` body, in one place: `ProblemFilter` is
  * global, so this is one rule and not a decorator per response. It only fills;
- * a response that names its content keeps it.
+ * a response that names its content keeps it. Where `operation-problems.ts`
+ * lists what the operation returns at that status, the body names those
+ * problems as examples.
  */
 function describeFailuresAsProblems(document: OpenAPIObject): OpenAPIObject {
-  const problem = {
-    content: {
-      'application/problem+json': {
-        schema: { $ref: '#/components/schemas/Problem' },
-      },
-    },
-  };
-
-  forEachOperation(document, (_path, responses) => {
+  forEachOperation(document, (_path, responses, operation) => {
     for (const [status, response] of Object.entries(responses)) {
       if (
         response !== undefined &&
         Number(status) >= 400 &&
         response.content === undefined
       ) {
-        Object.assign(response, problem);
+        // A new object for each response. One object shared by reference
+        // would carry one operation's examples to every other failure.
+        const examples = problemExamples(operation.operationId, status);
+        response.content = {
+          'application/problem+json': {
+            schema: { $ref: '#/components/schemas/Problem' },
+            ...(examples === undefined ? {} : { examples }),
+          },
+        };
       }
     }
   });
@@ -144,10 +152,14 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     .setDescription(
       'Generated from the controllers. The hand-written contract, ' +
         '[`contract/openapi.yaml`](https://github.com/f3r21/t-shirt-store-api/blob/main/contract/openapi.yaml), ' +
-        'is authoritative where the two disagree. ' +
+        'is authoritative where the two disagree. Each failure here lists ' +
+        'only the problems its own operation returns, where the contract ' +
+        'shares one set of examples per status. ' +
         '`test/openapi-contract.e2e-spec.ts` fails when this document drifts ' +
-        'from it in operations, status codes, request bodies, parameters, ' +
-        'headers or bounds. It does not compare descriptions.\n\n' +
+        'from the contract in operations, status codes, request bodies, ' +
+        'parameters, headers or bounds, or when a failure lists a problem ' +
+        'type the contract does not list for that status. It does not ' +
+        'compare descriptions.\n\n' +
         'Every amount is an integer in minor units of USD, so 2400 is 24.00 USD.',
     )
     // First, because Swagger UI sends "Try it out" to the first server: a

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import request from 'supertest';
 import { parse as parseYaml } from 'yaml';
 import type { OpenAPIObject } from '@nestjs/swagger';
 import { buildOpenApiDocument } from '../src/openapi/document';
@@ -11,12 +12,19 @@ import { createTestApp } from './app-factory';
  * Compared: the operations, their names, who may call them, the status codes,
  * whether every failure and success describes its body, request body
  * properties and required names, required query parameters, response headers,
- * every bound, the servers, and that no number is typed `number`. Not
- * compared: other types, formats, examples and descriptions.
+ * every bound, the servers, and that no number is typed `number`. Problem
+ * examples are compared by type, on the document `/docs-json` serves: the
+ * types one operation lists at a status must be among the contract's types
+ * for that status, a subset because the contract shares its examples across
+ * every operation with that status. Not compared: other types, formats, the
+ * titles and details of examples, and descriptions, apart from the two reset
+ * operations, which `openapi-reset-descriptions.e2e-spec.ts` compares.
  */
 describe('OpenAPI document against the contract (e2e)', () => {
   let ctx: TestApp;
   let generated: OpenAPIObject;
+  /** The same document as a client reads it, from `/docs-json`. */
+  let docsJson: OpenAPIObject;
   let contract: OpenAPIObject;
 
   /**
@@ -124,11 +132,30 @@ describe('OpenAPI document against the contract (e2e)', () => {
     requestBody?: { content?: Record<string, { schema?: unknown }> };
   };
 
+  /** A media type's examples, as either document spells them. */
+  type MediaExamples = {
+    example?: { type?: unknown };
+    examples?: Record<string, { value?: { type?: unknown } }>;
+  };
+
+  /** The parts of one response these checks read. */
+  type ResponseParts = {
+    $ref?: string;
+    headers?: Record<string, unknown>;
+    content?: Record<string, MediaExamples>;
+  };
+
   const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
+
+  const EMAIL_TAKEN = 'https://tshirt.store/problems/email-taken';
 
   beforeAll(async () => {
     ctx = await createTestApp();
     generated = buildOpenApiDocument(ctx.app);
+    const res = await request(ctx.app.getHttpServer())
+      .get('/docs-json')
+      .expect(200);
+    docsJson = res.body as OpenAPIObject;
     contract = parseYaml(
       readFileSync(join(__dirname, '../contract/openapi.yaml'), 'utf8'),
     ) as OpenAPIObject;
@@ -168,28 +195,53 @@ describe('OpenAPI document against the contract (e2e)', () => {
   }
 
   /**
-   * The header names one response declares, with its `$ref` followed, because
-   * every error response is a `$ref` into `components.responses`.
+   * One response of an operation, with its `$ref` followed, because every
+   * error response in the contract is a `$ref` into `components.responses`.
    */
+  function responseAt(
+    doc: OpenAPIObject,
+    op: string,
+    code: string,
+  ): ResponseParts {
+    const response = ((operationAt(doc, op)?.responses ?? {})[code] ??
+      {}) as ResponseParts;
+    if (typeof response.$ref !== 'string') return response;
+
+    const name = response.$ref.split('/').pop() ?? '';
+    const components: Record<string, unknown> =
+      (doc.components as { responses?: Record<string, unknown> })?.responses ??
+      {};
+    return components[name] ?? {};
+  }
+
+  /** The header names one response declares. */
   function responseHeaders(
     doc: OpenAPIObject,
     op: string,
     code: string,
   ): string[] {
-    let response = ((operationAt(doc, op)?.responses ?? {})[code] ??
-      {}) as Record<string, unknown>;
+    return Object.keys(responseAt(doc, op, code).headers ?? {}).sort();
+  }
 
-    if (typeof response.$ref === 'string') {
-      const name = response.$ref.split('/').pop() ?? '';
-      const components: Record<string, unknown> =
-        (doc.components as { responses?: Record<string, unknown> })
-          ?.responses ?? {};
-      response = (components[name] ?? {}) as Record<string, unknown>;
-    }
-
-    return Object.keys(
-      (response.headers as Record<string, unknown> | undefined) ?? {},
-    ).sort();
+  /**
+   * The problem types one response lists, from its `examples` or a single
+   * `example`, which is how the contract spells six of its failures. An
+   * untyped problem has no type to compare, so it adds nothing.
+   */
+  function problemTypes(
+    doc: OpenAPIObject,
+    op: string,
+    code: string,
+  ): string[] {
+    const content = responseAt(doc, op, code).content;
+    const media = content?.['application/problem+json'];
+    const values = [
+      media?.example,
+      ...Object.values(media?.examples ?? {}).map((e) => e.value),
+    ];
+    return values
+      .map((value) => value?.type)
+      .filter((type): type is string => typeof type === 'string');
   }
 
   /** Property names and required names, which is what actually drifts. */
@@ -507,6 +559,34 @@ describe('OpenAPI document against the contract (e2e)', () => {
           wrong.push(
             `${op} ${code}: contract [${expected.join(' ')}] served [${served.join(' ')}]`,
           );
+        }
+      }
+    }
+
+    expect(wrong).toEqual([]);
+  });
+
+  /**
+   * Each failure in the served document lists the problems its own operation
+   * returns, and the contract shares one response per status: its 409 lists
+   * email-taken, insufficient-stock and order-not-cancellable on every 409.
+   * So the served types at a status are a subset of the contract's, not
+   * equal to them. The two `toContain` lines are the control: both sides
+   * yield a type, so an empty list below is a finding and not a reader that
+   * reads nothing.
+   */
+  it('lists only problem types the contract gives each status', () => {
+    const signUp = 'POST /users';
+    expect(problemTypes(contract, signUp, '409')).toContain(EMAIL_TAKEN);
+    expect(problemTypes(docsJson, signUp, '409')).toContain(EMAIL_TAKEN);
+
+    const wrong: string[] = [];
+    for (const op of operationsOf(docsJson)) {
+      const codes = Object.keys(operationAt(docsJson, op)?.responses ?? {});
+      for (const code of codes) {
+        const allowed = problemTypes(contract, op, code);
+        for (const type of problemTypes(docsJson, op, code)) {
+          if (!allowed.includes(type)) wrong.push(`${op} ${code}: ${type}`);
         }
       }
     }
