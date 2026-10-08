@@ -30,7 +30,9 @@ a real Postgres and a real Valkey. It replaces four things:
 | `deliveries` | The shipped-order queue, the move to `delivered`, who delivered it, who may read it | Assigning an order to a courier, which does not exist (ADR 36) |
 | `images` | Upload, a UUID key, one primary under a race, 415 by the file's bytes, 413 above 5 MiB, delete | S3 and CloudFront |
 | `likes` | Like and unlike are idempotent, 404 off sale, a user's list only | The low-stock mail, which `stock-notifications` covers |
-| `openapi-contract` | The served document declares the contract's 41 operations, status codes, operation ids, security, bodies, parameters, headers and bounds | That a live response matches its schema. It compares documents, not responses |
+| `openapi-contract` | The served document declares the contract's 41 operations, status codes, operation ids, security, bodies, required query parameters, headers and bounds, and each failure lists only problem types the contract gives its status | That a live response matches its schema. It compares documents, not responses |
+| `openapi-problems` | Each failure lists its own operation's problems: exactly the typed ones at each status of sign-up, a cart add and checkout; the token problems wherever a token is taken; the untyped ones by title and detail; an example at every failure but checkout's 403 | That an operation throws what it lists: each entry is traced to its throw site by reading (ADR 38) |
+| `openapi-reset-descriptions` | `forgot-password`, its 202 and `reset-password` carry the contract's text | That the reset mail arrives (risk R10) |
 | `order-history` | Own orders only, 404 and not 403 for another client's, the manager's view, five filters, paging | Speed with many orders |
 | `promo-codes` | The manager's create, list and update, 401 and 403, codes unique without case, `usedCount` not writable | Their use at checkout, which `checkout-promo` covers |
 | `rate-limit` | The real counter: the eleventh sign-in, refresh and sign-up refused, twenty catalog reads let through, 429 with `Retry-After` | Two processes. The counter lives in memory (risk R8) |

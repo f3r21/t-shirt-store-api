@@ -76,10 +76,11 @@ operation's own problems (B2). Its criteria, AC1 to AC5, are in `docs/product.md
 - **Assumptions.** The contract's reset text and its problem types for each status are right.
   Each entry in `src/openapi/operation-problems.ts` is what its throw site sends (ADR 38). The
   tests compare documents, not responses.
-- **Dependencies.** #36 (B1) and #40 (B2) hold the code, and #38 the product side.
+- **Dependencies.** #36 (B1) and #37, #39 and #40 (B2) hold the code, and #38 the product side.
   `src/openapi/document.ts` builds what the tests read. The blind check needs the deployed
   instance, which comes down on 2026-10-23.
-- **Entry criteria.** The entry criteria above, and the code of #36 and #40 on one branch.
+- **Entry criteria.** The entry criteria above, and the code of #36, #37, #39 and #40 on one
+  branch.
   Before any deploy, the blind check runs once on today's deployment.
 - **Exit criteria.** Each test that AC1 to AC5 name is green. `check:unit`, `check:db` and
   `check:prose` are green locally in three runs in a row, recorded in the pull request. Verify,

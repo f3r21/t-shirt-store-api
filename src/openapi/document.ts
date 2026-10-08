@@ -159,8 +159,8 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
         'no caller reaches today shows none. ' +
         '`test/openapi-contract.e2e-spec.ts` fails when this document drifts ' +
         'from the contract in operations, status codes, request bodies, ' +
-        'parameters, headers or bounds, or when a failure lists a problem ' +
-        'type the contract does not list for that status. ' +
+        'required query parameters, headers or bounds, or when a failure ' +
+        'lists a problem type the contract does not list for that status. ' +
         '`test/openapi-reset-descriptions.e2e-spec.ts` compares the ' +
         'descriptions of the two reset operations with the contract. ' +
         'Other descriptions are not compared.\n\n' +

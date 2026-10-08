@@ -56,10 +56,9 @@ for a request with no file. Every other 400 carries "Validation failed" from the
   POST /orders only. The policy guard can send it, but every signed-in role may place an order
   and apply a promo code. A default there would name a problem the API never sends.
 
-**The default is a recommendation.** The owner has still to choose between it and the other
-option: no default, and the walk below exempts every status that has only a default. That
-option is one deletion away, `statusDefault` in `src/openapi/operation-problems.ts` and its
-call.
+**The owner decided this rule on 2026-10-07.** The other option was no default, with the walk
+below exempting every status that has only a default. That option stays one deletion away:
+`statusDefault` in `src/openapi/operation-problems.ts` and its call.
 
 ## Consequences
 

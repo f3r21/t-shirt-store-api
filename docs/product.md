@@ -104,17 +104,17 @@ RICE = (Reach × Impact × Confidence) ÷ Effort. The formula, the impact scale 
 1 medium, 0.5 low, 0.25 minimal) and the confidence steps (100, 80 or 50%) are the course's.
 Confidence is 50%, the low step, in every row: one interview, P3 only, is low data. Reach and
 Effort are estimates in the course's units, never measured. Reach is how many of 10 integrators
-meet the case in a week. Effort is in person-weeks: 0.05 is under 2 hours, 0.1 is half a day. The
+meet the case in a week. Effort is in person-weeks: 0.05 is about 2 hours, 0.1 is half a day. The
 step each row takes on the impact scale is a judgment too. The course has no rule to score two
 candidates as one, so the bundle takes the larger Reach, the larger Impact and the sum of the
 Efforts. Value is Reach × Impact, high at 5 or more; effort is high only above a day.
 
 **Why B1 + B2, and not B2 alone.** B1 adds effort and no reach or impact, so the bundle scores
 53.3, below B2's 80. The score informs the call; it does not make it. B1 is the one finding seen
-in what P3 did: the reset flow stopped P3, who asked four times what came next. B2 rests on what P3
-said a backend team should give, backed by P3's story and the clear 409. Together they let
-Swagger UI alone say what happens next and what can go wrong. B3 holds B1's text but goes wider
-than what stopped P3, and P3 warned that a long description can add complexity.
+in what P3 did: the reset flow stopped P3, who asked four times what came next (spec #34). B2
+rests on what P3 said a backend team should give, backed by P3's story and the clear 409.
+Together they let Swagger UI alone say what happens next and what can go wrong. B3 holds B1's
+text but goes wider than what stopped P3.
 
 ## Three risks
 
@@ -130,7 +130,7 @@ For B1 + B2:
 
 | Risk | L | I | L × I | What limits it |
 |---|---|---|---|---|
-| The reset flow still dead-ends in the demo: its mail is not delivered (SES sandbox), so a tester never gets the token for `reset-password` | 3 | 2 | 6 | A README line in the reset area says so |
+| The reset flow still dead-ends in the demo: its mail is not delivered (SES sandbox), so a tester never gets the token for `reset-password` | 3 | 2 | 6 | A line in the README's "Known limitations" says so |
 | The bet is wrong: it rests on one participant, and P3 is not at ease in Swagger UI, so integrators may look elsewhere | 2 | 2 | 4 | The blind check before and after shows whether Swagger UI alone answers the questions |
 | Swagger UI lists a problem an operation cannot return, or misses one it can | 2 | 2 | 4 | Each entry is traced to its throw site, and an end to end test fails on a type the contract does not allow for that status |
 
@@ -212,7 +212,8 @@ which call comes next? Which specific errors can `POST /orders` return, and what
 too little stock? Can "Email already registered" come back from `POST /promo-codes`? The check
 runs on today's deployment before any deploy, and again once the change is deployed. It passes
 when all three are answered correctly from the page, with no guess. This is a rehearsal by an
-agent, not a user.
+agent, not a user. The contract's `forgot-password` text names no next call, so the check after
+may still read "which call comes next" as an inference. One contract sentence would close that.
 
 - **Recommendation:** go. It changes the served document and one README line; the contract and what
   the API answers stay the same.
@@ -220,7 +221,11 @@ agent, not a user.
 - **Owner:** Fernando Ramirez.
 - **Rollback trigger:** the live `/docs-json` lists a problem type the contract does not allow for
   its status.
-- **Watch:** the blind check, before and after; then paid orders per week.
+- **Watch:** the blind check, before and after; then paid orders per week. Before, on
+  2026-10-07, a rehearsal by an agent, not a user: none of the three questions was answered from
+  the page alone. The next call after `forgot-password` and the promo-code answer were guesses,
+  and for `POST /orders` the page gave the statuses but not the title for too little stock
+  (`docs/research/friction-log.md`). After: once the change is deployed.
 
 ## Now, next and later
 

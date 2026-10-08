@@ -219,9 +219,8 @@ the README instead. A preference is recorded in "Feedback, weighed", not schedul
 - In `docs/qa/risk-register.md`: any new risk, from R10 onward.
 - In the README: the missing lines.
 
-On 2026-10-07, two of those items moved from "Next" to "Now" as one change, B1 + B2: the reset
-flow and the specific errors in the served Swagger. The product page holds its scores and
-acceptance criteria.
+On 2026-10-07, the reset item left "Next" and, with the specific errors in the served Swagger,
+became "Now" as one change, B1 + B2. The product page holds its scores and acceptance criteria.
 
 ### The blind check before the change
 

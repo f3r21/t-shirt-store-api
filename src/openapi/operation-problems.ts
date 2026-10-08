@@ -452,10 +452,9 @@ const OPERATION_PROBLEMS: Partial<Record<string, ProblemsByStatus>> = {
  * missing entry there leaves its failure bare, and the walk in
  * `test/openapi-problems.e2e-spec.ts` fails.
  *
- * This is the recommended option of a decision the owner has still to make.
- * The other is that the walk exempts every generic status: deleting this
- * function and its call in `problemExamples`, and giving the walk that
- * exemption.
+ * The owner decided this rule on 2026-10-07. The other option was that the
+ * walk exempts every generic status: deleting this function and its call in
+ * `problemExamples`, and giving the walk that exemption.
  */
 function statusDefault(status: string): OperationProblem[] | undefined {
   if (STATUS_DETAILS[Number(status)] === undefined) return undefined;
