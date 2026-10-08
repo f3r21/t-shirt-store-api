@@ -39,9 +39,8 @@ Each goal is an assumption from `docs/product.md`, to confirm or reject [UI101-1
 1. **Persona** [PERSONA-test], from "Who it is for": D1, the developer who integrates the store.
    D1 reads the contract and Swagger UI, not the code, and decides what the shopper sees from the
    status code and the problem type.
-2. **Problem** [PS-validate], from "The problem": "D1 has to answer two questions on every failed
-   call: what does the shopper see, and did money move."
-3. **Product** [MVP-beta]: do the README and Swagger UI answer those two questions?
+2. **Problem** [PS-validate]: the problem statement under "The problem" in `docs/product.md`.
+3. **Product** [MVP-beta]: whether Swagger UI, with the README if asked, answers it.
 
 ## Setup
 
@@ -258,11 +257,6 @@ outside it. Each id names its document by its prefix.
   consider".
 - **[JTBD-listen]** "avoid leading or yes/no questions that can bias the response."
 - **[JTBD-reflect]** "What has been better than expected, and what has been worse?"
-- **[JTBD-patterns]** "Similar triggering events or struggling moments", "Common criteria or
-  considerations", "Shared anxieties or hesitations", "Recurring language or phrases".
-- **[JTBD-story]** "When [situation], I want to [motivation], so I can [expected outcome]."
-- **[JTBD-job]** "One of the most common pitfalls in JTBD is confusing the customer's job with your
-  own solution."
 - **[JTBD-length]** "JTBD interviews typically last 60-90 minutes".
 
 **"The Product Management Problem Statement: How to Get it Right"** (PM week, Monday)
@@ -308,10 +302,7 @@ Wednesday)
   you hired a dog walker'), not hypotheticals".
 - **[TUE-saydo]** "people report what they believe about themselves, which often differs from what
   they actually do." "User Interviews 101" adds "Social-desirability bias".
-- **[TUE-synth]** "find the themes that recur, and distill them into insights - statements about
-  what's true for users".
 - **[TUE-anecdote]** "One vivid interview is an anecdote until you see the pattern repeat".
-- **[TUE-audit]** "audit it against the source. The audit is not optional polish".
 
 **"UX Research Cheat Sheet", NN/g** (Design week, Tuesday)
 
@@ -328,6 +319,3 @@ Wednesday)
 - **[VELLO-shape]** The interview `Vello_Interview_P01.md` asks "And how did you solve it?" and
   closes with "Last thing. If a service like this existed and worked perfectly, what would it
   do?" Its header records Participant, Role, Context, Date, Length, Interviewer and Notes.
-- **[VELLO-theme]** In `thematic-synthesis.md`, each theme lists "Participant Count & IDs",
-  "Verbatim Quotes", "What Users Said", "What We Infer" and "Contradicting Evidence".
-- **[VELLO-ps]** In `DELIVERABLE.md`, problem statements are written as Who, What, Why.
