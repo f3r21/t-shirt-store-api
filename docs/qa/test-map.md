@@ -46,7 +46,7 @@ reads `/docs-json` over HTTP, as a client does, so it compares documents, not re
 
 | Suite | Proves | Does not prove |
 |---|---|---|
-| AC1, `openapi-reset-descriptions` | `forgot-password` and its 202 carry the contract's text | That the text names the next call: the contract's does not. That the API does what the text says, which `auth` covers |
+| AC1, `openapi-reset-descriptions` | `forgot-password` and its 202 carry the contract's text | That the text names the next call: the contract's does not. That the API does what the text says, which `auth` covers, and `rate-limit` for the password tier's 429, sent to `reset-password` |
 | AC2, `openapi-reset-descriptions` | `reset-password` carries the contract's text | That the reset mail arrives (risk R10) |
 | AC3, `openapi-problems` | Checkout lists exactly the four promo-code problems at 422, and `insufficient-stock`, the empty cart and the changed cart at 409, each with its title and an example detail | That checkout throws them: each entry is traced to its throw site in the code (ADR 38) |
 | AC4, `openapi-problems` | `POST /promo-codes` lists no `email-taken` at 409 | That an operation without an exact list in `openapi-problems` leaves it out. The contract gives `email-taken` to every 409, so AC5 cannot catch it |

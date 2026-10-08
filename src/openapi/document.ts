@@ -150,7 +150,8 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     // The contract test cites the first `openapi.yaml` path in this text and
     // checks the file exists, so the repository path comes before the URL.
     .setDescription(
-      'Generated from the controllers. The hand-written contract, ' +
+      "Generated from the controllers, with each failure's problems from " +
+        'one map in the builder. The hand-written contract, ' +
         '[`contract/openapi.yaml`](https://github.com/f3r21/t-shirt-store-api/blob/main/contract/openapi.yaml), ' +
         'is authoritative where the two disagree. Each failure here lists ' +
         'only the problems its own operation returns, where the contract ' +

@@ -219,16 +219,18 @@ the README instead. A preference is recorded in "Feedback, weighed", not schedul
 - In `docs/qa/risk-register.md`: any new risk, from R10 onward.
 - In the README: the missing lines.
 
-On 2026-10-07, the reset item left "Next" and, with the specific errors in the served Swagger,
-became "Now" as one change, B1 + B2. The product page holds its scores and acceptance criteria.
+On 2026-10-07, the reset item left the "Next" list in `docs/product.md`. It was a Swagger UI
+description for `forgot-password`, where P3 stopped. With the specific errors in the served
+Swagger, it became "Now" as one change, B1 + B2. The product page holds its scores and
+acceptance criteria.
 
 ### The blind check before the change
 
 The success measure of B1 + B2 (spec #34). A rehearsal by an agent, not a user. On 2026-10-07 at
-20:29 local time (01:29 UTC on 2026-10-08), an agent that had never seen the code read only the README on GitHub and
-the deployed `/docs` and `/docs-json`. The deployed image was `d442968`, deployed on 2026-10-06.
-It sent five GET requests and nothing that writes. The answers are quoted as the agent gave
-them, shortened where marked "[...]".
+20:29 local time (01:29 UTC on 2026-10-08), an agent that had never seen the code read only the
+README on GitHub and the deployed `/docs` and `/docs-json`. The deployed image was `d442968`,
+deployed on 2026-10-06. It sent five GET requests and nothing that writes. The answers are
+quoted as the agent gave them, shortened where marked "[...]".
 
 | Question | Answer, verbatim | Source | Time |
 |---|---|---|---|

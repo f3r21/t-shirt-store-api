@@ -11,10 +11,10 @@ say which problems an operation returns. The contract lists examples, but per st
 response. So every 409 shows `email-taken`, `insufficient-stock` and `order-not-cancellable`,
 and POST /promo-codes shows "Email already registered" even though only sign-up returns it.
 
-The evidence is one API interview, with P3, so it is low data (spec #34). P3 integrated the
-API from the served page alone. A precise title was the one thing that told P3 what had
-happened. P3's wish for specific errors came after a question about P3's team, so it is a
-stated wish, not seen behaviour.
+The evidence is one API interview, with P3, so it is low data (spec #34). P3 tried the API
+from the served page alone, without the README. A precise title was the one thing that told P3
+what had happened. P3's wish for specific errors came after a question about P3's team, so it
+is a stated wish, not seen behaviour.
 
 The contract does not change (spec #34). So the list for each operation has to live in the
 served document, and the open question is where its source sits.
@@ -39,8 +39,11 @@ For a declared status the map does not list:
   path id that is not an integer are real answers, so the page shows them.
 - **No example, and the walk exempts every status that has only a default.** One function
   less, but the page then shows the bare `Problem` schema for those answers, as it did before
-  this record, and the walk checks only the statuses the map lists. This option stays one deletion
-  away: `statusDefault` in `src/openapi/operation-problems.ts` and its call.
+  this record, and the walk checks only the statuses the map lists. In the code, this option
+  stays one deletion away: `statusDefault` in `src/openapi/operation-problems.ts` and its call.
+  Three tests in `test/openapi-problems.e2e-spec.ts` change with it: the two that read the 404
+  default and the path-id 400 default, and the walk, which then exempts every status that has
+  only a default.
 
 ## Decision
 

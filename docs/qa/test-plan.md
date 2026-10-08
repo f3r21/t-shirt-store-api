@@ -19,7 +19,7 @@ runs, on what, and when a result counts.
 | Static | `npm run typecheck`, `npm run lint:ci`, `npm run format:check` | The source |
 | Unit | `npm test` | Jest, with Prisma replaced by `src/prisma/prisma.service.mock.ts` |
 | End to end | `npm run test:e2e` | The whole Nest application on a real Postgres 16 and Valkey, Stripe's network calls stubbed |
-| Contract | `test/openapi-contract.e2e-spec.ts`, inside the end-to-end run | The served document against `contract/openapi.yaml` |
+| Contract | `test/openapi-contract.e2e-spec.ts` and `test/openapi-reset-descriptions.e2e-spec.ts`, inside the end-to-end run | The served document against `contract/openapi.yaml` |
 | Dependencies | `npm audit --omit=dev --audit-level=high` | The tree the image ships |
 | Image | `npm run check:image` | `docker build` of the runtime image |
 | Prose | `npm run check:prose` | Vale on the README, the architecture page, the contract README and the ADRs |
@@ -79,8 +79,8 @@ operation's own problems (B2). Its criteria, AC1 to AC5, are in `docs/product.md
   `src/openapi/document.ts` builds what the tests read. The blind check needs the deployed
   instance, which comes down on 2026-10-23.
 - **Entry criteria.** The entry criteria above, and the code of #36, #37, #39 and #40 on one
-  branch.
-  Before any deploy, the blind check runs once on today's deployment.
+  branch. Before any deploy, the blind check runs once on the deployment of image `d442968`
+  (deployed on 2026-10-06).
 - **Exit criteria.** Each test that AC1 to AC5 name is green. `check:unit`, `check:db` and
   `check:prose` are green locally in three runs in a row, recorded in the pull request. Verify,
   Image and Prose are green in CI. After the deploy, the blind check answers its three questions

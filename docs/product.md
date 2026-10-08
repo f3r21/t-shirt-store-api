@@ -65,6 +65,7 @@ fails.
 **North Star: paid orders per week.** Each one is a row in `order_status_history` with status
 `paid`, and only the signed Stripe webhook writes that status (ADR 24). No dashboard counts it
 yet: `ARCHITECTURE.md` says "None of these exists yet".
+
 **Supporting signal that B1 + B2 moves:** the questions a first-time integrator answers from
 Swagger UI alone, without asking the backend team. The blind check in "Go or no-go" counts them.
 
@@ -116,7 +117,7 @@ rests on what P3 said a backend team should give, backed by P3's story and the c
 Together they let Swagger UI alone say what happens next and what can go wrong. B3 holds B1's
 text but goes wider than what stopped P3.
 
-## Three risks
+## Risks
 
 Likelihood and impact are judged on a 1 to 3 scale, not measured.
 
@@ -184,9 +185,10 @@ reset mail (AC2).
 
 **No for real money. Yes for a test-mode pilot.**
 
-What holds: CI is green on `main`, with 39 unit suites (681 tests) and 18 end-to-end suites (333
-tests) against a real Postgres and Valkey. The webhook signature check is the production code
-path in the tests. A rollback was rehearsed on 2026-09-03, about three minutes each way.
+What holds: CI is green on `main`. On the branch of spec #34, a local run on 2026-10-07 passes
+39 unit suites (681 tests) and 18 end-to-end suites (333 tests) against a real Postgres and
+Valkey. The webhook signature check is the production code path in the tests. A rollback was
+rehearsed on 2026-09-03, about three minutes each way.
 
 What stops it:
 
@@ -207,16 +209,17 @@ turn its order `paid`, or a 5xx from the webhook. Roll back with `ImageTag=<prev
 ### B1 + B2: go, in one deploy
 
 **Success measure: a blind check, before and after.** A first-time integrator answers three
-questions from the deployed README and Swagger UI alone. What happens after `forgot-password`, and
-which call comes next? Which specific errors can `POST /orders` return, and what is the title for
-too little stock? Can "Email already registered" come back from `POST /promo-codes`? The check
-runs on today's deployment before any deploy, and again once the change is deployed. It passes
-when all three are answered correctly from the page, with no guess. This is a rehearsal by an
-agent, not a user. The contract's `forgot-password` text names no next call, so the check after
-may still read "which call comes next" as an inference. One contract sentence would close that.
+questions from the README on GitHub and the deployed Swagger UI alone. What happens after
+`forgot-password`, and which call comes next? Which specific errors can `POST /orders` return,
+and what is the title for too little stock? Can "Email already registered" come back from
+`POST /promo-codes`? The check runs once before any deploy, on the deployment of image
+`d442968` (deployed on 2026-10-06), and again once the change is deployed. It passes when all
+three are answered correctly from the page, with no guess. This is a rehearsal by an agent, not
+a user. The contract's `forgot-password` text names no next call, so the check after may still
+read "which call comes next" as an inference. One contract sentence would close that.
 
-- **Recommendation:** go. It changes the served document and one README line; the contract and what
-  the API answers stay the same.
+- **Recommendation:** go. It changes the served document and the text of the docs and the
+  README; the contract and what the API answers stay the same.
 - **Ship criteria:** all of B1 + B2 green in Verify, Image and Prose, reviewed, in one deploy.
 - **Owner:** Fernando Ramirez.
 - **Rollback trigger:** the live `/docs-json` lists a problem type the contract does not allow for
