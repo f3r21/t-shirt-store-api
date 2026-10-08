@@ -186,8 +186,7 @@ reset mail (AC2).
 **No for real money. Yes for a test-mode pilot.**
 
 What holds: CI is green on `main`. On the branch of spec #34, a local run on 2026-10-07 passes
-39 unit suites (681 tests) and 18 end-to-end suites (333 tests) against a real Postgres and
-Valkey. The webhook signature check is the production code path in the tests. A rollback was
+every unit suite, and every end-to-end suite against a real Postgres and Valkey. The webhook signature check is the production code path in the tests. A rollback was
 rehearsed on 2026-09-03, about three minutes each way.
 
 What stops it:

@@ -16,7 +16,7 @@ a real Postgres and a real Valkey. It replaces four things:
 | The object store | an in-memory store | that S3 accepts or serves the file |
 | The rate-limit counter | a counter that never blocks, except in `rate-limit.e2e-spec.ts` | the limits, outside that one suite |
 
-## End-to-end suites (18 suites, 333 tests)
+## End-to-end suites
 
 | Suite | Proves | Does not prove |
 |---|---|---|
@@ -54,21 +54,21 @@ reads `/docs-json` over HTTP, as a client does, so it compares documents, not re
 
 ### Scenarios by type
 
-Each test is in `openapi-problems.e2e-spec.ts`, unless the row names a criterion.
+For a row that names a criterion, `docs/product.md` names the tests.
 
 | Type | Scenario | Test |
 |---|---|---|
 | Positive | Each reset operation carries the contract's text | AC1, AC2 |
 | Positive | Checkout lists its promo-code, stock and cart problems | AC3 |
-| Positive | Sign-up lists `email-taken` at 409, with its title and detail | "lists email-taken on the sign-up 409, with its title and detail" |
+| Positive | Sign-up lists `email-taken` at 409, with its title and detail | `openapi-problems.e2e-spec.ts`, "lists email-taken on the sign-up 409, with its title and detail" |
 | Negative | `POST /promo-codes` lists no `email-taken` | AC4 |
-| Negative | No public operation, sign-in among them, lists `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
+| Negative | No public operation, sign-in among them, lists `access-token-expired` | `openapi-problems.e2e-spec.ts`, "lists access-token-expired at 401 wherever a token is taken" |
 | Negative | A type the contract does not give a status fails the suite | AC5 |
-| Boundary | The two reads where the token is optional list `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
-| Boundary | A failure with no traced problem shows its status default; only the 403 of `POST /orders`, which no caller reaches, is left bare | "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
-| Boundary | The Stripe webhook is the one body with no validation example | "shows a validation 400 wherever a body or a query is validated" |
+| Boundary | The two reads where the token is optional list `access-token-expired` | `openapi-problems.e2e-spec.ts`, "lists access-token-expired at 401 wherever a token is taken" |
+| Boundary | A failure with no traced problem shows its status default; only the 403 of `POST /orders`, which no caller reaches, is left bare | `openapi-problems.e2e-spec.ts`, "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
+| Boundary | The Stripe webhook is the one body with no validation example | `openapi-problems.e2e-spec.ts`, "shows a validation 400 wherever a body or a query is validated" |
 
-## Unit suites (39 suites, 681 tests)
+## Unit suites
 
 They run without a database. Thirteen of them replace Prisma with
 `src/prisma/prisma.service.mock.ts`. The argon2 hashing is real, and so is token signing in
