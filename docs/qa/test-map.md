@@ -16,7 +16,7 @@ a real Postgres and a real Valkey. It replaces four things:
 | The object store | an in-memory store | that S3 accepts or serves the file |
 | The rate-limit counter | a counter that never blocks, except in `rate-limit.e2e-spec.ts` | the limits, outside that one suite |
 
-## End-to-end suites (16 suites, 296 tests)
+## End-to-end suites (18 suites, 333 tests)
 
 | Suite | Proves | Does not prove |
 |---|---|---|
@@ -30,12 +30,43 @@ a real Postgres and a real Valkey. It replaces four things:
 | `deliveries` | The shipped-order queue, the move to `delivered`, who delivered it, who may read it | Assigning an order to a courier, which does not exist (ADR 36) |
 | `images` | Upload, a UUID key, one primary under a race, 415 by the file's bytes, 413 above 5 MiB, delete | S3 and CloudFront |
 | `likes` | Like and unlike are idempotent, 404 off sale, a user's list only | The low-stock mail, which `stock-notifications` covers |
-| `openapi-contract` | The served document declares the contract's 41 operations, status codes, operation ids, security, bodies, parameters, headers and bounds | That a live response matches its schema. It compares documents, not responses |
+| `openapi-contract` | The served document declares the contract's 41 operations, status codes, operation ids, security, bodies, required query parameters, headers and bounds, and each failure lists only problem types the contract gives its status | That a live response matches its schema. It compares documents, not responses |
+| `openapi-problems` | Each failure lists its own operation's problems: exactly the typed ones at each status of sign-up, a cart add and checkout; the token problems wherever a token is taken; the untyped ones by title and detail; an example at every failure but checkout's 403 | That an operation throws what it lists: each entry is traced to its throw site by reading (ADR 38) |
+| `openapi-reset-descriptions` | `forgot-password`, its 202 and `reset-password` carry the contract's text | That the reset mail arrives (risk R10) |
 | `order-history` | Own orders only, 404 and not 403 for another client's, the manager's view, five filters, paging | Speed with many orders |
 | `promo-codes` | The manager's create, list and update, 401 and 403, codes unique without case, `usedCount` not writable | Their use at checkout, which `checkout-promo` covers |
 | `rate-limit` | The real counter: the eleventh sign-in, refresh and sign-up refused, twenty catalog reads let through, 429 with `Retry-After` | Two processes. The counter lives in memory (risk R8) |
 | `roles` | 401 before 403, so the token guard runs before the policy guard; a manager-only write refused to a client | Every route. It samples the guard order |
 | `stock-notifications` | A job only on a crossing to 3 or below, none on a replay, a stock answer within five seconds with Redis down, the worker's mail, retry and failed set | The SES send; a job lost between commit and enqueue (risk R9) |
+
+## B1 + B2, by acceptance criterion
+
+One row for each criterion in "B1 + B2, as acceptance criteria" in `docs/product.md`. Each test
+reads `/docs-json` over HTTP, as a client does, so it compares documents, not responses.
+
+| Suite | Proves | Does not prove |
+|---|---|---|
+| AC1, `openapi-reset-descriptions` | `forgot-password` and its 202 carry the contract's text | That the text names the next call: the contract's does not. That the API does what the text says, which `auth` covers, and `rate-limit` for the password tier's 429, sent to `reset-password` |
+| AC2, `openapi-reset-descriptions` | `reset-password` carries the contract's text | That the reset mail arrives (risk R10) |
+| AC3, `openapi-problems` | Checkout lists exactly the four promo-code problems at 422, and `insufficient-stock`, the empty cart and the changed cart at 409, each with its title and an example detail | That checkout throws them: each entry is traced to its throw site in the code (ADR 38) |
+| AC4, `openapi-problems` | `POST /promo-codes` lists no `email-taken` at 409 | That an operation without an exact list in `openapi-problems` leaves it out. The contract gives `email-taken` to every 409, so AC5 cannot catch it |
+| AC5, `openapi-contract` | Each problem type an operation lists at a status is one the contract gives that status | Titles, details, problems without a type, and a throw site the map leaves out (risk R12) |
+
+### Scenarios by type
+
+Each test is in `openapi-problems.e2e-spec.ts`, unless the row names a criterion.
+
+| Type | Scenario | Test |
+|---|---|---|
+| Positive | Each reset operation carries the contract's text | AC1, AC2 |
+| Positive | Checkout lists its promo-code, stock and cart problems | AC3 |
+| Positive | Sign-up lists `email-taken` at 409, with its title and detail | "lists email-taken on the sign-up 409, with its title and detail" |
+| Negative | `POST /promo-codes` lists no `email-taken` | AC4 |
+| Negative | No public operation, sign-in among them, lists `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
+| Negative | A type the contract does not give a status fails the suite | AC5 |
+| Boundary | The two reads where the token is optional list `access-token-expired` | "lists access-token-expired at 401 wherever a token is taken" |
+| Boundary | A failure with no traced problem shows its status default; only the 403 of `POST /orders`, which no caller reaches, is left bare | "shows the status default where no problem is traced" and "names an example at every failure of every operation" |
+| Boundary | The Stripe webhook is the one body with no validation example | "shows a validation 400 wherever a body or a query is validated" |
 
 ## Unit suites (39 suites, 681 tests)
 

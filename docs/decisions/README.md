@@ -23,6 +23,7 @@ contract's and the data model's records live in the Week 2 repository.
 - [11. Problem titles come from a table, never from the exception message](0011-problem-titles-come-from-a-table.md)
 - [19. CORS is a list from the environment, and the proxy is a count](0019-cors-is-a-list-and-the-proxy-is-a-count.md)
 - [21. Logs are pino JSON with a request id, and the events are the OWASP list](0021-logs-are-pino-json-with-a-request-id.md)
+- [38. The served Swagger lists each operation's own problems, narrower than the contract's per-status examples](0038-served-swagger-lists-each-operations-own-problems.md)
 
 ## Catalog
 

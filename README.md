@@ -49,9 +49,10 @@ npm run start:worker:dev  # in a second terminal, see below
 ```
 
 The API is then on `http://localhost:3000/v1`. Swagger UI at `http://localhost:3000/docs`,
-outside the `/v1` prefix, shows the document generated from the controllers, and
-`test/openapi-contract.e2e-spec.ts` fails when it drifts from the contract. Mailpit's web
-interface at `http://localhost:8025` shows every message the API and the worker send.
+outside the `/v1` prefix, shows the document generated from the controllers, with each
+failure's problems from one map in the builder (ADR 38). `test/openapi-contract.e2e-spec.ts`
+fails when it drifts from the contract. Mailpit's web interface at `http://localhost:8025`
+shows every message the API and the worker send.
 
 The worker is a second process. It consumes the low-stock queue and sends the low-stock mails
 from the same image as the API, so a slow mail provider never holds a checkout or a stock
@@ -284,7 +285,7 @@ records, and the account's credits carry it while the stack is up.
 | Promo codes, Optional Feature 13 | Done, unit tested. Both halves, with a `citext` code and the use counted inside the checkout transaction. ADR 37 |
 | Likes | Done, unit tested. Three operations, idempotent on the primary key. ADR 26 |
 | Images | Done, unit tested. Sniffed by their bytes, stored in S3 under a random key, served through CloudFront |
-| End-to-end tests | Done, sixteen suites against a real database and a real Valkey |
+| End-to-end tests | Done, eighteen suites against a real database and a real Valkey |
 | CASL authorization | Done. Deny by default, and the ownership conditions become the where clauses the services read with. ADR 25 |
 | Stock notifications | Done, unit tested. One queued job per liker on a crossing to 3 or fewer, mailed by a worker in its own process. ADR 27 |
 | Deploy | Done. One CloudFormation stack, and every push to `main` releases by OIDC with no key stored, while `DEPLOY_ENABLED` is `true`. ADR 29 and 30 |
@@ -318,8 +319,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5433/tshirt_store_test npx
   criteria, the [risk register](docs/qa/risk-register.md), and a [map](docs/qa/test-map.md)
   of what each suite proves and does not prove.
 - [`docs/research/friction-log.md`](docs/research/friction-log.md): the protocol for one
-  interview on 2026-10-07 that tested the user assumption, with P3, a front-end developer. The
-  results are in "Validated by" in [`docs/product.md`](docs/product.md).
+  interview on 2026-10-07 that tested the user assumption, with P3, a front-end developer, and
+  the blind check that measures the Swagger UI change it led to. The interview's results are in
+  "Validated by" in [`docs/product.md`](docs/product.md).
 
 ## Where the reasoning lives
 
@@ -404,7 +406,8 @@ The deployed store:
   type, so a slow session needs `POST /v1/auth/refresh` with `{"refreshToken": "<token>"}`,
   which returns a new pair.
 - SES is in its sandbox with one verified sender, so mail reaches verified addresses only,
-  and lands in spam there. A reset link sent to your address does not arrive.
+  and lands in spam there. `POST /v1/auth/forgot-password` answers 202, but its reset mail
+  never reaches your address, so a password reset cannot be finished here.
 - No browser origin is allowed (`CORS_ORIGINS` is not set in `infra/stack.yml`), so a front
   end on another origin is refused.
 - The rate limit is per address: 100 requests a minute on most routes, 10 sign-ins, sign-ups

@@ -19,7 +19,7 @@ runs, on what, and when a result counts.
 | Static | `npm run typecheck`, `npm run lint:ci`, `npm run format:check` | The source |
 | Unit | `npm test` | Jest, with Prisma replaced by `src/prisma/prisma.service.mock.ts` |
 | End to end | `npm run test:e2e` | The whole Nest application on a real Postgres 16 and Valkey, Stripe's network calls stubbed |
-| Contract | `test/openapi-contract.e2e-spec.ts`, inside the end-to-end run | The served document against `contract/openapi.yaml` |
+| Contract | `test/openapi-contract.e2e-spec.ts` and `test/openapi-reset-descriptions.e2e-spec.ts`, inside the end-to-end run | The served document against `contract/openapi.yaml` |
 | Dependencies | `npm audit --omit=dev --audit-level=high` | The tree the image ships |
 | Image | `npm run check:image` | `docker build` of the runtime image |
 | Prose | `npm run check:prose` | Vale on the README, the architecture page, the contract README and the ADRs |
@@ -54,15 +54,40 @@ A commit passes when, on that commit:
 
 1. The type checker, the linter and the formatter report nothing.
 2. All 39 unit suites pass. Today: 681 tests.
-3. All 16 end-to-end suites pass, the contract test among them. Today: 296 tests.
+3. All 18 end-to-end suites pass, the contract test among them. Today: 333 tests.
 4. `npm audit --omit=dev --audit-level=high` exits 0: no high or critical advisory. (On
    2026-10-06 it lists 2 moderate ones, `js-yaml` through `@nestjs/swagger`.)
 5. The image builds, and Vale reports no error.
 6. Every risk in `risk-register.md` scored 6 or more has a mitigation, or a line that accepts it.
 
 A failure is fixed or explained in the pull request before merge. No test is skipped to pass.
-The counts are from CI run 37494753506 (2026-10-06), on the branch that added two contract
-tests, and from a local run the same day.
+The counts are from a local run on 2026-10-07, on the branch of spec #34.
+
+## B1 + B2: the served document
+
+Spec #34: the served document says what follows `forgot-password` (B1) and lists each
+operation's own problems (B2). Its criteria, AC1 to AC5, are in `docs/product.md`.
+
+- **Scope.** In: `/docs-json` as a client reads it, that is the two reset descriptions and the
+  problems at each error status, against `contract/openapi.yaml`. Out: the contract itself,
+  which does not change; what the API answers; mail delivery; the other descriptions (B3); the
+  409 of `PATCH /variants/{id}/stock` (#33).
+- **Assumptions.** The contract's reset text and its problem types for each status are right.
+  Each entry in `src/openapi/operation-problems.ts` is what its throw site sends (ADR 38). The
+  tests compare documents, not responses.
+- **Dependencies.** #36 (B1) and #37, #39 and #40 (B2) hold the code, and #38 the product side.
+  `src/openapi/document.ts` builds what the tests read. The blind check needs the deployed
+  instance, which comes down on 2026-10-23.
+- **Entry criteria.** The entry criteria above, and the code of #36, #37, #39 and #40 on one
+  branch. Before any deploy, the blind check runs once on the deployment of image `d442968`
+  (deployed on 2026-10-06).
+- **Exit criteria.** Each test that AC1 to AC5 name is green. `check:unit`, `check:db` and
+  `check:prose` are green locally in three runs in a row, recorded in the pull request. Verify,
+  Image and Prose are green in CI. After the deploy, the blind check answers its three questions
+  from the page, with no guess.
+- **Environments.** Local, with the three containers of `npm run docker:up`. CI, in the Verify,
+  Image and Prose jobs. The deployed instance, for the blind check and a read of the live
+  `/docs-json` past any cache.
 
 ## Known limits of this plan
 
